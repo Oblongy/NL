@@ -40,8 +40,9 @@ const fileEnv = loadDotEnvFile();
 const env = { ...fileEnv, ...process.env };
 
 export const config = {
-  host: env.HOST || "127.0.0.1",
+  httpHost: env.HTTP_HOST || env.HOST || "127.0.0.1",
   port: Number(env.PORT || 8082),
+  tcpHost: env.TCP_HOST || env.HOST || "127.0.0.1",
   tcpPort: Number(env.TCP_PORT || 3724), // Default to 3724 (standard Nitto TCP port)
   supabaseUrl: env.SUPABASE_URL || "",
   supabaseServiceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY || "",

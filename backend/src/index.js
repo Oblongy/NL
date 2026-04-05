@@ -28,7 +28,7 @@ const tcpServer = new TcpServer({
   proxy: tcpProxy,
   supabase,
   port: config.tcpPort,
-  host: config.host,
+  host: config.tcpHost,
 });
 
 // Create tcpNotify with reference to tcpServer
@@ -63,10 +63,12 @@ const server = createHttpServer({
 
 await tcpServer.start();
 
-server.listen(config.port, config.host, () => {
+server.listen(config.port, config.httpHost, () => {
   logger.info("Backend listening", {
-    host: config.host,
+    host: config.httpHost,
     port: config.port,
+    tcpHost: config.tcpHost,
+    tcpPort: config.tcpPort,
     supabase: Boolean(supabase),
   });
 });

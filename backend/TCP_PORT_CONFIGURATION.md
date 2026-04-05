@@ -1,61 +1,41 @@
 # TCP Port Configuration
 
-## Issue
-The Nitto Legends client is hardcoded to connect to TCP port **3724** for real-time features (buddies list, notifications, race invites).
+## Recommended Binding Split
 
-However, port 3724 is commonly used by Blizzard services (World of Warcraft, Battle.net Agent), which may conflict with the backend TCP server.
+For a Linux VPS deployment:
 
-## Current Configuration
-The backend TCP server is currently configured to use port **7724** (see `backend/.env`).
+- `HTTP_HOST=127.0.0.1`
+- `PORT=8082`
+- `TCP_HOST=0.0.0.0`
+- `TCP_PORT=3724`
 
-## Solutions
+This keeps the HTTP backend private behind `nginx` while allowing the game client to reach the TCP listener directly.
 
-### Option 1: Stop Blizzard Services (Temporary)
-If you have Blizzard games installed, you can temporarily stop the Blizzard Agent service:
+## Why This Split
 
-1. Open Services (Win+R, type `services.msc`)
-2. Find "Blizzard Update Agent" or similar
-3. Right-click → Stop
-4. Update `backend/.env`: `TCP_PORT=3724`
-5. Restart the backend server
+The Nitto Legends client expects direct TCP access for real-time features such as buddies, notifications, and race invites. `nginx` should proxy the HTTP backend, but it should not sit in front of the game TCP port unless you explicitly build that path.
 
-**Note:** This will prevent Blizzard games from updating while the service is stopped.
+## Firewall Expectations
 
-### Option 2: Port Forwarding (Recommended)
-Use Windows port forwarding to redirect port 3724 to 7724:
+Open only the ports you need:
 
-```powershell
-# Run as Administrator
-netsh interface portproxy add v4tov4 listenport=3724 listenaddress=127.0.0.1 connectport=7724 connectaddress=127.0.0.1
+- `80/tcp` for HTTP
+- `443/tcp` for HTTPS if enabled
+- `3724/tcp` for the game TCP connection
+
+Keep port `8082` closed to the public internet when `nginx` is proxying to `127.0.0.1:8082`.
+
+## Verification
+
+```bash
+curl http://127.0.0.1:8082/healthz
+sudo ss -tulpn | grep -E '8082|3724|80|443'
+sudo ufw status
+sudo nginx -t
 ```
 
-To remove the port forwarding later:
-```powershell
-netsh interface portproxy delete v4tov4 listenport=3724 listenaddress=127.0.0.1
-```
+Expected result:
 
-To view current port forwarding rules:
-```powershell
-netsh interface portproxy show all
-```
-
-### Option 3: Modify Client Configuration
-If the client has a configuration file that specifies the TCP port, you can change it to 7724.
-
-## Current Status
-- HTTP Server: `127.0.0.1:8082` ✅ Working
-- TCP Server: `127.0.0.1:7724` ✅ Listening
-- Client expects: `127.0.0.1:3724` ⚠️ Port mismatch
-
-## Testing TCP Connection
-Once port forwarding is configured, you can test the TCP connection:
-
-```powershell
-# Test if port 3724 is accessible
-Test-NetConnection -ComputerName 127.0.0.1 -Port 3724
-```
-
-The backend will log TCP connections in `backend/live.log`:
-- `TCP connection opened` - Client connected
-- `TCP message received` - Client sent a message
-- `TCP login complete` - Client authenticated via TCP
+- HTTP server listening on `127.0.0.1:8082`
+- TCP server listening on `0.0.0.0:3724`
+- `nginx` listening on `80` or `443`
