@@ -1,0 +1,25 @@
+/* newsStyles.css - Minimal styles for news/lobby */
+body {
+  font-family: Arial, sans-serif;
+  font-size: 12px;
+  color: #333;
+  background: #fff;
+  margin: 0;
+  padding: 0;
+}
+
+.news-item {
+  padding: 10px;
+  border-bottom: 1px solid #ccc;
+}
+
+.news-title {
+  font-weight: bold;
+  font-size: 14px;
+  margin-bottom: 5px;
+}
+
+.news-body {
+  font-size: 12px;
+  color: #666;
+}

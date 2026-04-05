@@ -1,0 +1,46 @@
+# Secrets
+backend/.env
+NL/.env
+
+# Dependencies
+backend/node_modules/
+NL/node_modules/
+
+# Runtime logs and temp output
+*.log
+*.err
+*.out
+*.pid
+hs_err_pid*
+backend/*.log
+backend/*.err
+backend/*.out
+backend/tmp_*.txt
+backend/live_login_tester1.txt
+scripts/*.log
+scripts/*.err
+scripts/*.out
+
+# Python cache
+__pycache__/
+scripts/__pycache__/
+
+# Research, captures, and local artifacts not needed on the VPS
+cache/
+captures/
+references/
+scripts/
+scripts/archive/
+NL/
+NittoLegendsBeta.exe
+unins000.dat
+unins000.exe
+prefs.txt
+captured_oblong_login.txt
+compatibility_server_manifest.json
+login_check.txt
+ref_login.txt
+brand-category-fitment.catalog.md
+full_controls_back_to_lobby_20260403_113321.decoded_http_responses.json
+start_servers.ps1
+stop_servers.ps1

@@ -1,0 +1,51 @@
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const currentDir = dirname(fileURLToPath(import.meta.url));
+const backendRoot = resolve(currentDir, "..");
+const projectRoot = resolve(backendRoot, "..");
+const fixturesRoot = resolve(backendRoot, "fixtures");
+
+function loadDotEnvFile() {
+  const envPath = resolve(backendRoot, ".env");
+  if (!existsSync(envPath)) {
+    return {};
+  }
+
+  const values = {};
+  const lines = readFileSync(envPath, "utf8").split(/\r?\n/);
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) {
+      continue;
+    }
+
+    const eqIndex = trimmed.indexOf("=");
+    if (eqIndex < 0) {
+      continue;
+    }
+
+    const key = trimmed.slice(0, eqIndex).trim();
+    const rawValue = trimmed.slice(eqIndex + 1).trim();
+    const value = rawValue.replace(/^['"]|['"]$/g, "");
+    values[key] = value;
+  }
+
+  return values;
+}
+
+const fileEnv = loadDotEnvFile();
+const env = { ...fileEnv, ...process.env };
+
+export const config = {
+  host: env.HOST || "127.0.0.1",
+  port: Number(env.PORT || 8082),
+  tcpPort: Number(env.TCP_PORT || 3724), // Default to 3724 (standard Nitto TCP port)
+  supabaseUrl: env.SUPABASE_URL || "",
+  supabaseServiceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY || "",
+  backendRoot,
+  projectRoot,
+  fixturesRoot,
+};

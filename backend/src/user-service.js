@@ -1,0 +1,502 @@
+async function maybeSingle(query) {
+  const { data, error } = await query.maybeSingle();
+  if (error) {
+    throw error;
+  }
+  return data;
+}
+
+async function singleResult(query) {
+  const { data, error } = await query.single();
+  if (error) {
+    throw error;
+  }
+  return data;
+}
+
+const NORMALIZED_STOCK_CATALOG_CAR_ID = 1; // Acura Integra GSR
+const NORMALIZED_STOCK_WHEEL_XML = "<ws><w wid='1' id='1001' ws='17'/></ws>";
+// Empty parts XML - no OEM parts by default to avoid login hang
+const NORMALIZED_STOCK_PARTS_XML = "";
+
+function normalizeCatalogCarIdValue(value) {
+  const numericValue = Number(value) || 0;
+  if (numericValue === 101 || numericValue === 12) {
+    return NORMALIZED_STOCK_CATALOG_CAR_ID;
+  }
+  return numericValue;
+}
+
+function normalizeWheelXmlValue(value) {
+  const wheelXml = String(value || "").trim();
+  if (!wheelXml) {
+    return NORMALIZED_STOCK_WHEEL_XML;
+  }
+  if (/<w\b[^>]*\bwid='1000'[^>]*\bid='1'[^>]*\bws='17'[^>]*\/?>/i.test(wheelXml)) {
+    return NORMALIZED_STOCK_WHEEL_XML;
+  }
+  if (/^<ws[\s>]/i.test(wheelXml)) {
+    return wheelXml;
+  }
+  if (/^<w\b/i.test(wheelXml)) {
+    return `<ws>${wheelXml}</ws>`;
+  }
+  return wheelXml;
+}
+
+function normalizePartsXmlValue(value) {
+  const partsXml = String(value || "").trim();
+  // Return empty string for empty or paint-only parts to avoid login hang
+  // The client will render the car correctly with just paint state
+  return partsXml;
+}
+
+export function normalizeOwnedCarRecord(car) {
+  if (!car) {
+    return car;
+  }
+
+  return {
+    ...car,
+    catalog_car_id: normalizeCatalogCarIdValue(car.catalog_car_id),
+    wheel_xml: normalizeWheelXmlValue(car.wheel_xml),
+    parts_xml: normalizePartsXmlValue(car.parts_xml),
+  };
+}
+
+function getLegacyCarPatch(car) {
+  const patch = {};
+
+  const normalizedCatalogCarId = normalizeCatalogCarIdValue(car.catalog_car_id);
+  if (normalizedCatalogCarId && normalizedCatalogCarId !== Number(car.catalog_car_id || 0)) {
+    patch.catalog_car_id = normalizedCatalogCarId;
+  }
+
+  const normalizedWheelXml = normalizeWheelXmlValue(car.wheel_xml);
+  if (normalizedWheelXml !== String(car.wheel_xml || "")) {
+    patch.wheel_xml = normalizedWheelXml;
+  }
+
+  const normalizedPartsXml = normalizePartsXmlValue(car.parts_xml);
+  if (normalizedPartsXml !== String(car.parts_xml || "")) {
+    patch.parts_xml = normalizedPartsXml;
+  }
+
+  return patch;
+}
+
+async function repairLegacyCars(supabase, cars) {
+  if (!supabase || !cars.length) {
+    return cars;
+  }
+
+  const repairedCars = [];
+  for (const car of cars) {
+    const patch = getLegacyCarPatch(car);
+    if (Object.keys(patch).length > 0) {
+      const { data, error } = await supabase
+        .from("game_cars")
+        .update(patch)
+        .eq("game_car_id", Number(car.game_car_id))
+        .select("*")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      repairedCars.push(normalizeOwnedCarRecord(data || car));
+      continue;
+    }
+
+    repairedCars.push(normalizeOwnedCarRecord(car));
+  }
+
+  return repairedCars;
+}
+
+export async function getPlayerById(supabase, playerId) {
+  if (!supabase || !playerId) {
+    return null;
+  }
+
+  return maybeSingle(
+    supabase
+      .from("game_players")
+      .select("*")
+      .eq("id", Number(playerId)),
+  );
+}
+
+export async function getPlayerByUsername(supabase, username) {
+  if (!supabase || !username) {
+    return null;
+  }
+
+  // Use ilike for case-insensitive username lookup
+  return maybeSingle(
+    supabase
+      .from("game_players")
+      .select("*")
+      .ilike("username", String(username)),
+  );
+}
+
+export async function createPlayer(
+  supabase,
+  {
+    username,
+    passwordHash,
+    gender = "m",
+    imageId = 0,
+    money = 50000,
+    points = 0,
+    score = 0,
+    clientRole = 5,
+  } = {},
+) {
+  if (!supabase) {
+    return null;
+  }
+
+  const normalizedUsername = String(username || "").trim();
+  if (!normalizedUsername || !passwordHash) {
+    return null;
+  }
+
+  const insert = {
+    username: normalizedUsername,
+    password_hash: String(passwordHash),
+    gender: String(gender || "m"),
+    image_id: Number(imageId) || 0,
+    money: Number(money) || 0,
+    points: Number(points) || 0,
+    score: Number(score) || 0,
+    client_role: Number(clientRole) || 5,
+  };
+
+  try {
+    return await singleResult(supabase.from("game_players").insert(insert).select("*"));
+  } catch (error) {
+    // Back-compat for databases that haven't added `client_role` yet.
+    const message = String(error?.message || error || "");
+    if (/client_role/i.test(message) && /does not exist|unknown column|column/i.test(message)) {
+      const { client_role: _ignored, ...withoutRole } = insert;
+      return singleResult(supabase.from("game_players").insert(withoutRole).select("*"));
+    }
+    throw error;
+  }
+}
+
+export async function createStarterCar(
+  supabase,
+  {
+    playerId,
+    catalogCarId = 1,
+    plateName = "",
+    colorCode = "C0C0C0",
+    paintIndex = 4,
+    wheelXml = "<ws><w wid='1' id='1001' ws='17'/></ws>",
+    partsXml = "", // Empty by default - no OEM parts to avoid login hang
+  } = {},
+) {
+  if (!supabase || !playerId) {
+    return null;
+  }
+
+  const insert = {
+    player_id: Number(playerId),
+    catalog_car_id: Number(catalogCarId),
+    selected: true,
+    paint_index: Number(paintIndex) || 4,
+    plate_name: String(plateName || ""),
+    color_code: String(colorCode || "C0C0C0"),
+    parts_xml: String(partsXml || ""),
+    wheel_xml: String(wheelXml || ""),
+  };
+
+  const car = await singleResult(supabase.from("game_cars").insert(insert).select("*"));
+
+  // Keep the player's default car in sync with the selected starter car.
+  await supabase
+    .from("game_players")
+    .update({ default_car_game_id: Number(car.game_car_id) })
+    .eq("id", Number(playerId));
+
+  return car;
+}
+
+export async function createOwnedCar(
+  supabase,
+  {
+    playerId,
+    catalogCarId,
+    selected = false,
+    plateName = "",
+    colorCode = "C0C0C0",
+    paintIndex = 4,
+    wheelXml = "<ws><w wid='1' id='1001' ws='17'/></ws>",
+    partsXml = "",
+  } = {},
+) {
+  if (!supabase || !playerId || !catalogCarId) {
+    return null;
+  }
+
+  const insert = {
+    player_id: Number(playerId),
+    catalog_car_id: Number(catalogCarId),
+    selected: Boolean(selected),
+    paint_index: Number(paintIndex) || 4,
+    plate_name: String(plateName || ""),
+    color_code: String(colorCode || "C0C0C0"),
+    parts_xml: String(partsXml || ""),
+    wheel_xml: String(wheelXml || ""),
+  };
+
+  if (selected) {
+    await supabase
+      .from("game_cars")
+      .update({ selected: false })
+      .eq("player_id", Number(playerId));
+  }
+
+  const car = await singleResult(supabase.from("game_cars").insert(insert).select("*"));
+
+  if (selected) {
+    await supabase
+      .from("game_players")
+      .update({ default_car_game_id: Number(car.game_car_id) })
+      .eq("id", Number(playerId));
+  }
+
+  return car;
+}
+
+export async function listCarsForPlayer(supabase, playerId, requestedCarIds = []) {
+  if (!supabase || !playerId) {
+    return [];
+  }
+
+  let query = supabase
+    .from("game_cars")
+    .select("*")
+    .eq("player_id", Number(playerId));
+
+  if (requestedCarIds.length > 0) {
+    query = query.in("game_car_id", requestedCarIds);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    throw error;
+  }
+
+  const ordering = new Map(requestedCarIds.map((value, index) => [value, index]));
+  const sortedCars = [...(data || [])].sort((left, right) => {
+    const leftIndex = ordering.has(left.game_car_id) ? ordering.get(left.game_car_id) : Number.MAX_SAFE_INTEGER;
+    const rightIndex = ordering.has(right.game_car_id)
+      ? ordering.get(right.game_car_id)
+      : Number.MAX_SAFE_INTEGER;
+    return leftIndex - rightIndex;
+  });
+  return repairLegacyCars(supabase, sortedCars);
+}
+
+export async function ensurePlayerHasGarageCar(
+  supabase,
+  playerId,
+  options = {},
+) {
+  if (!supabase || !playerId) {
+    return [];
+  }
+
+  const existingCars = await listCarsForPlayer(supabase, playerId);
+  if (existingCars.length > 0) {
+    const hasSelected = existingCars.some((car) => car.selected);
+    if (!hasSelected) {
+      await updatePlayerDefaultCar(supabase, playerId, existingCars[0].game_car_id);
+      return listCarsForPlayer(supabase, playerId);
+    }
+    return existingCars;
+  }
+
+  await createStarterCar(supabase, {
+    playerId,
+    catalogCarId: Number(options.catalogCarId) || 1,
+    paintIndex: Number(options.paintIndex) || 4,
+    plateName: String(options.plateName || ""),
+    colorCode: String(options.colorCode || "C0C0C0"),
+    partsXml: String(options.partsXml || ""), // Empty by default
+    wheelXml: String(options.wheelXml || NORMALIZED_STOCK_WHEEL_XML),
+  });
+
+  return listCarsForPlayer(supabase, playerId);
+}
+
+export async function getCarById(supabase, gameCarId) {
+  if (!supabase || !gameCarId) {
+    return null;
+  }
+
+  const car = await maybeSingle(
+    supabase
+      .from("game_cars")
+      .select("*")
+      .eq("game_car_id", Number(gameCarId)),
+  );
+  return normalizeOwnedCarRecord(car);
+}
+
+export async function listCarsByIds(supabase, gameCarIds = []) {
+  if (!supabase || gameCarIds.length === 0) {
+    return [];
+  }
+
+  const ids = [...new Set(gameCarIds.map((value) => Number(value)).filter((value) => value > 0))];
+  if (ids.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("game_cars")
+    .select("*")
+    .in("game_car_id", ids);
+
+  if (error) {
+    throw error;
+  }
+
+  const ordering = new Map(ids.map((value, index) => [value, index]));
+  const sortedCars = [...(data || [])].sort((left, right) => {
+    const leftIndex = ordering.has(left.game_car_id) ? ordering.get(left.game_car_id) : Number.MAX_SAFE_INTEGER;
+    const rightIndex = ordering.has(right.game_car_id)
+      ? ordering.get(right.game_car_id)
+      : Number.MAX_SAFE_INTEGER;
+    return leftIndex - rightIndex;
+  });
+  return repairLegacyCars(supabase, sortedCars);
+}
+
+export async function updatePlayerMoney(supabase, playerId, newBalance) {
+  if (!supabase || !playerId) {
+    return false;
+  }
+
+  const { error } = await supabase
+    .from("game_players")
+    .update({ money: Number(newBalance) })
+    .eq("id", Number(playerId));
+
+  if (error) {
+    throw error;
+  }
+
+  return true;
+}
+
+export async function updatePlayerDefaultCar(supabase, playerId, gameCarId) {
+  if (!supabase || !playerId || !gameCarId) {
+    return false;
+  }
+
+  // First, unselect all cars for this player
+  await supabase
+    .from("game_cars")
+    .update({ selected: false })
+    .eq("player_id", Number(playerId));
+
+  // Then select the specified car
+  const { error } = await supabase
+    .from("game_cars")
+    .update({ selected: true })
+    .eq("game_car_id", Number(gameCarId))
+    .eq("player_id", Number(playerId));
+
+  if (error) {
+    throw error;
+  }
+
+  // Also update the player's default_car_game_id
+  await supabase
+    .from("game_players")
+    .update({ default_car_game_id: Number(gameCarId) })
+    .eq("id", Number(playerId));
+
+  return true;
+}
+
+export async function listTeamsByIds(supabase, teamIds = []) {
+  if (!supabase || teamIds.length === 0) {
+    return [];
+  }
+
+  const ids = [...new Set(teamIds.map((value) => Number(value)).filter((value) => value > 0))];
+  if (ids.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("game_teams")
+    .select("*")
+    .in("id", ids);
+
+  if (error) {
+    throw error;
+  }
+
+  const ordering = new Map(ids.map((value, index) => [value, index]));
+  return [...(data || [])].sort((left, right) => {
+    const leftIndex = ordering.has(left.id) ? ordering.get(left.id) : Number.MAX_SAFE_INTEGER;
+    const rightIndex = ordering.has(right.id) ? ordering.get(right.id) : Number.MAX_SAFE_INTEGER;
+    return leftIndex - rightIndex;
+  });
+}
+
+export async function listTeamMembersForTeams(supabase, teamIds = []) {
+  if (!supabase || teamIds.length === 0) {
+    return [];
+  }
+
+  const ids = [...new Set(teamIds.map((value) => Number(value)).filter((value) => value > 0))];
+  if (ids.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("game_team_members")
+    .select("*")
+    .in("team_id", ids)
+    .order("team_id", { ascending: true })
+    .order("contribution_score", { ascending: false })
+    .order("joined_at", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  return data || [];
+}
+
+export async function listPlayersByIds(supabase, playerIds = []) {
+  if (!supabase || playerIds.length === 0) {
+    return [];
+  }
+
+  const ids = [...new Set(playerIds.map((value) => Number(value)).filter((value) => value > 0))];
+  if (ids.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("game_players")
+    .select("*")
+    .in("id", ids);
+
+  if (error) {
+    throw error;
+  }
+
+  return data || [];
+}

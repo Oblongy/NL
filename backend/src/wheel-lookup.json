@@ -1,0 +1,176 @@
+{
+  "generatedAction": "getallwheelstires",
+  "sourceFixture": "20260402_221744.decoded_http_responses.json",
+  "notes": [
+    "The captured wheel catalog contains 566 unique wheel part IDs mapped onto 154 visual design IDs.",
+    "Use scripts/archive/export_wheel_lookup.py to rebuild the full catalog when bulk file writing is available.",
+    "Design IDs map cleanly to cached SWF assets under cache/car/wheel."
+  ],
+  "counts": {
+    "wheelPartIds": 566,
+    "wheelDesignIds": 154
+  },
+  "assetPatterns": {
+    "render": "cache/car/wheel/wheelR_{designId}.swf",
+    "back_big": "cache/car/wheel/wheelBR_{designId}.swf",
+    "back_small": "cache/car/wheel/wheelBF_{designId}.swf",
+    "front_big": "cache/car/wheel/wheelFR_{designId}.swf",
+    "front_small": "cache/car/wheel/wheelFF_{designId}.swf"
+  },
+  "sampleWheels": [
+    {
+      "partId": 1000,
+      "designId": 1,
+      "partDesignId": 1,
+      "name": "Stock 15\"",
+      "brandSlug": "konig",
+      "brandName": "Konig",
+      "modelName": "1000",
+      "level": 100,
+      "price": 510,
+      "prestigePrice": 5,
+      "grade": "C",
+      "wheelSize": 15,
+      "weightDelta": 0,
+      "assets": {
+        "render": "cache/car/wheel/wheelR_1.swf",
+        "back_big": "cache/car/wheel/wheelBR_1.swf",
+        "back_small": "cache/car/wheel/wheelBF_1.swf",
+        "front_big": "cache/car/wheel/wheelFR_1.swf",
+        "front_small": "cache/car/wheel/wheelFF_1.swf"
+      }
+    },
+    {
+      "partId": 1001,
+      "designId": 1,
+      "partDesignId": 1,
+      "name": "Stock 16\"",
+      "brandSlug": "konig",
+      "brandName": "Konig",
+      "modelName": "1001",
+      "level": 100,
+      "price": 710,
+      "prestigePrice": 7,
+      "grade": "C",
+      "wheelSize": 16,
+      "weightDelta": -2,
+      "assets": {
+        "render": "cache/car/wheel/wheelR_1.swf",
+        "back_big": "cache/car/wheel/wheelBR_1.swf",
+        "back_small": "cache/car/wheel/wheelBF_1.swf",
+        "front_big": "cache/car/wheel/wheelFR_1.swf",
+        "front_small": "cache/car/wheel/wheelFF_1.swf"
+      }
+    },
+    {
+      "partId": 1002,
+      "designId": 1,
+      "partDesignId": 1,
+      "name": "Stock 17\"",
+      "brandSlug": "konig",
+      "brandName": "Konig",
+      "modelName": "1002",
+      "level": 100,
+      "price": 910,
+      "prestigePrice": 9,
+      "grade": "C",
+      "wheelSize": 17,
+      "weightDelta": -4,
+      "assets": {
+        "render": "cache/car/wheel/wheelR_1.swf",
+        "back_big": "cache/car/wheel/wheelBR_1.swf",
+        "back_small": "cache/car/wheel/wheelBF_1.swf",
+        "front_big": "cache/car/wheel/wheelFR_1.swf",
+        "front_small": "cache/car/wheel/wheelFF_1.swf"
+      }
+    },
+    {
+      "partId": 1003,
+      "designId": 2,
+      "partDesignId": 2,
+      "name": "Factory 15\"",
+      "brandSlug": "konig",
+      "brandName": "Konig",
+      "modelName": "1003",
+      "level": 100,
+      "price": 520,
+      "prestigePrice": 5,
+      "grade": "C",
+      "wheelSize": 15,
+      "weightDelta": 0,
+      "assets": {
+        "render": "cache/car/wheel/wheelR_2.swf",
+        "back_big": "cache/car/wheel/wheelBR_2.swf",
+        "back_small": "cache/car/wheel/wheelBF_2.swf",
+        "front_big": "cache/car/wheel/wheelFR_2.swf",
+        "front_small": "cache/car/wheel/wheelFF_2.swf"
+      }
+    },
+    {
+      "partId": 1004,
+      "designId": 2,
+      "partDesignId": 2,
+      "name": "Factory 16\"",
+      "brandSlug": "konig",
+      "brandName": "Konig",
+      "modelName": "1004",
+      "level": 100,
+      "price": 720,
+      "prestigePrice": 7,
+      "grade": "C",
+      "wheelSize": 16,
+      "weightDelta": -2,
+      "assets": {
+        "render": "cache/car/wheel/wheelR_2.swf",
+        "back_big": "cache/car/wheel/wheelBR_2.swf",
+        "back_small": "cache/car/wheel/wheelBF_2.swf",
+        "front_big": "cache/car/wheel/wheelFR_2.swf",
+        "front_small": "cache/car/wheel/wheelFF_2.swf"
+      }
+    },
+    {
+      "partId": 1005,
+      "designId": 2,
+      "partDesignId": 2,
+      "name": "Factory 17\"",
+      "brandSlug": "konig",
+      "brandName": "Konig",
+      "modelName": "1005",
+      "level": 100,
+      "price": 920,
+      "prestigePrice": 9,
+      "grade": "C",
+      "wheelSize": 17,
+      "weightDelta": -4,
+      "assets": {
+        "render": "cache/car/wheel/wheelR_2.swf",
+        "back_big": "cache/car/wheel/wheelBR_2.swf",
+        "back_small": "cache/car/wheel/wheelBF_2.swf",
+        "front_big": "cache/car/wheel/wheelFR_2.swf",
+        "front_small": "cache/car/wheel/wheelFF_2.swf"
+      }
+    },
+    {
+      "partId": 1303,
+      "designId": 83,
+      "partDesignId": 83,
+      "name": "Spa 17\"",
+      "brandSlug": "rotiform",
+      "brandName": "Rotiform",
+      "modelName": "1303",
+      "level": 400,
+      "price": 6230,
+      "prestigePrice": 62,
+      "grade": "B",
+      "wheelSize": 17,
+      "weightDelta": -4,
+      "assets": {
+        "render": "cache/car/wheel/wheelR_83.swf",
+        "back_big": "cache/car/wheel/wheelBR_83.swf",
+        "back_small": "cache/car/wheel/wheelBF_83.swf",
+        "front_big": "cache/car/wheel/wheelFR_83.swf",
+        "front_small": "cache/car/wheel/wheelFF_83.swf"
+      }
+    }
+  ]
+}
