@@ -1,0 +1,655 @@
+
+> nitto-legends-backend@0.1.0 dev
+> node --watch src/index.js
+
+[2026-04-04T23:18:14.966Z] [info] TCP server scaffold ready
+[2026-04-04T23:18:15.011Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+[2026-04-04T23:21:28.190Z] [info] HTTP request {"method":"GET","path":"/healthz","bytes":0}
+[2026-04-04T23:21:28.389Z] [info] HTTP request {"method":"GET","path":"/content.htm","bytes":0}
+[2026-04-04T23:21:28.539Z] [info] Loaded fixture records {"keys":257,"files":3}
+[2026-04-04T23:21:28.541Z] [info] Serving static route from fixture {"path":"/content.htm","source":"/content.htm"}
+[2026-04-04T23:21:28.667Z] [info] HTTP request {"method":"GET","path":"/oneclient.html","bytes":0}
+[2026-04-04T23:21:47.445Z] [info] HTTP request {"method":"GET","path":"/gameStyles.css","bytes":0}
+[2026-04-04T23:21:47.449Z] [info] Serving static route from fixture {"path":"/gameStyles.css","source":"/gameStyles.css"}
+[2026-04-04T23:21:48.090Z] [info] HTTP request {"method":"GET","path":"/newsStyles.css","bytes":0}
+Restarting 'src/index.js'
+[2026-04-04T23:24:08.163Z] [info] TCP server scaffold ready
+[2026-04-04T23:24:08.200Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+[2026-04-04T23:24:21.452Z] [info] HTTP request {"method":"GET","path":"/oneclient.html","bytes":0}
+[2026-04-04T23:24:21.453Z] [info] Serving static route from local asset {"path":"/oneclient.html","source":"local:oneclient.html"}
+[2026-04-04T23:24:21.609Z] [info] HTTP request {"method":"GET","path":"/gameStyles.css","bytes":0}
+[2026-04-04T23:24:21.609Z] [info] Serving static route from local asset {"path":"/gameStyles.css","source":"local:gameStyles.css"}
+[2026-04-04T23:24:22.031Z] [info] HTTP request {"method":"GET","path":"/gameStyles.css","bytes":0}
+[2026-04-04T23:24:22.032Z] [info] Serving static route from local asset {"path":"/gameStyles.css","source":"local:gameStyles.css"}
+[2026-04-04T23:24:22.233Z] [info] HTTP request {"method":"GET","path":"/newsStyles.css","bytes":0}
+[2026-04-04T23:24:22.234Z] [info] Serving static route from local asset {"path":"/newsStyles.css","source":"local:newsStyles.css"}
+[2026-04-04T23:24:22.814Z] [info] HTTP request {"method":"GET","path":"/newsStyles.css","bytes":0}
+[2026-04-04T23:24:22.814Z] [info] Serving static route from local asset {"path":"/newsStyles.css","source":"local:newsStyles.css"}
+[2026-04-04T23:24:36.725Z] [info] HTTP request {"method":"GET","path":"/oneclient.html","bytes":0}
+[2026-04-04T23:24:36.726Z] [info] Serving static route from local asset {"path":"/oneclient.html","source":"local:oneclient.html"}
+[2026-04-04T23:24:36.825Z] [info] HTTP request {"method":"GET","path":"/newsStyles.css","bytes":0}
+[2026-04-04T23:24:36.825Z] [info] Serving static route from local asset {"path":"/newsStyles.css","source":"local:newsStyles.css"}
+[2026-04-04T23:24:37.861Z] [info] HTTP request {"method":"HEAD","path":"/gameStyles.css","bytes":0}
+[2026-04-04T23:24:37.862Z] [info] Serving static route from local asset {"path":"/gameStyles.css","source":"local:gameStyles.css"}
+[2026-04-04T23:25:30.401Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T23:25:32.299Z] [info] Game action served {"action":"createaccount","source":"supabase:createaccount:ok","decodedQuery":"action=createaccount&u=codextester130266&p=123456"}
+[2026-04-04T23:25:32.445Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T23:25:33.055Z] [info] Loaded fixture records {"keys":257,"files":3}
+[2026-04-04T23:25:33.058Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=&mid=test&nid=test&prid=NoProductId&cna=PC&dt=undefined&fbl=0&p=123456&u=codextester130266"}
+[2026-04-04T23:30:35.152Z] [info] HTTP request {"method":"GET","path":"/newsStyles.css","bytes":0}
+[2026-04-04T23:30:35.152Z] [info] Serving static route from local asset {"path":"/newsStyles.css","source":"local:newsStyles.css"}
+[2026-04-04T23:30:35.153Z] [info] HTTP request {"method":"GET","path":"/oneclient.html","bytes":0}
+[2026-04-04T23:30:35.155Z] [info] Serving static route from local asset {"path":"/oneclient.html","source":"local:oneclient.html"}
+[2026-04-04T23:30:35.156Z] [info] HTTP request {"method":"GET","path":"/gameStyles.css","bytes":0}
+[2026-04-04T23:30:35.157Z] [info] Serving static route from local asset {"path":"/gameStyles.css","source":"local:gameStyles.css"}
+[2026-04-04T23:30:46.096Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T23:30:47.105Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=1684346743GenuineIntel65&nid=08-97-98-B5-F7-A9&prid=NoProductId&cna=PC&dt=&fbl=0&p=123456&u=Oblong"}
+[2026-04-04T23:30:48.465Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T23:30:49.533Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=2&sk=139d230f-42df-4bb9-95dd-131abc6782b6"}
+[2026-04-04T23:30:49.803Z] [info] HTTP request {"method":"GET","path":"/content.htm","bytes":0}
+[2026-04-04T23:30:49.803Z] [info] Serving static route from fixture {"path":"/content.htm","source":"/content.htm"}
+[2026-04-04T23:30:59.647Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T23:30:59.650Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T23:30:59.652Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T23:30:59.779Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T23:30:59.780Z] [info] Game action served {"action":"getavatarage","source":"stub:getavatarage","decodedQuery":"action=getavatarage&aid=2&sk=139d230f-42df-4bb9-95dd-131abc6782b6&tids=2"}
+[2026-04-04T23:31:00.619Z] [info] Game action served {"action":"getblackcardprogress","source":"getblackcardprogress:zero","decodedQuery":"action=getblackcardprogress&aid=2&sk=139d230f-42df-4bb9-95dd-131abc6782b6"}
+[2026-04-04T23:31:00.857Z] [info] Game action served {"action":"getremarks","source":"getremarks:empty","decodedQuery":"action=getremarks&aid=2&sk=139d230f-42df-4bb9-95dd-131abc6782b6"}
+[2026-04-04T23:31:01.414Z] [info] Game action served {"action":"getuser","source":"supabase:getuser","decodedQuery":"action=getuser&aid=2&sk=139d230f-42df-4bb9-95dd-131abc6782b6&tid=2"}
+[2026-04-04T23:31:47.986Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T23:31:49.056Z] [info] Game action served {"action":"createaccount","source":"supabase:createaccount:ok","decodedQuery":"action=createaccount&u=codextester507924&p=123456"}
+[2026-04-04T23:31:49.069Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T23:31:49.628Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=&mid=test&nid=test&prid=NoProductId&cna=PC&dt=undefined&fbl=0&p=123456&u=codextester507924"}
+[2026-04-04T23:31:49.631Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T23:31:49.631Z] [info] Game action served {"action":"getleaderboardmenu","source":"stub:getleaderboardmenu","decodedQuery":"action=getleaderboardmenu&aid=9&sk=f9625600-9ffe-4a58-bebb-b742a47dd86d"}
+[2026-04-04T23:31:49.633Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T23:31:49.633Z] [warn] No handler or fixture for action {"action":"getleaderboard","decodedQuery":"action=getleaderboard&aid=9&sk=f9625600-9ffe-4a58-bebb-b742a47dd86d&n=sc&t=0&p=0&cid=0&b=0"}
+[2026-04-04T23:31:49.633Z] [info] Game action served {"action":"getleaderboard","source":"unimplemented:stub","decodedQuery":"action=getleaderboard&aid=9&sk=f9625600-9ffe-4a58-bebb-b742a47dd86d&n=sc&t=0&p=0&cid=0&b=0"}
+Restarting 'src/index.js'
+[2026-04-04T23:34:22.030Z] [info] TCP server scaffold ready
+[2026-04-04T23:34:22.050Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+[2026-04-04T23:34:41.658Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T23:34:43.071Z] [info] Game action served {"action":"createaccount","source":"supabase:createaccount:ok","decodedQuery":"action=createaccount&u=codextester681601&p=123456"}
+[2026-04-04T23:34:43.093Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T23:34:43.716Z] [info] Loaded fixture records {"keys":257,"files":3}
+[2026-04-04T23:34:43.718Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=&mid=test&nid=test&prid=NoProductId&cna=PC&dt=undefined&fbl=0&p=123456&u=codextester681601"}
+[2026-04-04T23:34:43.722Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T23:34:43.723Z] [info] Game action served {"action":"getleaderboardmenu","source":"fixture:getleaderboardmenu","decodedQuery":"action=getleaderboardmenu&aid=10&sk=0e7cfdd0-6acb-4f9a-b81f-7457d81b6dfc"}
+[2026-04-04T23:34:43.725Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T23:34:43.726Z] [info] Game action served {"action":"getleaderboard","source":"stub:getleaderboard","decodedQuery":"action=getleaderboard&aid=10&sk=0e7cfdd0-6acb-4f9a-b81f-7457d81b6dfc&n=sc&t=0&p=0&cid=0&b=0"}
+[2026-04-04T23:34:43.728Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T23:34:43.729Z] [info] Game action served {"action":"getnews","source":"fixture:getnews","decodedQuery":"action=getnews&aid=10&sk=0e7cfdd0-6acb-4f9a-b81f-7457d81b6dfc&nc=undefined"}
+[2026-04-04T23:34:43.731Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T23:34:43.732Z] [info] Game action served {"action":"getspotlightracers","source":"fixture:getspotlightracers","decodedQuery":"action=getspotlightracers&aid=10&sk=0e7cfdd0-6acb-4f9a-b81f-7457d81b6dfc&rc=undefined"}
+[2026-04-04T23:35:01.565Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T23:35:02.515Z] [info] Game action served {"action":"createaccount","source":"supabase:createaccount:ok","decodedQuery":"action=createaccount&u=codextester701519&p=123456"}
+[2026-04-04T23:35:02.535Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T23:35:03.083Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=&mid=test&nid=test&prid=NoProductId&cna=PC&dt=undefined&fbl=0&p=123456&u=codextester701519"}
+[2026-04-04T23:35:03.090Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T23:35:03.091Z] [info] Game action served {"action":"getleaderboardmenu","source":"fixture:getleaderboardmenu","decodedQuery":"action=getleaderboardmenu&aid=11&sk=63316e54-846c-4714-9af9-80e1ff6ce77c"}
+[2026-04-04T23:35:03.095Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T23:35:03.095Z] [info] Game action served {"action":"getleaderboard","source":"stub:getleaderboard","decodedQuery":"action=getleaderboard&aid=11&sk=63316e54-846c-4714-9af9-80e1ff6ce77c&n=sc&t=0&p=0&cid=0&b=0"}
+[2026-04-04T23:35:03.099Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T23:35:03.100Z] [info] Game action served {"action":"getnews","source":"fixture:getnews","decodedQuery":"action=getnews&aid=11&sk=63316e54-846c-4714-9af9-80e1ff6ce77c&nc=undefined"}
+[2026-04-04T23:35:03.102Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T23:35:03.103Z] [info] Game action served {"action":"getspotlightracers","source":"fixture:getspotlightracers","decodedQuery":"action=getspotlightracers&aid=11&sk=63316e54-846c-4714-9af9-80e1ff6ce77c&rc=undefined"}
+Restarting 'src/index.js'
+[2026-04-05T00:00:38.671Z] [info] TCP server scaffold ready
+[2026-04-05T00:00:38.688Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+[2026-04-05T00:01:48.569Z] [info] HTTP request {"method":"GET","path":"/compat/session-info","bytes":0}
+[2026-04-05T00:03:13.163Z] [info] HTTP request {"method":"GET","path":"/compat/session-info","bytes":0}
+[2026-04-05T00:40:49.322Z] [info] HTTP request {"method":"GET","path":"/gameStyles.css","bytes":0}
+[2026-04-05T00:40:49.322Z] [info] Serving static route from local asset {"path":"/gameStyles.css","source":"local:gameStyles.css"}
+[2026-04-05T00:40:49.324Z] [info] HTTP request {"method":"GET","path":"/newsStyles.css","bytes":0}
+[2026-04-05T00:40:49.324Z] [info] Serving static route from local asset {"path":"/newsStyles.css","source":"local:newsStyles.css"}
+[2026-04-05T00:40:49.325Z] [info] HTTP request {"method":"GET","path":"/oneclient.html","bytes":0}
+[2026-04-05T00:40:49.326Z] [info] Serving static route from local asset {"path":"/oneclient.html","source":"local:oneclient.html"}
+[2026-04-05T00:40:59.999Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T00:41:01.467Z] [info] Loaded fixture records {"keys":257,"files":3}
+[2026-04-05T00:41:01.473Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=2793123760GenuineIntel65&nid=00-15-5D-60-AD-26&prid=NoProductId&cna=22B02C00-F729-4&dt=undefined&fbl=0&p=123456&u=Oblong"}
+[2026-04-05T00:42:01.744Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T00:42:02.732Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=2&sk=ac3b7617-1079-498d-a0b3-35c785e9eccc"}
+Restarting 'src/index.js'
+[2026-04-05T00:46:45.835Z] [info] TCP server scaffold ready
+[2026-04-05T00:46:45.858Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+[2026-04-05T00:47:56.610Z] [info] HTTP request {"method":"GET","path":"/newsStyles.css","bytes":0}
+[2026-04-05T00:47:56.611Z] [info] Serving static route from local asset {"path":"/newsStyles.css","source":"local:newsStyles.css"}
+[2026-04-05T00:47:56.616Z] [info] HTTP request {"method":"GET","path":"/oneclient.html","bytes":0}
+[2026-04-05T00:47:56.616Z] [info] Serving static route from local asset {"path":"/oneclient.html","source":"local:oneclient.html"}
+[2026-04-05T00:47:56.617Z] [info] HTTP request {"method":"GET","path":"/gameStyles.css","bytes":0}
+[2026-04-05T00:47:56.617Z] [info] Serving static route from local asset {"path":"/gameStyles.css","source":"local:gameStyles.css"}
+[2026-04-05T00:48:05.303Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T00:48:06.054Z] [info] Loaded fixture records {"keys":257,"files":3}
+[2026-04-05T00:48:06.056Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=2793123760GenuineIntel65&nid=00-15-5D-60-AD-26&prid=NoProductId&cna=22B02C00-F729-4&dt=undefined&fbl=0&p=123456&u=Oblong"}
+[2026-04-05T00:49:06.349Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T00:49:07.324Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=2&sk=96a9cd4a-7130-4cdc-97b9-738c3449a521"}
+Restarting 'src/index.js'
+[2026-04-05T00:57:41.642Z] [info] TCP server scaffold ready
+[2026-04-05T00:57:41.665Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+[2026-04-05T01:01:40.159Z] [info] HTTP request {"method":"GET","path":"/gameStyles.css","bytes":0}
+[2026-04-05T01:01:40.161Z] [info] Serving static route from local asset {"path":"/gameStyles.css","source":"local:gameStyles.css"}
+[2026-04-05T01:01:40.168Z] [info] HTTP request {"method":"GET","path":"/newsStyles.css","bytes":0}
+[2026-04-05T01:01:40.169Z] [info] Serving static route from local asset {"path":"/newsStyles.css","source":"local:newsStyles.css"}
+[2026-04-05T01:01:40.170Z] [info] HTTP request {"method":"GET","path":"/oneclient.html","bytes":0}
+[2026-04-05T01:01:40.170Z] [info] Serving static route from local asset {"path":"/oneclient.html","source":"local:oneclient.html"}
+[2026-04-05T01:02:11.775Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T01:02:12.779Z] [info] Loaded fixture records {"keys":257,"files":3}
+[2026-04-05T01:02:12.782Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=2793123760GenuineIntel65&nid=00-15-5D-60-AD-26&prid=NoProductId&cna=22B02C00-F729-4&dt=undefined&fbl=0&p=123456&u=Oblong"}
+[2026-04-05T01:03:12.933Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T01:03:13.894Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=2&sk=8464b57a-1226-4c18-98f1-7fceab863e1e"}
+Restarting 'src/index.js'
+[2026-04-05T01:06:12.457Z] [info] TCP server scaffold ready
+[2026-04-05T01:06:12.479Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+Restarting 'src/index.js'
+[2026-04-05T01:06:24.075Z] [info] TCP server scaffold ready
+[2026-04-05T01:06:24.101Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+Restarting 'src/index.js'
+[2026-04-05T01:06:33.607Z] [info] TCP server scaffold ready
+[2026-04-05T01:06:33.625Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+Restarting 'src/index.js'
+Failed running 'src/index.js'. Waiting for file changes before restarting...
+Restarting 'src/index.js'
+Failed running 'src/index.js'. Waiting for file changes before restarting...
+Restarting 'src/index.js'
+[2026-04-05T01:09:06.753Z] [info] TCP server scaffold ready
+[2026-04-05T01:09:06.772Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+[2026-04-05T01:12:04.175Z] [info] HTTP request {"method":"GET","path":"/oneclient.html","bytes":0}
+[2026-04-05T01:12:04.176Z] [info] Serving static route from local asset {"path":"/oneclient.html","source":"local:oneclient.html"}
+[2026-04-05T01:12:04.180Z] [info] HTTP request {"method":"GET","path":"/gameStyles.css","bytes":0}
+[2026-04-05T01:12:04.181Z] [info] Serving static route from local asset {"path":"/gameStyles.css","source":"local:gameStyles.css"}
+[2026-04-05T01:12:04.182Z] [info] HTTP request {"method":"GET","path":"/newsStyles.css","bytes":0}
+[2026-04-05T01:12:04.182Z] [info] Serving static route from local asset {"path":"/newsStyles.css","source":"local:newsStyles.css"}
+[2026-04-05T01:12:16.728Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T01:12:17.306Z] [info] Game action served {"action":"login","source":"supabase:login:invalid","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=2793123760GenuineIntel65&nid=00-15-5D-60-AD-26&prid=NoProductId&cna=22B02C00-F729-4&dt=undefined&fbl=0&p=test123&u=tester1"}
+[2026-04-05T01:12:25.638Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T01:12:25.904Z] [info] Game action served {"action":"login","source":"supabase:login:invalid","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=2793123760GenuineIntel65&nid=00-15-5D-60-AD-26&prid=NoProductId&cna=22B02C00-F729-4&dt=undefined&fbl=0&p=test1123&u=Tester1"}
+[2026-04-05T01:12:31.950Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T01:12:32.641Z] [info] Loaded fixture records {"keys":257,"files":3}
+[2026-04-05T01:12:32.643Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=2793123760GenuineIntel65&nid=00-15-5D-60-AD-26&prid=NoProductId&cna=22B02C00-F729-4&dt=undefined&fbl=0&p=123456&u=nerf"}
+Restarting 'src/index.js'
+[2026-04-05T01:36:18.391Z] [info] TCP server scaffold ready
+[2026-04-05T01:36:18.412Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+[2026-04-05T01:40:46.251Z] [info] HTTP request {"method":"GET","path":"/gameStyles.css","bytes":0}
+[2026-04-05T01:40:46.252Z] [info] Serving static route from local asset {"path":"/gameStyles.css","source":"local:gameStyles.css"}
+[2026-04-05T01:40:46.260Z] [info] HTTP request {"method":"GET","path":"/oneclient.html","bytes":0}
+[2026-04-05T01:40:46.261Z] [info] Serving static route from local asset {"path":"/oneclient.html","source":"local:oneclient.html"}
+[2026-04-05T01:40:46.262Z] [info] HTTP request {"method":"GET","path":"/newsStyles.css","bytes":0}
+[2026-04-05T01:40:46.263Z] [info] Serving static route from local asset {"path":"/newsStyles.css","source":"local:newsStyles.css"}
+[2026-04-05T01:40:46.748Z] [info] HTTP request {"method":"GET","path":"/oneclient.html","bytes":0}
+[2026-04-05T01:40:46.749Z] [info] Serving static route from local asset {"path":"/oneclient.html","source":"local:oneclient.html"}
+[2026-04-05T01:40:46.750Z] [info] HTTP request {"method":"GET","path":"/newsStyles.css","bytes":0}
+[2026-04-05T01:40:46.750Z] [info] Serving static route from local asset {"path":"/newsStyles.css","source":"local:newsStyles.css"}
+[2026-04-05T01:40:46.751Z] [info] HTTP request {"method":"GET","path":"/gameStyles.css","bytes":0}
+[2026-04-05T01:40:46.751Z] [info] Serving static route from local asset {"path":"/gameStyles.css","source":"local:gameStyles.css"}
+[2026-04-05T01:41:48.704Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T01:41:49.532Z] [info] Game action served {"action":"login","source":"supabase:login:invalid","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=2793123760GenuineIntel65&nid=00-15-5D-60-AD-26&prid=NoProductId&cna=22B02C00-F729-4&dt=&fbl=0&p=12345y&u=Oblong"}
+[2026-04-05T01:42:16.347Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T01:42:17.562Z] [info] Loaded fixture records {"keys":257,"files":3}
+[2026-04-05T01:42:17.565Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=2793123760GenuineIntel65&nid=00-15-5D-60-AD-26&prid=NoProductId&cna=22B02C00-F729-4&dt=&fbl=0&p=123456&u=Oblong"}
+[2026-04-05T01:43:17.999Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T01:43:18.898Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=2&sk=7c5d934e-7588-45f6-9956-c39f2f7fb1d1"}
+Restarting 'src/index.js'
+[2026-04-05T01:58:06.332Z] [info] TCP server scaffold ready
+[2026-04-05T01:58:06.371Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+Restarting 'src/index.js'
+[2026-04-05T01:58:11.309Z] [info] TCP server scaffold ready
+[2026-04-05T01:58:11.328Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+Restarting 'src/index.js'
+[2026-04-05T01:59:03.909Z] [info] TCP server scaffold ready
+[2026-04-05T01:59:03.929Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+[2026-04-05T01:59:56.735Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T01:59:57.882Z] [info] Loaded fixture records {"keys":257,"files":3}
+[LOGIN] Found fixture: true template length: 20523 cars: 1
+[LOGIN] Using template-based login, body length: 14089
+[2026-04-05T01:59:57.885Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=2793123760GenuineIntel65&nid=00-15-5D-60-AD-26&prid=NoProductId&cna=22B02C00-F729-4&dt=&fbl=0&p=123456&u=Oblong"}
+Restarting 'src/index.js'
+[2026-04-05T02:00:27.084Z] [info] TCP server scaffold ready
+[2026-04-05T02:00:27.102Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+[2026-04-05T02:00:50.889Z] [info] HTTP request {"method":"GET","path":"/gameStyles.css","bytes":0}
+[2026-04-05T02:00:50.890Z] [info] Serving static route from local asset {"path":"/gameStyles.css","source":"local:gameStyles.css"}
+[2026-04-05T02:00:50.895Z] [info] HTTP request {"method":"GET","path":"/oneclient.html","bytes":0}
+[2026-04-05T02:00:50.895Z] [info] Serving static route from local asset {"path":"/oneclient.html","source":"local:oneclient.html"}
+[2026-04-05T02:00:50.896Z] [info] HTTP request {"method":"GET","path":"/newsStyles.css","bytes":0}
+[2026-04-05T02:00:50.897Z] [info] Serving static route from local asset {"path":"/newsStyles.css","source":"local:newsStyles.css"}
+Restarting 'src/index.js'
+[2026-04-05T02:00:55.363Z] [info] TCP server scaffold ready
+[2026-04-05T02:00:55.383Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+[2026-04-05T02:00:58.467Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+Restarting 'src/index.js'
+[2026-04-05T02:00:59.779Z] [info] TCP server scaffold ready
+[2026-04-05T02:00:59.796Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+Restarting 'src/index.js'
+[2026-04-05T02:01:05.236Z] [info] TCP server scaffold ready
+[2026-04-05T02:01:05.255Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+[2026-04-05T02:01:27.533Z] [info] HTTP request {"method":"GET","path":"/oneclient.html","bytes":0}
+[2026-04-05T02:01:27.534Z] [info] Serving static route from local asset {"path":"/oneclient.html","source":"local:oneclient.html"}
+[2026-04-05T02:01:27.538Z] [info] HTTP request {"method":"GET","path":"/gameStyles.css","bytes":0}
+[2026-04-05T02:01:27.538Z] [info] Serving static route from local asset {"path":"/gameStyles.css","source":"local:gameStyles.css"}
+[2026-04-05T02:01:27.539Z] [info] HTTP request {"method":"GET","path":"/newsStyles.css","bytes":0}
+[2026-04-05T02:01:27.539Z] [info] Serving static route from local asset {"path":"/newsStyles.css","source":"local:newsStyles.css"}
+[2026-04-05T02:01:35.237Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T02:01:36.022Z] [info] Loaded fixture records {"keys":257,"files":3}
+[2026-04-05T02:01:36.023Z] [info] Login template info {"foundFixture":true,"templateLength":20523,"carsCount":1}
+[2026-04-05T02:01:36.023Z] [info] buildLoginBody {"templateLength":20523,"iniLength":20388,"hasLoginNode":true}
+[2026-04-05T02:01:36.026Z] [info] Using template-based login {"finalBodyLength":14089}
+[2026-04-05T02:01:36.026Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=2793123760GenuineIntel65&nid=00-15-5D-60-AD-26&prid=NoProductId&cna=22B02C00-F729-4&dt=&fbl=0&p=123456&u=Oblong"}
+Restarting 'src/index.js'
+[2026-04-05T02:02:29.378Z] [info] TCP server scaffold ready
+[2026-04-05T02:02:29.397Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+[2026-04-05T02:02:36.441Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T02:02:37.531Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=2&sk=43bb3c58-f82b-4f35-983b-18301eab8edd"}
+[2026-04-05T02:07:37.037Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T02:07:37.957Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=2&sk=43bb3c58-f82b-4f35-983b-18301eab8edd"}
+[2026-04-05T02:12:37.644Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T02:12:38.644Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=2&sk=43bb3c58-f82b-4f35-983b-18301eab8edd"}
+[2026-04-05T02:17:38.228Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T02:17:39.762Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=2&sk=43bb3c58-f82b-4f35-983b-18301eab8edd"}
+[2026-04-05T02:22:38.825Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T02:22:40.200Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=2&sk=43bb3c58-f82b-4f35-983b-18301eab8edd"}
+[2026-04-05T02:27:39.399Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T02:27:40.364Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=2&sk=43bb3c58-f82b-4f35-983b-18301eab8edd"}
+[2026-04-05T02:32:40.029Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T02:32:41.442Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=2&sk=43bb3c58-f82b-4f35-983b-18301eab8edd"}
+[2026-04-05T02:37:40.617Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T02:37:41.630Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=2&sk=43bb3c58-f82b-4f35-983b-18301eab8edd"}
+[2026-04-05T02:42:41.153Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T02:42:42.553Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=2&sk=43bb3c58-f82b-4f35-983b-18301eab8edd"}
+[2026-04-05T02:47:41.731Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T02:47:42.677Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=2&sk=43bb3c58-f82b-4f35-983b-18301eab8edd"}
+[2026-04-05T02:52:42.300Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T02:52:43.792Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=2&sk=43bb3c58-f82b-4f35-983b-18301eab8edd"}
+[2026-04-05T02:57:42.879Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T02:57:44.143Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=2&sk=43bb3c58-f82b-4f35-983b-18301eab8edd"}
+[2026-04-05T03:02:43.488Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T03:02:44.737Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=2&sk=43bb3c58-f82b-4f35-983b-18301eab8edd"}
+[2026-04-05T03:07:44.028Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T03:07:45.001Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=2&sk=43bb3c58-f82b-4f35-983b-18301eab8edd"}
+[2026-04-05T03:12:44.771Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T03:12:45.967Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=2&sk=43bb3c58-f82b-4f35-983b-18301eab8edd"}
+[2026-04-05T03:17:45.148Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T03:17:46.357Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=2&sk=43bb3c58-f82b-4f35-983b-18301eab8edd"}
+[2026-04-05T03:22:45.711Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T03:22:46.821Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=2&sk=43bb3c58-f82b-4f35-983b-18301eab8edd"}
+[2026-04-05T03:27:46.260Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T03:27:47.775Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=2&sk=43bb3c58-f82b-4f35-983b-18301eab8edd"}
+[2026-04-05T03:32:46.832Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T03:32:47.991Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=2&sk=43bb3c58-f82b-4f35-983b-18301eab8edd"}
+[2026-04-05T03:37:47.415Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T03:37:48.414Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=2&sk=43bb3c58-f82b-4f35-983b-18301eab8edd"}
+[2026-04-05T03:41:29.390Z] [info] HTTP request {"method":"GET","path":"/gameStyles.css","bytes":0}
+[2026-04-05T03:41:29.390Z] [info] Serving static route from local asset {"path":"/gameStyles.css","source":"local:gameStyles.css"}
+[2026-04-05T03:41:29.391Z] [info] HTTP request {"method":"GET","path":"/newsStyles.css","bytes":0}
+[2026-04-05T03:41:29.391Z] [info] Serving static route from local asset {"path":"/newsStyles.css","source":"local:newsStyles.css"}
+[2026-04-05T03:41:29.393Z] [info] HTTP request {"method":"GET","path":"/oneclient.html","bytes":0}
+[2026-04-05T03:41:29.393Z] [info] Serving static route from local asset {"path":"/oneclient.html","source":"local:oneclient.html"}
+[2026-04-05T03:41:44.922Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T03:41:45.508Z] [info] Loaded fixture records {"keys":257,"files":3}
+[2026-04-05T03:41:45.508Z] [info] Login template info {"foundFixture":true,"templateLength":20523,"carsCount":1}
+[2026-04-05T03:41:45.509Z] [info] buildLoginBody {"templateLength":20523,"iniLength":20388,"hasLoginNode":true}
+[2026-04-05T03:41:45.511Z] [info] Using template-based login {"finalBodyLength":14089}
+[2026-04-05T03:41:45.512Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=1684346743GenuineIntel65&nid=08-97-98-B5-F7-A9&prid=NoProductId&cna=PC&dt=&fbl=0&p=123456&u=Oblong"}
+[2026-04-05T03:41:46.792Z] [info] HTTP request {"method":"GET","path":"/compat/session-info","bytes":0}
+[2026-04-05T03:41:47.575Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T03:41:48.281Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=2&sk=21b7b2b3-9562-40a8-8969-d691fe4cfa3a"}
+[2026-04-05T03:41:48.536Z] [info] HTTP request {"method":"GET","path":"/content.htm","bytes":0}
+[2026-04-05T03:41:48.536Z] [info] Serving static route from fixture {"path":"/content.htm","source":"/content.htm"}
+[2026-04-05T03:42:15.711Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T03:42:15.712Z] [info] Game action served {"action":"getleaderboardmenu","source":"fixture:getleaderboardmenu","decodedQuery":"action=getleaderboardmenu&aid=2&sk=21b7b2b3-9562-40a8-8969-d691fe4cfa3a"}
+[2026-04-05T03:42:22.810Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T03:42:22.813Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T03:42:22.814Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T03:42:22.969Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T03:42:22.970Z] [info] Game action served {"action":"getavatarage","source":"stub:getavatarage","decodedQuery":"action=getavatarage&aid=2&sk=21b7b2b3-9562-40a8-8969-d691fe4cfa3a&tids=2"}
+[2026-04-05T03:42:23.566Z] [info] Game action served {"action":"getremarks","source":"getremarks:empty","decodedQuery":"action=getremarks&aid=2&sk=21b7b2b3-9562-40a8-8969-d691fe4cfa3a"}
+[2026-04-05T03:42:23.737Z] [info] Game action served {"action":"getblackcardprogress","source":"getblackcardprogress:zero","decodedQuery":"action=getblackcardprogress&aid=2&sk=21b7b2b3-9562-40a8-8969-d691fe4cfa3a"}
+[2026-04-05T03:42:23.848Z] [info] Game action served {"action":"getuser","source":"supabase:getuser","decodedQuery":"action=getuser&aid=2&sk=21b7b2b3-9562-40a8-8969-d691fe4cfa3a&tid=2"}
+[2026-04-05T03:42:56.125Z] [info] HTTP request {"method":"GET","path":"/gameStyles.css","bytes":0}
+[2026-04-05T03:42:56.126Z] [info] Serving static route from local asset {"path":"/gameStyles.css","source":"local:gameStyles.css"}
+[2026-04-05T03:42:56.127Z] [info] HTTP request {"method":"GET","path":"/oneclient.html","bytes":0}
+[2026-04-05T03:42:56.128Z] [info] Serving static route from local asset {"path":"/oneclient.html","source":"local:oneclient.html"}
+[2026-04-05T03:42:56.129Z] [info] HTTP request {"method":"GET","path":"/newsStyles.css","bytes":0}
+[2026-04-05T03:42:56.129Z] [info] Serving static route from local asset {"path":"/newsStyles.css","source":"local:newsStyles.css"}
+[2026-04-05T03:43:03.833Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T03:43:04.570Z] [info] Login template info {"foundFixture":true,"templateLength":20523,"carsCount":1}
+[2026-04-05T03:43:04.570Z] [info] buildLoginBody {"templateLength":20523,"iniLength":20388,"hasLoginNode":true}
+[2026-04-05T03:43:04.571Z] [info] Using template-based login {"finalBodyLength":14085}
+[2026-04-05T03:43:04.571Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=2793123760GenuineIntel65&nid=00-15-5D-60-AD-26&prid=NoProductId&cna=22B02C00-F729-4&dt=&fbl=0&p=123456&u=nerf"}
+Restarting 'src/index.js'
+[2026-04-05T03:43:19.113Z] [info] TCP server scaffold ready
+[2026-04-05T03:43:19.130Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+Restarting 'src/index.js'
+[2026-04-05T03:43:23.351Z] [info] TCP server scaffold ready
+[2026-04-05T03:43:23.368Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+Restarting 'src/index.js'
+[2026-04-05T03:43:24.990Z] [info] TCP server scaffold ready
+[2026-04-05T03:43:25.006Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+[2026-04-05T03:44:04.774Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T03:44:06.217Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=6&sk=4cd353a9-a794-478b-88de-4b39e4f4012e"}
+Restarting 'src/index.js'
+[2026-04-05T05:13:31.301Z] [info] TCP server scaffold ready
+[2026-04-05T05:13:31.319Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+[2026-04-05T05:13:55.875Z] [info] HTTP request {"method":"GET","path":"/oneclient.html","bytes":0}
+[2026-04-05T05:13:55.875Z] [info] Serving static route from local asset {"path":"/oneclient.html","source":"local:oneclient.html"}
+[2026-04-05T05:13:55.880Z] [info] HTTP request {"method":"GET","path":"/gameStyles.css","bytes":0}
+[2026-04-05T05:13:55.880Z] [info] Serving static route from local asset {"path":"/gameStyles.css","source":"local:gameStyles.css"}
+[2026-04-05T05:13:55.881Z] [info] HTTP request {"method":"GET","path":"/newsStyles.css","bytes":0}
+[2026-04-05T05:13:55.882Z] [info] Serving static route from local asset {"path":"/newsStyles.css","source":"local:newsStyles.css"}
+[2026-04-05T05:14:08.823Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T05:14:10.131Z] [info] Loaded fixture records {"keys":257,"files":3}
+[2026-04-05T05:14:10.132Z] [info] Login template info {"foundFixture":true,"templateLength":20523,"carsCount":1}
+[2026-04-05T05:14:10.132Z] [info] buildLoginBody {"templateLength":20523,"iniLength":20388,"hasLoginNode":true}
+[2026-04-05T05:14:10.133Z] [info] Template replacement {"originalIniLength":20388,"replacedIniLength":13951}
+[2026-04-05T05:14:10.134Z] [info] replaceLoginTail {"bodyLength":14086,"partsCount":2,"part0Length":13959,"part1Length":120}
+[2026-04-05T05:14:10.135Z] [info] replaceLoginTail result {"resultLength":14085}
+[2026-04-05T05:14:10.135Z] [info] Using template-based login {"finalBodyLength":14085}
+[2026-04-05T05:14:10.136Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=2793123760GenuineIntel65&nid=00-15-5D-60-AD-26&prid=NoProductId&cna=22B02C00-F729-4&dt=&fbl=0&p=123456&u=nerf"}
+Restarting 'src/index.js'
+[2026-04-05T05:14:45.621Z] [info] TCP server scaffold ready
+[2026-04-05T05:14:45.638Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+[2026-04-05T05:15:10.352Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T05:15:11.508Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=6&sk=0d30ecf7-3356-445c-aca0-74485a693155"}
+[2026-04-05T05:15:17.480Z] [info] HTTP request {"method":"GET","path":"/oneclient.html","bytes":0}
+[2026-04-05T05:15:17.481Z] [info] Serving static route from local asset {"path":"/oneclient.html","source":"local:oneclient.html"}
+[2026-04-05T05:15:17.482Z] [info] HTTP request {"method":"GET","path":"/gameStyles.css","bytes":0}
+[2026-04-05T05:15:17.483Z] [info] Serving static route from local asset {"path":"/gameStyles.css","source":"local:gameStyles.css"}
+[2026-04-05T05:15:17.484Z] [info] HTTP request {"method":"GET","path":"/newsStyles.css","bytes":0}
+[2026-04-05T05:15:17.485Z] [info] Serving static route from local asset {"path":"/newsStyles.css","source":"local:newsStyles.css"}
+[2026-04-05T05:15:46.030Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T05:15:46.569Z] [info] Loaded fixture records {"keys":257,"files":3}
+[2026-04-05T05:15:46.572Z] [info] Login template info {"foundFixture":true,"templateLength":20523,"carsCount":1}
+[2026-04-05T05:15:46.573Z] [info] buildLoginBody {"templateLength":20523,"iniLength":20388,"hasLoginNode":true}
+[2026-04-05T05:15:46.574Z] [info] Template replacement {"originalIniLength":20388,"replacedIniLength":20376}
+[2026-04-05T05:15:46.575Z] [info] replaceLoginTail {"bodyLength":20511,"partsCount":2,"part0Length":20384,"part1Length":120}
+[2026-04-05T05:15:46.576Z] [info] replaceLoginTail result {"resultLength":20510}
+[2026-04-05T05:15:46.576Z] [info] Using template-based login {"finalBodyLength":20510}
+[2026-04-05T05:15:46.577Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=2793123760GenuineIntel65&nid=00-15-5D-60-AD-26&prid=NoProductId&cna=22B02C00-F729-4&dt=&fbl=0&p=123456&u=nerf"}
+Restarting 'src/index.js'
+[2026-04-05T05:16:37.811Z] [info] TCP server scaffold ready
+[2026-04-05T05:16:37.828Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+[2026-04-05T05:16:46.962Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T05:16:48.023Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=6&sk=c9cc3da1-6a5f-4afe-a82e-f823116a605e"}
+[2026-04-05T05:17:34.610Z] [info] HTTP request {"method":"GET","path":"/newsStyles.css","bytes":0}
+[2026-04-05T05:17:34.611Z] [info] Serving static route from local asset {"path":"/newsStyles.css","source":"local:newsStyles.css"}
+[2026-04-05T05:17:34.613Z] [info] HTTP request {"method":"GET","path":"/gameStyles.css","bytes":0}
+[2026-04-05T05:17:34.613Z] [info] Serving static route from local asset {"path":"/gameStyles.css","source":"local:gameStyles.css"}
+[2026-04-05T05:17:34.615Z] [info] HTTP request {"method":"GET","path":"/oneclient.html","bytes":0}
+[2026-04-05T05:17:34.615Z] [info] Serving static route from local asset {"path":"/oneclient.html","source":"local:oneclient.html"}
+[2026-04-05T05:17:47.703Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T05:17:48.453Z] [info] Loaded fixture records {"keys":257,"files":3}
+[2026-04-05T05:17:48.454Z] [info] Login template info {"foundFixture":true,"templateLength":20523,"carsCount":1}
+[2026-04-05T05:17:48.454Z] [info] buildLoginBody {"templateLength":20523,"iniLength":20388,"hasLoginNode":true}
+[2026-04-05T05:17:48.456Z] [info] Template replacement {"originalIniLength":20388,"replacedIniLength":13951,"carsCount":1}
+[2026-04-05T05:17:48.456Z] [info] replaceLoginTail {"bodyLength":14086,"partsCount":2,"part0Length":13959,"part1Length":120}
+[2026-04-05T05:17:48.457Z] [info] replaceLoginTail result {"resultLength":14085}
+[2026-04-05T05:17:48.457Z] [info] Using template-based login {"finalBodyLength":14085}
+[2026-04-05T05:17:48.458Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=2793123760GenuineIntel65&nid=00-15-5D-60-AD-26&prid=NoProductId&cna=22B02C00-F729-4&dt=&fbl=0&p=123456&u=nerf"}
+Restarting 'src/index.js'
+[2026-04-05T05:18:27.209Z] [info] TCP server scaffold ready
+[2026-04-05T05:18:27.228Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+[2026-04-05T05:18:48.643Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T05:18:49.772Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=6&sk=54f44c67-69aa-49e9-bc8d-093d12da957a"}
+[2026-04-05T05:20:00.247Z] [info] HTTP request {"method":"GET","path":"/oneclient.html","bytes":0}
+[2026-04-05T05:20:00.247Z] [info] Serving static route from local asset {"path":"/oneclient.html","source":"local:oneclient.html"}
+[2026-04-05T05:20:00.249Z] [info] HTTP request {"method":"GET","path":"/newsStyles.css","bytes":0}
+[2026-04-05T05:20:00.249Z] [info] Serving static route from local asset {"path":"/newsStyles.css","source":"local:newsStyles.css"}
+[2026-04-05T05:20:00.250Z] [info] HTTP request {"method":"GET","path":"/gameStyles.css","bytes":0}
+[2026-04-05T05:20:00.251Z] [info] Serving static route from local asset {"path":"/gameStyles.css","source":"local:gameStyles.css"}
+[2026-04-05T05:20:18.044Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T05:20:19.065Z] [info] Loaded fixture records {"keys":257,"files":3}
+[2026-04-05T05:20:19.066Z] [info] Login template info {"foundFixture":true,"templateLength":20523,"carsCount":1}
+[2026-04-05T05:20:19.066Z] [info] buildLoginBody {"templateLength":20523,"iniLength":20388,"hasLoginNode":true,"carsCount":1}
+[2026-04-05T05:20:19.068Z] [info] replaceLoginTail {"bodyLength":7895,"partsCount":2,"part0Length":7888,"part1Length":0}
+[2026-04-05T05:20:19.068Z] [info] replaceLoginTail result {"resultLength":8014}
+[2026-04-05T05:20:19.068Z] [info] Using enriched login with template data {"finalBodyLength":8014}
+[2026-04-05T05:20:19.069Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=2793123760GenuineIntel65&nid=00-15-5D-60-AD-26&prid=NoProductId&cna=22B02C00-F729-4&dt=&fbl=0&p=123456&u=nerf"}
+[2026-04-05T05:21:19.491Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T05:21:20.545Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=6&sk=c75874a6-3cd1-4405-a665-d40b8a345384"}
+Restarting 'src/index.js'
+[2026-04-05T05:21:34.294Z] [info] TCP server scaffold ready
+[2026-04-05T05:21:34.309Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+[2026-04-05T05:26:20.096Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T05:26:21.295Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=6&sk=c75874a6-3cd1-4405-a665-d40b8a345384"}
+[2026-04-05T05:31:20.862Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T05:31:22.271Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=6&sk=c75874a6-3cd1-4405-a665-d40b8a345384"}
+[2026-04-05T05:34:24.821Z] [info] HTTP request {"method":"GET","path":"/newsStyles.css","bytes":0}
+[2026-04-05T05:34:24.821Z] [info] Serving static route from local asset {"path":"/newsStyles.css","source":"local:newsStyles.css"}
+[2026-04-05T05:34:24.823Z] [info] HTTP request {"method":"GET","path":"/gameStyles.css","bytes":0}
+[2026-04-05T05:34:24.823Z] [info] Serving static route from local asset {"path":"/gameStyles.css","source":"local:gameStyles.css"}
+[2026-04-05T05:34:24.824Z] [info] HTTP request {"method":"GET","path":"/oneclient.html","bytes":0}
+[2026-04-05T05:34:24.824Z] [info] Serving static route from local asset {"path":"/oneclient.html","source":"local:oneclient.html"}
+Restarting 'src/index.js'
+[2026-04-05T05:35:19.694Z] [info] TCP server scaffold ready
+[2026-04-05T05:35:19.712Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+Restarting 'src/index.js'
+[2026-04-05T05:35:33.216Z] [info] TCP server scaffold ready
+[2026-04-05T05:35:33.238Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+[2026-04-05T05:35:58.170Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T05:35:58.172Z] [info] Game action served {"action":"getstartershowroom","source":"stub:getstartershowroom","decodedQuery":"action=getstartershowroom&aid=0&sk=undefined"}
+[2026-04-05T05:36:02.070Z] [info] HTTP request {"method":"GET","path":"/newuserform.swf","bytes":0}
+[2026-04-05T05:36:02.119Z] [info] Loaded fixture records {"keys":257,"files":3}
+Restarting 'src/index.js'
+[2026-04-05T05:36:40.528Z] [info] TCP server scaffold ready
+[2026-04-05T05:36:40.544Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+Restarting 'src/index.js'
+[2026-04-05T05:38:22.104Z] [info] TCP server scaffold ready
+[2026-04-05T05:38:22.125Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+[2026-04-05T05:40:38.706Z] [info] HTTP request {"method":"GET","path":"/newsStyles.css","bytes":0}
+[2026-04-05T05:40:38.707Z] [info] Serving static route from local asset {"path":"/newsStyles.css","source":"local:newsStyles.css"}
+[2026-04-05T05:40:38.712Z] [info] HTTP request {"method":"GET","path":"/gameStyles.css","bytes":0}
+[2026-04-05T05:40:38.712Z] [info] Serving static route from local asset {"path":"/gameStyles.css","source":"local:gameStyles.css"}
+[2026-04-05T05:40:38.714Z] [info] HTTP request {"method":"GET","path":"/oneclient.html","bytes":0}
+[2026-04-05T05:40:38.714Z] [info] Serving static route from local asset {"path":"/oneclient.html","source":"local:oneclient.html"}
+Restarting 'src/index.js'
+[2026-04-05T05:40:48.075Z] [info] TCP server scaffold ready
+[2026-04-05T05:40:48.091Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+[2026-04-05T05:41:06.518Z] [info] HTTP request {"method":"GET","path":"/oneclient.html","bytes":0}
+[2026-04-05T05:41:06.519Z] [info] Serving static route from local asset {"path":"/oneclient.html","source":"local:oneclient.html"}
+[2026-04-05T05:41:06.523Z] [info] HTTP request {"method":"GET","path":"/gameStyles.css","bytes":0}
+[2026-04-05T05:41:06.523Z] [info] Serving static route from local asset {"path":"/gameStyles.css","source":"local:gameStyles.css"}
+[2026-04-05T05:41:06.524Z] [info] HTTP request {"method":"GET","path":"/newsStyles.css","bytes":0}
+[2026-04-05T05:41:06.524Z] [info] Serving static route from local asset {"path":"/newsStyles.css","source":"local:newsStyles.css"}
+[2026-04-05T05:41:10.663Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T05:41:10.664Z] [info] Game action served {"action":"getstartershowroom","source":"stub:getstartershowroom","decodedQuery":"action=getstartershowroom&aid=0&sk=undefined"}
+[2026-04-05T05:41:12.564Z] [info] HTTP request {"method":"GET","path":"/newuserform.swf","bytes":0}
+[2026-04-05T05:41:12.603Z] [info] Loaded fixture records {"keys":257,"files":3}
+Restarting 'src/index.js'
+[2026-04-05T05:41:46.202Z] [info] TCP server scaffold ready
+[2026-04-05T05:41:46.242Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+[2026-04-05T05:42:37.005Z] [info] HTTP request {"method":"GET","path":"/register","bytes":0}
+[2026-04-05T05:42:37.005Z] [info] Serving static route from local asset {"path":"/register","source":"local:register.html"}
+[2026-04-05T05:42:37.514Z] [info] HTTP request {"method":"GET","path":"/favicon.ico","bytes":0}
+[2026-04-05T05:42:37.555Z] [info] Loaded fixture records {"keys":257,"files":3}
+[2026-04-05T05:42:52.099Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T05:42:52.100Z] [error] Could not decode game query Error: Seed suffix did not decode to digits: RX
+[2026-04-05T05:43:03.332Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T05:43:03.333Z] [error] Could not decode game query Error: Seed suffix did not decode to digits: RX
+Restarting 'src/index.js'
+[2026-04-05T05:43:40.079Z] [info] TCP server scaffold ready
+[2026-04-05T05:43:40.094Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+[2026-04-05T05:43:47.803Z] [info] HTTP request {"method":"GET","path":"/register","bytes":0}
+[2026-04-05T05:43:47.803Z] [info] Serving static route from local asset {"path":"/register","source":"local:register.html"}
+[2026-04-05T05:43:58.785Z] [info] HTTP request {"method":"GET","path":"/register","bytes":0}
+[2026-04-05T05:43:58.786Z] [info] Serving static route from local asset {"path":"/register","source":"local:register.html"}
+[2026-04-05T05:43:59.293Z] [info] HTTP request {"method":"GET","path":"/register","bytes":0}
+[2026-04-05T05:43:59.294Z] [info] Serving static route from local asset {"path":"/register","source":"local:register.html"}
+[2026-04-05T05:44:15.707Z] [info] HTTP request {"method":"GET","path":"/register","bytes":0}
+[2026-04-05T05:44:15.707Z] [info] Serving static route from local asset {"path":"/register","source":"local:register.html"}
+[2026-04-05T05:44:15.835Z] [info] HTTP request {"method":"GET","path":"/favicon.ico","bytes":0}
+[2026-04-05T05:44:15.877Z] [info] Loaded fixture records {"keys":257,"files":3}
+[2026-04-05T05:44:21.521Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T05:44:23.173Z] [info] Game action served (plain) {"action":"createaccount","source":"supabase:createaccount:ok"}
+[2026-04-05T05:44:30.142Z] [info] HTTP request {"method":"GET","path":"/oneclient.html","bytes":0}
+[2026-04-05T05:44:30.143Z] [info] Serving static route from local asset {"path":"/oneclient.html","source":"local:oneclient.html"}
+[2026-04-05T05:44:30.145Z] [info] HTTP request {"method":"GET","path":"/newsStyles.css","bytes":0}
+[2026-04-05T05:44:30.145Z] [info] Serving static route from local asset {"path":"/newsStyles.css","source":"local:newsStyles.css"}
+[2026-04-05T05:44:30.146Z] [info] HTTP request {"method":"GET","path":"/gameStyles.css","bytes":0}
+[2026-04-05T05:44:30.147Z] [info] Serving static route from local asset {"path":"/gameStyles.css","source":"local:gameStyles.css"}
+[2026-04-05T05:44:39.504Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T05:44:40.097Z] [info] Login template info {"foundFixture":true,"templateLength":20523,"carsCount":1}
+[2026-04-05T05:44:40.098Z] [info] buildLoginBody {"templateLength":20523,"iniLength":20388,"hasLoginNode":true,"carsCount":1}
+[2026-04-05T05:44:40.099Z] [info] replaceLoginTail {"bodyLength":17754,"partsCount":2,"part0Length":17627,"part1Length":120}
+[2026-04-05T05:44:40.100Z] [info] replaceLoginTail result {"resultLength":17754}
+[2026-04-05T05:44:40.100Z] [info] Using template with player data {"finalBodyLength":17754}
+[2026-04-05T05:44:40.100Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=2793123760GenuineIntel65&nid=00-15-5D-60-AD-26&prid=NoProductId&cna=22B02C00-F729-4&dt=&fbl=0&p=123456&u=New"}
+[2026-04-05T05:45:40.286Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+Restarting 'src/index.js'
+[2026-04-05T05:45:40.489Z] [info] TCP server scaffold ready
+[2026-04-05T05:45:40.506Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+[2026-04-05T05:45:59.064Z] [info] HTTP request {"method":"GET","path":"/oneclient.html","bytes":0}
+[2026-04-05T05:45:59.065Z] [info] Serving static route from local asset {"path":"/oneclient.html","source":"local:oneclient.html"}
+[2026-04-05T05:45:59.069Z] [info] HTTP request {"method":"GET","path":"/newsStyles.css","bytes":0}
+[2026-04-05T05:45:59.070Z] [info] Serving static route from local asset {"path":"/newsStyles.css","source":"local:newsStyles.css"}
+[2026-04-05T05:45:59.071Z] [info] HTTP request {"method":"GET","path":"/gameStyles.css","bytes":0}
+[2026-04-05T05:45:59.072Z] [info] Serving static route from local asset {"path":"/gameStyles.css","source":"local:gameStyles.css"}
+[2026-04-05T05:46:09.313Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T05:46:10.034Z] [info] Loaded fixture records {"keys":257,"files":3}
+[2026-04-05T05:46:10.035Z] [info] Login template info {"foundFixture":true,"templateLength":20523,"carsCount":1}
+[2026-04-05T05:46:10.035Z] [info] buildLoginBody {"templateLength":20523,"iniLength":20388,"hasLoginNode":true,"carsCount":1}
+[2026-04-05T05:46:10.036Z] [info] replaceLoginTail {"bodyLength":20504,"partsCount":2,"part0Length":20377,"part1Length":120}
+[2026-04-05T05:46:10.037Z] [info] replaceLoginTail result {"resultLength":20504}
+[2026-04-05T05:46:10.038Z] [info] Using template with player data (template cars) {"finalBodyLength":20504}
+[2026-04-05T05:46:10.038Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=2793123760GenuineIntel65&nid=00-15-5D-60-AD-26&prid=NoProductId&cna=22B02C00-F729-4&dt=&fbl=0&p=123456&u=New"}
+Restarting 'src/index.js'
+[2026-04-05T05:46:54.964Z] [info] TCP server scaffold ready
+[2026-04-05T05:46:54.980Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+[2026-04-05T05:47:10.222Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T05:47:11.132Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=12&sk=e2cfc70e-7e41-47b5-a7ab-ed3e3e117f66"}
+Restarting 'src/index.js'
+[2026-04-05T05:48:01.892Z] [info] TCP server scaffold ready
+[2026-04-05T05:48:01.911Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+Restarting 'src/index.js'
+[2026-04-05T05:50:11.840Z] [info] TCP server scaffold ready
+[2026-04-05T05:50:11.857Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+Restarting 'src/index.js'
+[2026-04-05T05:50:17.756Z] [info] TCP server scaffold ready
+[2026-04-05T05:50:17.771Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+Restarting 'src/index.js'
+[2026-04-05T05:50:25.780Z] [info] TCP server scaffold ready
+[2026-04-05T05:50:25.796Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+Restarting 'src/index.js'
+[2026-04-05T05:50:32.883Z] [info] TCP server scaffold ready
+[2026-04-05T05:50:32.898Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+[2026-04-05T05:51:05.363Z] [info] HTTP request {"method":"GET","path":"/newsStyles.css","bytes":0}
+[2026-04-05T05:51:05.364Z] [info] Serving static route from local asset {"path":"/newsStyles.css","source":"local:newsStyles.css"}
+[2026-04-05T05:51:05.369Z] [info] HTTP request {"method":"GET","path":"/gameStyles.css","bytes":0}
+[2026-04-05T05:51:05.370Z] [info] Serving static route from local asset {"path":"/gameStyles.css","source":"local:gameStyles.css"}
+[2026-04-05T05:51:05.371Z] [info] HTTP request {"method":"GET","path":"/oneclient.html","bytes":0}
+[2026-04-05T05:51:05.372Z] [info] Serving static route from local asset {"path":"/oneclient.html","source":"local:oneclient.html"}
+[2026-04-05T05:51:17.783Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T05:51:18.442Z] [info] Loaded fixture records {"keys":257,"files":3}
+[2026-04-05T05:51:18.442Z] [info] Login template info {"foundFixture":true,"templateLength":20523,"carsCount":1}
+[2026-04-05T05:51:18.443Z] [info] buildLoginBody {"templateLength":20523,"iniLength":20388,"hasLoginNode":true,"carsCount":1}
+[2026-04-05T05:51:18.444Z] [info] replaceLoginTail {"bodyLength":17754,"partsCount":2,"part0Length":17627,"part1Length":120}
+[2026-04-05T05:51:18.445Z] [info] replaceLoginTail result {"resultLength":17754}
+[2026-04-05T05:51:18.445Z] [info] Using template with player data {"finalBodyLength":17754,"playerPublicId":12,"carsCount":1,"firstCarId":12}
+[2026-04-05T05:51:18.445Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=2793123760GenuineIntel65&nid=00-15-5D-60-AD-26&prid=NoProductId&cna=22B02C00-F729-4&dt=&fbl=0&p=123456&u=New"}
+[2026-04-05T05:51:26.755Z] [info] HTTP request {"method":"GET","path":"/gameStyles.css","bytes":0}
+[2026-04-05T05:51:26.755Z] [info] Serving static route from local asset {"path":"/gameStyles.css","source":"local:gameStyles.css"}
+[2026-04-05T05:51:26.756Z] [info] HTTP request {"method":"GET","path":"/oneclient.html","bytes":0}
+[2026-04-05T05:51:26.757Z] [info] Serving static route from local asset {"path":"/oneclient.html","source":"local:oneclient.html"}
+[2026-04-05T05:51:26.758Z] [info] HTTP request {"method":"GET","path":"/newsStyles.css","bytes":0}
+[2026-04-05T05:51:26.758Z] [info] Serving static route from local asset {"path":"/newsStyles.css","source":"local:newsStyles.css"}
+[2026-04-05T05:51:36.152Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T05:51:36.949Z] [info] Login template info {"foundFixture":true,"templateLength":20523,"carsCount":1}
+[2026-04-05T05:51:36.950Z] [info] buildLoginBody {"templateLength":20523,"iniLength":20388,"hasLoginNode":true,"carsCount":1}
+[2026-04-05T05:51:36.950Z] [info] replaceLoginTail {"bodyLength":17754,"partsCount":2,"part0Length":17627,"part1Length":120}
+[2026-04-05T05:51:36.951Z] [info] replaceLoginTail result {"resultLength":17754}
+[2026-04-05T05:51:36.951Z] [info] Using template with player data {"finalBodyLength":17754,"playerPublicId":12,"carsCount":1,"firstCarId":12}
+[2026-04-05T05:51:36.952Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=1684346743GenuineIntel65&nid=08-97-98-B5-F7-A9&prid=NoProductId&cna=PC&dt=&fbl=0&p=123456&u=New"}
+[2026-04-05T05:51:38.152Z] [info] HTTP request {"method":"GET","path":"/compat/session-info","bytes":0}
+[2026-04-05T05:51:38.753Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T05:51:39.467Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=12&sk=38659521-e923-49f3-9fe9-b5f7a444ed6e"}
+[2026-04-05T05:51:39.596Z] [info] HTTP request {"method":"GET","path":"/content.htm","bytes":0}
+[2026-04-05T05:51:39.597Z] [info] Serving static route from fixture {"path":"/content.htm","source":"/content.htm"}
+[2026-04-05T05:51:48.195Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T05:51:48.196Z] [info] Game action served {"action":"getleaderboardmenu","source":"fixture:getleaderboardmenu","decodedQuery":"action=getleaderboardmenu&aid=12&sk=38659521-e923-49f3-9fe9-b5f7a444ed6e"}
+[2026-04-05T05:51:50.353Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T05:51:50.356Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T05:51:50.358Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T05:51:50.513Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T05:51:50.514Z] [info] Game action served {"action":"getavatarage","source":"stub:getavatarage","decodedQuery":"action=getavatarage&aid=12&sk=38659521-e923-49f3-9fe9-b5f7a444ed6e&tids=12"}
+[2026-04-05T05:51:51.157Z] [info] Game action served {"action":"getremarks","source":"getremarks:empty","decodedQuery":"action=getremarks&aid=12&sk=38659521-e923-49f3-9fe9-b5f7a444ed6e"}
+[2026-04-05T05:51:51.402Z] [info] Game action served {"action":"getblackcardprogress","source":"getblackcardprogress:zero","decodedQuery":"action=getblackcardprogress&aid=12&sk=38659521-e923-49f3-9fe9-b5f7a444ed6e"}
+[2026-04-05T05:51:51.472Z] [info] Game action served {"action":"getuser","source":"supabase:getuser","decodedQuery":"action=getuser&aid=12&sk=38659521-e923-49f3-9fe9-b5f7a444ed6e&tid=12"}
+Restarting 'src/index.js'
+[2026-04-05T05:53:23.739Z] [info] TCP server scaffold ready
+[2026-04-05T05:53:23.756Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+Restarting 'src/index.js'
+[2026-04-05T05:53:28.666Z] [info] TCP server scaffold ready
+[2026-04-05T05:53:28.684Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+Restarting 'src/index.js'
+[2026-04-05T05:54:59.044Z] [error] TCP server error {"error":"listen EADDRINUSE: address already in use 127.0.0.1:3724"}
+Failed running 'src/index.js'. Waiting for file changes before restarting...
+Restarting 'src/index.js'
+[2026-04-05T05:55:11.499Z] [error] TCP server error {"error":"listen EADDRINUSE: address already in use 127.0.0.1:3724"}
+Failed running 'src/index.js'. Waiting for file changes before restarting...
+Restarting 'src/index.js'
+[2026-04-05T05:55:15.636Z] [error] TCP server error {"error":"listen EADDRINUSE: address already in use 127.0.0.1:3724"}
+Failed running 'src/index.js'. Waiting for file changes before restarting...
+Restarting 'src/index.js'
+[2026-04-05T05:55:36.747Z] [info] TCP server listening {"host":"127.0.0.1","port":7724}
+[2026-04-05T05:55:36.751Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+[2026-04-05T05:59:11.686Z] [info] TCP connection opened {"connId":1,"remoteAddr":"127.0.0.1:49885"}
+[2026-04-05T05:59:11.691Z] [info] TCP connection closed {"connId":1,"remoteAddr":"127.0.0.1:49885"}
+[2026-04-05T05:59:22.569Z] [info] HTTP request {"method":"GET","path":"/newsStyles.css","bytes":0}
+[2026-04-05T05:59:22.570Z] [info] Serving static route from local asset {"path":"/newsStyles.css","source":"local:newsStyles.css"}
+[2026-04-05T05:59:22.573Z] [info] HTTP request {"method":"GET","path":"/gameStyles.css","bytes":0}
+[2026-04-05T05:59:22.574Z] [info] Serving static route from local asset {"path":"/gameStyles.css","source":"local:gameStyles.css"}
+[2026-04-05T05:59:22.576Z] [info] HTTP request {"method":"GET","path":"/oneclient.html","bytes":0}
+[2026-04-05T05:59:22.576Z] [info] Serving static route from local asset {"path":"/oneclient.html","source":"local:oneclient.html"}
+[2026-04-05T05:59:34.991Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T05:59:35.870Z] [info] Loaded fixture records {"keys":257,"files":3}
+[2026-04-05T05:59:35.871Z] [info] Login template info {"foundFixture":true,"templateLength":20523,"carsCount":1}
+[2026-04-05T05:59:35.871Z] [info] buildLoginBody {"templateLength":20523,"iniLength":20388,"hasLoginNode":true,"carsCount":1}
+[2026-04-05T05:59:35.873Z] [info] replaceLoginTail {"bodyLength":17754,"partsCount":2,"part0Length":17627,"part1Length":120}
+[2026-04-05T05:59:35.874Z] [info] replaceLoginTail result {"resultLength":17754}
+[2026-04-05T05:59:35.874Z] [info] Using template with player data {"finalBodyLength":17754,"playerPublicId":12,"carsCount":1,"firstCarId":12}
+[2026-04-05T05:59:35.874Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=1684346743GenuineIntel65&nid=08-97-98-B5-F7-A9&prid=NoProductId&cna=PC&dt=&fbl=0&p=123456&u=New"}
+[2026-04-05T05:59:36.953Z] [info] TCP connection opened {"connId":2,"remoteAddr":"127.0.0.1:45742"}
+[2026-04-05T06:00:14.931Z] [info] TCP connection closed {"connId":2,"remoteAddr":"127.0.0.1:45742"}
+Restarting 'src/index.js'
+[2026-04-05T06:02:09.150Z] [info] TCP server listening {"host":"127.0.0.1","port":3724}
+[2026-04-05T06:02:09.154Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+[2026-04-05T06:17:23.831Z] [info] TCP connection opened {"connId":1,"remoteAddr":"127.0.0.1:13607"}
+[2026-04-05T06:17:23.832Z] [info] TCP connection closed {"connId":1,"remoteAddr":"127.0.0.1:13607"}
+[2026-04-05T06:17:29.264Z] [info] HTTP request {"method":"HEAD","path":"/oneclient.html","bytes":0}
+[2026-04-05T06:17:29.264Z] [info] Serving static route from local asset {"path":"/oneclient.html","source":"local:oneclient.html"}
+Restarting 'src/index.js'
+[2026-04-05T06:30:03.857Z] [info] TCP server listening {"host":"127.0.0.1","port":3724}
+[2026-04-05T06:30:03.861Z] [info] Backend listening {"host":"127.0.0.1","port":80,"supabase":true}
+[2026-04-05T06:43:52.024Z] [info] HTTP request {"method":"GET","path":"/oneclient.html","bytes":0}
+[2026-04-05T06:43:52.025Z] [info] Serving static route from local asset {"path":"/oneclient.html","source":"local:oneclient.html"}
+[2026-04-05T06:43:52.028Z] [info] HTTP request {"method":"GET","path":"/newsStyles.css","bytes":0}
+[2026-04-05T06:43:52.029Z] [info] Serving static route from local asset {"path":"/newsStyles.css","source":"local:newsStyles.css"}
+[2026-04-05T06:43:52.030Z] [info] HTTP request {"method":"GET","path":"/gameStyles.css","bytes":0}
+[2026-04-05T06:43:52.031Z] [info] Serving static route from local asset {"path":"/gameStyles.css","source":"local:gameStyles.css"}
+[2026-04-05T06:43:59.315Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T06:44:00.930Z] [info] Loaded fixture records {"keys":257,"files":3}
+[2026-04-05T06:44:00.931Z] [info] Login template info {"foundFixture":true,"templateLength":20523,"carsCount":1}
+[2026-04-05T06:44:00.931Z] [info] buildLoginBody {"templateLength":20523,"iniLength":20388,"hasLoginNode":true,"carsCount":1}
+[2026-04-05T06:44:00.933Z] [info] replaceLoginTail {"bodyLength":17754,"partsCount":2,"part0Length":17627,"part1Length":120}
+[2026-04-05T06:44:00.935Z] [info] replaceLoginTail result {"resultLength":17754}
+[2026-04-05T06:44:00.935Z] [info] Using template with player data {"finalBodyLength":17754,"playerPublicId":12,"carsCount":1,"firstCarId":12}
+[2026-04-05T06:44:00.935Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=1684346743GenuineIntel65&nid=08-97-98-B5-F7-A9&prid=NoProductId&cna=PC&dt=&fbl=0&p=123456&u=New"}
+[2026-04-05T06:44:01.905Z] [info] TCP connection opened {"connId":1,"remoteAddr":"127.0.0.1:11010"}
+Restarting 'src/index.js'
+[2026-04-05T06:44:47.011Z] [info] TCP server listening {"host":"127.0.0.1","port":3724}
+[2026-04-05T06:44:47.015Z] [info] Backend listening {"host":"127.0.0.1","port":80,"supabase":true}
+[2026-04-05T06:59:34.718Z] [info] HTTP request {"method":"GET","path":"/oneclient.html","bytes":0}
+[2026-04-05T06:59:34.718Z] [info] Serving static route from local asset {"path":"/oneclient.html","source":"local:oneclient.html"}
+[2026-04-05T06:59:34.721Z] [info] HTTP request {"method":"GET","path":"/newsStyles.css","bytes":0}
+[2026-04-05T06:59:34.722Z] [info] Serving static route from local asset {"path":"/newsStyles.css","source":"local:newsStyles.css"}
+[2026-04-05T06:59:34.723Z] [info] HTTP request {"method":"GET","path":"/gameStyles.css","bytes":0}
+[2026-04-05T06:59:34.724Z] [info] Serving static route from local asset {"path":"/gameStyles.css","source":"local:gameStyles.css"}
+[2026-04-05T07:00:16.335Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T07:00:17.504Z] [info] Loaded fixture records {"keys":257,"files":3}
+[2026-04-05T07:00:17.507Z] [info] Login template info {"foundFixture":true,"templateLength":20523,"carsCount":1}
+[2026-04-05T07:00:17.508Z] [info] buildLoginBody {"templateLength":20523,"iniLength":20388,"hasLoginNode":true,"carsCount":1}
+[2026-04-05T07:00:17.509Z] [info] replaceLoginTail {"bodyLength":17754,"partsCount":2,"part0Length":17627,"part1Length":120}
+[2026-04-05T07:00:17.510Z] [info] replaceLoginTail result {"resultLength":17754}
+[2026-04-05T07:00:17.511Z] [info] Using template with player data {"finalBodyLength":17754,"playerPublicId":12,"carsCount":1,"firstCarId":12}
+[2026-04-05T07:00:17.511Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=1684346743GenuineIntel65&nid=08-97-98-B5-F7-A9&prid=NoProductId&cna=PC&dt=&fbl=0&p=123456&u=New"}
+[2026-04-05T07:00:18.549Z] [info] TCP connection opened {"connId":1,"remoteAddr":"127.0.0.1:60243"}
+[2026-04-05T07:01:07.641Z] [info] TCP connection closed {"connId":1,"remoteAddr":"127.0.0.1:60243"}
+[2026-04-05T07:01:17.774Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-05T07:01:18.962Z] [info] Game action served {"action":"gettotalnewmail","source":"gettotalnewmail:zero","decodedQuery":"action=gettotalnewmail&aid=12&sk=9359142b-7f08-4d68-b3b3-e67d74490392"}
