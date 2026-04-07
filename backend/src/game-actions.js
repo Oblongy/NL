@@ -1,8 +1,6 @@
 import { buildLoginBody } from "./login-payload.js";
-import { FULL_CAR_CATALOG } from "./car-catalog.js";
 import { PARTS_CATALOG_XML } from "./parts-catalog.js";
 import { randomUUID } from "node:crypto";
-import { simulateQuarterMile, generateCarStatsXml } from "./drag-physics.js";
 import {
   escapeXml,
   failureBody,
@@ -30,7 +28,6 @@ import {
   listTeamMembersForTeams,
   listTeamsByIds,
   updatePlayerDefaultCar,
-  updatePlayerLocation,
   updatePlayerMoney,
   getCarById,
 } from "./user-service.js";
@@ -38,140 +35,6 @@ import {
 const DEFAULT_STARTER_CATALOG_CAR_ID = 1; // Acura Integra GSR
 const DEFAULT_STOCK_WHEEL_XML = "<ws><w wid='1' id='1001' ws='17'/></ws>";
 const DEFAULT_STOCK_PARTS_XML = "";
-const DEFAULT_ENGINE_RESPONSE_BODY = `"s", 1, "d", "<n2 es='1' sl='7200' sg='0' rc='0' tmp='0' r='2600' v='1.65' a='6800' n='7600' o='7800' s='0.815' b='0' p='0.15' c='11' e='0' d='T' f='3.587' g='2.022' h='1.384' i='1' j='0.861' k='0' l='4.058' q='100' m='100' t='100' u='28' w='0.34' x='41.2' y='128' z='170' aa='4' ab='16' ac='9' ad='0' ae='100' af='100' ag='100' ah='100' ai='100' aj='0' ak='0' al='0' am='0' an='0' ao='100' ap='0' aq='0' ar='1' as='0' at='100' au='100' av='0' aw='100' ax='0'/>", "t", [91, 91, 91, 91, 91, 91, 91, 91, 91, 93, 95, 98, 102, 106, 109, 112, 115, 117, 119, 121, 122, 123, 124, 125, 126, 126, 127, 127, 128, 128, 128, 128, 128, 127, 127, 127, 126, 126, 125, 125, 124, 123, 122, 121, 120, 119, 118, 117, 116, 115, 113, 112, 110, 108, 106, 104, 101, 98, 98, 96, 95, 93, 91, 89, 87, 85, 83, 81, 79, 77, 75, 73, 71, 69, 67, 65, 63, 61, 59, 57, 55, 53, 51, 49, 47, 45, 43, 41, 39, 37, 35, 33, 31, 29, 27, 25, 23, 21, 19, 17, 15, 13]`;
-
-const PART_ENTRY_REGEX = /<p\b([^>]*)\/>/g;
-const PART_ATTR_REGEX = /(\w+)='([^']*)'/g;
-
-let partsCatalogById = null;
-let nextEmailId = 1;
-const inboxByPlayerId = new Map();
-
-function parseXmlAttributes(rawAttributes) {
-  const attrs = {};
-  let match;
-  while ((match = PART_ATTR_REGEX.exec(rawAttributes)) !== null) {
-    attrs[match[1]] = match[2];
-  }
-  PART_ATTR_REGEX.lastIndex = 0;
-  return attrs;
-}
-
-function getPartsCatalogById() {
-  if (partsCatalogById) {
-    return partsCatalogById;
-  }
-
-  partsCatalogById = new Map();
-  let match;
-  while ((match = PART_ENTRY_REGEX.exec(PARTS_CATALOG_XML)) !== null) {
-    const attrs = parseXmlAttributes(match[1]);
-    const id = Number(attrs.i || 0);
-    if (id > 0) {
-      partsCatalogById.set(id, attrs);
-    }
-  }
-  PART_ENTRY_REGEX.lastIndex = 0;
-  return partsCatalogById;
-}
-
-function parseInstalledParts(partsXml) {
-  if (!partsXml) {
-    return [];
-  }
-
-  const installed = [];
-  let match;
-  while ((match = PART_ENTRY_REGEX.exec(partsXml)) !== null) {
-    installed.push(parseXmlAttributes(match[1]));
-  }
-  PART_ENTRY_REGEX.lastIndex = 0;
-  return installed;
-}
-
-function buildPartDescriptionNode(partId) {
-  const part = getPartsCatalogById().get(Number(partId));
-  if (!part) {
-    return "<n2><d>Part information unavailable.</d></n2>";
-  }
-
-  const brand = part.bn || part.b || "Unknown";
-  const name = part.n || "Unknown Part";
-  const location = Number(part.l || 100);
-  const price = Number(part.p || 0);
-  const stats = [];
-
-  const hp = Number(part.hp || 0);
-  const tq = Number(part.tq || 0);
-  const wt = Number(part.wt || 0);
-  if (hp) stats.push(`${hp > 0 ? "+" : ""}${hp} hp`);
-  if (tq) stats.push(`${tq > 0 ? "+" : ""}${tq} tq`);
-  if (wt) stats.push(`${wt > 0 ? "+" : ""}${wt} lb`);
-
-  const statSuffix = stats.length > 0 ? ` Stats: ${stats.join(", ")}.` : "";
-  const sentence = `${name} upgrade from ${brand} available in ${location}${price ? ` for ${price}` : ""}.${statSuffix}`;
-
-  return `<n2><d>${escapeXml(sentence)}</d></n2>`;
-}
-
-function buildCarPartsBinNode(partsXml) {
-  const installed = parseInstalledParts(partsXml);
-  const catalog = getPartsCatalogById();
-
-  const items = installed
-    .map((installedPart) => {
-      const partId = Number(installedPart.i || 0);
-      const catalogPart = catalog.get(partId);
-      if (!catalogPart) {
-        return null;
-      }
-
-      const merged = { ...catalogPart, ...installedPart };
-      return `<p i='${merged.i}' pi='${merged.pi || 0}' t='${escapeXml(merged.t || "")}' n='${escapeXml(merged.n || "")}' p='${merged.p || 0}' pp='${merged.pp || 0}' g='${escapeXml(merged.g || "C")}' di='${merged.di || 0}' pdi='${merged.pdi || 0}' b='${escapeXml(merged.b || "generic")}' bn='${escapeXml(merged.bn || "Generic")}' mn='${escapeXml(merged.mn || "")}' l='${merged.l || 100}' mo='${merged.mo || 0}' hp='${merged.hp || 0}' tq='${merged.tq || 0}' wt='${merged.wt || 0}' cc='${merged.cc || 0}'/>`;
-    })
-    .filter(Boolean)
-    .join("");
-
-  return `<pb>${items}</pb>`;
-}
-
-function getInboxForPlayer(playerId) {
-  const numericPlayerId = Number(playerId || 0);
-  if (!inboxByPlayerId.has(numericPlayerId)) {
-    inboxByPlayerId.set(numericPlayerId, []);
-  }
-  return inboxByPlayerId.get(numericPlayerId);
-}
-
-function formatLegacyEmailTimestamp(date = new Date()) {
-  return date.toLocaleString("en-US", {
-    month: "numeric",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
-}
-
-function buildEmailListNode(messages) {
-  const items = messages
-    .map(
-      (message) =>
-        `<e i='${message.id}' f='${escapeXml(message.fromUsername)}' s='${escapeXml(message.subject)}' d='${escapeXml(message.sentAt)}' n='${message.read ? 0 : 1}'/>`,
-    )
-    .join("");
-  return `<inbox>${items}</inbox>`;
-}
-
-function buildEmailDetailNode(message) {
-  if (!message) {
-    return "<email></email>";
-  }
-
-  return `<email><e i='${message.id}' f='${escapeXml(message.fromUsername)}' t='${escapeXml(message.toUsername)}' s='${escapeXml(message.subject)}' d='${escapeXml(message.sentAt)}' b='${escapeXml(message.body)}'/></email>`;
-}
 
 function parseShowroomPurchaseCatalogCarId(params) {
   return Number(
@@ -586,9 +449,11 @@ async function handleGetOneCarEngine(context) {
     }
   }
 
+  // Return basic engine data - engine specs should come from a proper database table
+  // For now, return empty engine data which the client can handle
   return {
-    body: DEFAULT_ENGINE_RESPONSE_BODY,
-    source: "fixture:getonecarengine:default",
+    body: wrapSuccessData("<e/>"),
+    source: "generated:getonecarengine",
   };
 }
 
@@ -916,70 +781,116 @@ async function handleCheckTestDrive(context) {
 // valid XML so the client can move on.
 // ---------------------------------------------------------------------------
 
-const DEALER_CATEGORIES = [
-  { i: "100", pi: "0", n: "Toreno Showroom",       cl: "55AACC", l: "100" },
-  { i: "200", pi: "0", n: "Newburge Showroom",     cl: "55CC55", l: "200" },
-  { i: "300", pi: "0", n: "Creek Side Showroom",   cl: "CCAA55", l: "300" },
-  { i: "400", pi: "0", n: "Vista Heights Showroom",cl: "CC5555", l: "400" },
-  { i: "500", pi: "0", n: "Diamond Point Showroom",cl: "CC55CC", l: "500" },
+// Full car catalog - only cars with logo SWFs in the 10.0.03 game cache (104 cars)
+const FULL_CAR_CATALOG = [
+  ["1","Acura Integra GSR",24000], ["6","Acura RSX Type-S",24000], ["28","Acura NSX",140000],
+  ["20","Acura Integra Type R",30000], ["32","Acura RSX-S",26000],
+  ["11","BMW M3",54000],
+  ["7","Chevy Corvette C6",45000], ["18","Chevy Camaro",25000], ["52","Chevy Cobalt SS",20000],
+  ["82","Chevy C-10",5000], ["100","Chevy Impala SS",28000], ["46","Chevy Camaro SS",32000],
+  ["48","Chevy Camaro SS",42000], ["83","Chevy S-10",12000], ["34","Chevy Corvette Z06",75000],
+  ["108","Chevy Camaro Z28",35000],
+  ["10","Dodge Viper SRT-10",80000], ["15","Dodge Neon SRT-4",20000],
+  ["59","Dodge Challenger SRT-8",38000], ["60","Dodge Charger SRT-8",35000],
+  ["63","Dodge Challenger R/T",32000], ["75","Dodge Charger R/T",30000],
+  ["81","Dodge Ram SRT-10",45000], ["97","Dodge Charger SRT-8",40000],
+  ["109","Dodge Viper ACR-X",120000],
+  ["103","Dodge Dart GTS",18000],
+  ["3","Ford Mustang GT",30000], ["5","Ford GT",150000],
+  ["45","Ford SVT Cobra R",55000], ["68","Ford Shelby GT500",55000],
+  ["26","Ford Mustang Mach 1",35000], ["71","Ford Mustang Boss 302",42000],
+  ["8","Honda Integra Type R",27000], ["9","Honda S2000",33000], ["31","Honda Civic Si",18000],
+  ["37","Honda Civic Si",19000], ["44","Honda Prelude DOHC VTEC",22000], ["74","Honda CR-X Si",12000],
+  ["76","Honda Civic Si",20000], ["105","Honda Civic Type R",35000], ["29","Honda Del Sol VTEC",16000],
+  ["30","Honda Accord Euro R",25000],
+  ["4","Infiniti G35 Coupe",32000], ["51","Infiniti G37S",38000],
+  ["54","Lexus IS 300",33000], ["66","Lexus SC 300",38000],
+  ["57","Mazda Furai",500000], ["19","Mazdaspeed 6 Bergenholtz",25000], ["23","Mazdaspeed 3",20000],
+  ["24","Mazda RX-8",28000], ["16","Mazda RX-7",30000], ["73","Mazda RX-3",3000],
+  ["107","Mazda MX-5 Miata",24000], ["36","Mazda Speed3",20000], ["86","Mazda RX-7 Spirit R",75000],
+  ["2","Mitsubishi Lancer Evo VIII",35000], ["87","Mitsubishi Lancer Evo X",38000],
+  ["88","Mitsubishi Eclipse GSX",25000], ["17","Mitsubishi Eclipse GT",24000],
+  ["27","Mitsubishi 3000GT VR-4",40000], ["40","Mitsubishi Lancer Evo IX",35000],
+  ["104","Mitsubishi Galant VR-4",28000],
+  ["55","Nissan 370Z",35000], ["38","Nissan Skyline GT-R",80000], ["35","Nissan 300ZX",35000],
+  ["47","Nissan Sentra SE-R",16000], ["41","Nissan 240SX",18000], ["25","Nissan 350Z",30000],
+  ["21","Nissan GT-R",85000], ["39","Nissan Pulsar NX",12000], ["42","Nissan Silvia S15",25000],
+  ["69","Nissan 180SX",20000], ["70","Nissan 240SX Fastback",18000], ["98","Nissan Skyline R32 GT-R",60000],
+  ["101","Nissan GT-R Black Edition",110000], ["102","Nissan Leaf",30000],
+  ["110","Nissan Silvia S13",18000], ["111","Nissan Sentra B15",14000], ["112","Nissan Altima SE-R",22000],
+  ["79","Plymouth 'Cuda",5000], ["80","Plymouth Road Runner",4000],
+  ["33","Pontiac Solstice GXP",25000], ["43","Pontiac GTO",33000], ["49","Pontiac Trans Am",28000],
+  ["50","Pontiac GTO",40000], ["56","Pontiac GTO Judge",6000], ["85","Pontiac Firebird Trans Am",26000],
+  ["13","Scion tC",17000], ["22","Scion xB",15000], ["95","Scion tC",18000],
+  ["89","Subaru Impreza WRX STI",38000], ["92","Subaru Impreza WRX STI",36000],
+  ["91","Subaru Impreza WRX STI",37000], ["12","Subaru Impreza WRX",28000],
+  ["14","Toyota Supra",42000], ["61","Toyota MR2",15000],
+  ["65","Toyota Celica GT-S",19000], ["99","Toyota Corolla GT-S",12000],
+  ["58","VW Golf R32",32000], ["62","VW Beetle",18000], ["67","VW Golf GTI",22000],
+  ["64","VW Golf GTI",24000], ["77","VW Corrado",20000], ["84","VW Jetta GLI",22000],
+  ["72","Buick Grand National",30000],
+  ["53","Cadillac CTS-V",60000],
+  ["90","McLaren MP4-12C",230000],
+  ["94","Honda Fit Sport",15000],
 ];
 
-function buildShowroomXml(locationId, starterOnly = false, focusCarId = "") {
-  const currentLocationId = Number(locationId || 100);
+// Location-based tier for showroom filtering (from scripts/data/cars.py)
+const LOCATION_MAX_PRICE = {
+  100: 30000,   // Toreno
+  200: 55000,   // Newburge
+  300: 90000,   // Creek Side
+  400: 175000,  // Vista Heights
+  500: 999999,  // Diamond Point – all cars
+};
+
+// Dealer categories ported from scripts/data/dealers.py
+const DEALER_CATEGORIES = [
+  { i: "1001", pi: "0", n: "Toreno Showroom",       cl: "55AACC", l: "100" },
+  { i: "1002", pi: "0", n: "Newburge Showroom",     cl: "55CC55", l: "200" },
+  { i: "1003", pi: "0", n: "Creek Side Showroom",   cl: "CCAA55", l: "300" },
+  { i: "1004", pi: "0", n: "Vista Heights Showroom",cl: "CC5555", l: "400" },
+  { i: "1005", pi: "0", n: "Diamond Point Showroom",cl: "CC55CC", l: "500" },
+];
+
+function buildShowroomXml(locationId, starterOnly = false) {
+  const maxPrice = LOCATION_MAX_PRICE[locationId] ?? 30000;
   const eligible = starterOnly
     ? FULL_CAR_CATALOG.filter(([, , price]) => Number(price) <= 30000)
-    : FULL_CAR_CATALOG.filter(([, , , carLocationId]) => Number(carLocationId) <= currentLocationId);
+    : FULL_CAR_CATALOG.filter(([, , price]) => Number(price) <= maxPrice);
 
-  const desiredCarId = String(focusCarId || "").trim();
-  const eligibleIds = new Set(eligible.map(([cid]) => String(cid)));
-  const defaultCarId = desiredCarId && eligibleIds.has(desiredCarId) ? desiredCarId : eligible[0]?.[0] || "0";
+  // Determine the minimum location tier for each car based on price
+  const locationTiers = Object.entries(LOCATION_MAX_PRICE).sort((a, b) => Number(a[0]) - Number(b[0]));
+  const getCarLocation = (price) => {
+    for (const [lid, maxP] of locationTiers) {
+      if (Number(price) <= maxP) return lid;
+    }
+    return "500";
+  };
+
+  // Map location ID to dealer category ID (matches getcarcategories i attribute)
+  const locationToCatId = { 100: 1001, 200: 1002, 300: 1003, 400: 1004, 500: 1005 };
 
   const carNodes = eligible
-    .map(([cid, name, price, carLocationId]) => {
+    .map(([cid, name, price]) => {
       const escapedName = escapeXml(name);
-      const carLid = String(carLocationId);
-      const catId = Number(carLocationId) || 100;
-      const defaultWheelXml = "<ws><w wid='1' id='1001' ws='17'/></ws>";
-      const defaultPaintXml = "<ps><p cd='C0C0C0'/></ps>";
-      const selected = String(cid) === String(defaultCarId) ? "1" : "0";
+      const carLid = getCarLocation(price);
+      const catId = locationToCatId[Number(carLid)] || 1001;
       return (
-        `<c ai='0' id='${cid}' i='${cid}' ci='${cid}' sel='${selected}' pi='4' pn='' lk='0' ae='0' cc='C0C0C0' ii='0' ` +
-        `n='${escapedName}' c='${escapedName}' p='${price}' pr='${price}' l='${carLid}' lid='${carLid}' cid='${catId}' ` +
-        `eo='2.0L I4' dt='FWD' np='4' ct='Coupe' et='15.00 sec 1/4' tt='140 mph top speed' sw='2800' st='7.0' y='2005' ` +
-        `wid='${catId}' ws='17'>${defaultWheelXml}${defaultPaintXml}</c>`
+        `<c id='${cid}' c='${escapedName}' p='${price}' l='${carLid}' cid='${catId}' ` +
+        `eo='2.0L I4' dt='FWD' np='4' ct='Coupe' ` +
+        `et='15.00 sec 1/4' tt='140 mph top speed' sw='2800' st='7.0' y='2005' ` +
+        `wid='1001' ws='17'/>`
       );
     })
     .join("");
 
-  return `<cars i='0' dc='${defaultCarId}' l='${currentLocationId}'>${carNodes}</cars>`;
-}
-
-function getCatalogCarLocationId(catalogCarId) {
-  const needle = String(catalogCarId || "").trim();
-  if (!needle) return 0;
-
-  const entry = FULL_CAR_CATALOG.find(([cid]) => String(cid) === needle);
-  return entry ? Number(entry[3] || 0) : 0;
+  return `<n2>${carNodes}</n2>`;
 }
 
 async function handleMoveLocation(context) {
-  const { supabase, params } = context;
-  const locationId = Number(params.get("lid") || params.get("l") || params.get("id") || 0);
-
-  if (!supabase || !locationId) {
-    return { body: `"s", 1`, source: "stub:movelocation" };
-  }
-
-  const caller = await resolveCallerSession(context, "supabase:movelocation");
-  if (!caller?.ok) {
-    return {
-      body: caller?.body || failureBody(),
-      source: caller?.source || "supabase:movelocation:bad-session",
-    };
-  }
-
-  await updatePlayerLocation(supabase, caller.playerId, locationId);
-  return { body: `"s", 1`, source: `supabase:movelocation:${locationId}` };
+  // Location change is fire-and-forget from the client's perspective.
+  // Just acknowledge success — no DB mutation needed in compat mode.
+  return { body: `"s", 1`, source: "stub:movelocation" };
 }
 
 async function handleListClassified(context) {
@@ -991,15 +902,8 @@ async function handleListClassified(context) {
 }
 
 async function handleViewShowroom(context) {
-  const { params, supabase, logger } = context;
-  const focusCarId = params.get("cid") || params.get("carid") || params.get("skipToCar") || "";
+  const { params, supabase } = context;
   let locationId = Number(params.get("lid") || params.get("l") || 0);
-
-  // If the caller is trying to jump to a specific car (banner route), derive
-  // the dealer location from the canonical car catalog when lid is omitted.
-  if (!locationId && focusCarId) {
-    locationId = getCatalogCarLocationId(focusCarId);
-  }
 
   // If no lid provided, use the player's current location from their profile
   if (!locationId && supabase) {
@@ -1012,31 +916,16 @@ async function handleViewShowroom(context) {
 
   if (!locationId) locationId = 100;
 
-  const xml = buildShowroomXml(locationId, false, focusCarId);
-  logger?.info("buildShowroomXml", {
-    locationId,
-    focusCarId: focusCarId || null,
-    xmlLength: xml.length,
-    xmlPreview: xml.substring(0, 400),
-  });
+  const xml = buildShowroomXml(locationId);
   return {
     body: wrapSuccessData(xml),
-    source: `stub:viewshowroom:lid=${locationId}:focus=${focusCarId || "none"}`,
+    source: `stub:viewshowroom:lid=${locationId}`,
   };
 }
 
 async function handleGetStarterShowroom(context) {
-  const { logger, params } = context;
-  const focusCarId = params?.get("cid") || params?.get("carid") || params?.get("skipToCar") || "";
-  const xml = buildShowroomXml(100, true, focusCarId);
-  logger?.info("buildStarterShowroomXml", {
-    locationId: 100,
-    focusCarId: focusCarId || null,
-    xmlLength: xml.length,
-    xmlPreview: xml.substring(0, 400),
-  });
   return {
-    body: wrapSuccessData(xml),
+    body: wrapSuccessData(buildShowroomXml(100, true)),
     source: "stub:getstartershowroom",
   };
 }
@@ -1080,14 +969,9 @@ async function handleSellCar(context) {
 }
 
 async function handleGetCarCategories(context) {
-  const { logger } = context;
   const catNodes = DEALER_CATEGORIES
     .map((c) => `<c i='${c.i}' pi='${c.pi}' n='${escapeXml(c.n)}' cl='${c.cl}' l='${c.l}'/>`)
     .join("");
-  logger?.info("buildCarCategoriesXml", {
-    count: DEALER_CATEGORIES.length,
-    xmlPreview: `<cats>${catNodes}</cats>`,
-  });
   return {
     body: wrapSuccessData(`<cats>${catNodes}</cats>`),
     source: "stub:getcarcategories",
@@ -1115,7 +999,7 @@ async function handleGetGearInfo(context) {
 }
 
 async function handlePractice(context) {
-  const { logger, params, supabase } = context;
+  const { logger, params } = context;
   
   // Get the car ID from the request
   const carId = params.get("acid");
@@ -1128,58 +1012,28 @@ async function handlePractice(context) {
   // Structure: <n2 ...><r g1='...' g2='...' .../></n2>
   // - n2 attributes: race/track metadata
   // - r child element: gear ratios and additional race data
+  //
+  // TODO: IMPLEMENT REAL PERFORMANCE CALCULATIONS
+  // Currently using hardcoded placeholder values from fixture.
+  // Need to:
+  // 1. Query car's parts from database (engine, transmission, weight reduction, etc.)
+  // 2. Calculate actual performance stats (HP, torque, weight, drag coefficient)
+  // 3. Simulate realistic quarter-mile physics (acceleration, gear shifts, speed)
+  // 4. Generate proper timing array based on actual performance
+  // Current values show stock Integra running 5.3s @ 254mph which is obviously wrong.
+  const carStats = 
+    "<n2 es='1' sl='7200' sg='0' rc='0' tmp='0' r='3257' v='2.3136531365313653' " +
+    "a='6800' n='7600' o='7800' s='1.208' b='0' p='0.15' c='11' e='0' d='T' " +
+    "f='3.587' g='2.022' h='1.384' i='1' j='0.861' k='0' l='4.058' q='300' " +
+    "m='72.25' t='100' u='28' w='0.4711' x='65.43' y='518.21' z='94.22' " +
+    `aa='4' ab='${carId}' ac='9' ad='0' ae='100' af='100' ag='100' ah='100' ai='100' ` +
+    "aj='0' ak='0' al='0' am='0' an='0' ao='100' ap='0' aq='0' ar='1' as='0' " +
+    "at='100' au='100' av='0' aw='100' ax='0'>" +
+    "<r g1='2.5' g2='1.8' g3='1.3' g4='1.0' g5='0.8' g6='0.7'/>" +
+    "</n2>";
   
-  let carStats;
-  let timing;
-  let catalogCarId = 1; // Default to Integra
-  let partsXml = '';
-  
-  try {
-    // Try to get car from database
-    if (supabase && carId) {
-      const car = await getCarById(supabase, parseInt(carId));
-      if (car) {
-        catalogCarId = car.catalog_car_id;
-        partsXml = car.parts_xml || '';
-      }
-    }
-    
-    // Run physics simulation
-    const simulation = simulateQuarterMile(catalogCarId, partsXml);
-    
-    // Generate car stats XML
-    carStats = generateCarStatsXml(catalogCarId, partsXml, carId);
-    timing = simulation.timingArray;
-    
-    if (logger) {
-      logger.info("Practice physics simulation", {
-        carId,
-        catalogCarId,
-        et: simulation.elapsedTime,
-        trapSpeed: simulation.trapSpeed,
-        hp: simulation.performance.hp,
-        weight: simulation.performance.weight
-      });
-    }
-  } catch (error) {
-    // Fallback to default values if physics fails
-    if (logger) {
-      logger.warn("Physics simulation failed, using defaults", { error: error.message });
-    }
-    
-    carStats = 
-      "<n2 es='1' sl='7200' sg='0' rc='0' tmp='0' r='3257' v='2.3136531365313653' " +
-      "a='6800' n='7600' o='7800' s='1.208' b='0' p='0.15' c='11' e='0' d='T' " +
-      "f='3.587' g='2.022' h='1.384' i='1' j='0.861' k='0' l='4.058' q='300' " +
-      "m='72.25' t='100' u='28' w='0.4711' x='65.43' y='518.21' z='94.22' " +
-      `aa='4' ab='${carId}' ac='9' ad='0' ae='100' af='100' ag='100' ah='100' ai='100' ` +
-      "aj='0' ak='0' al='0' am='0' an='0' ao='100' ap='0' aq='0' ar='1' as='0' " +
-      "at='100' au='100' av='0' aw='100' ax='0'>" +
-      "<r g1='2.5' g2='1.8' g3='1.3' g4='1.0' g5='0.8' g6='0.7'/>" +
-      "</n2>";
-    
-    timing = [266,266,266,266,266,266,266,266,266,365,376,388,399,410,421,432,443,455,466,477,488,499,510,522,533,544,555,566,577,589,598,600,603,605,608,610,612,615,617,619,622,624,627,629,631,634,636,638,641,643,646,648,650,653,655,657,660,662,662,655,647,639,632,624,616,608,601,593,585,578,570,562,554,547,539,531,523,515,506,498,490,481,473,465,457,448,440,432,423,415,407,398,390,382,374,365,357,349,340,332];
-  }
+  // Timing array for practice run (100 data points)
+  const timing = [266,266,266,266,266,266,266,266,266,365,376,388,399,410,421,432,443,455,466,477,488,499,510,522,533,544,555,566,577,589,598,600,603,605,608,610,612,615,617,619,622,624,627,629,631,634,636,638,641,643,646,648,650,653,655,657,660,662,662,655,647,639,632,624,616,608,601,593,585,578,570,562,554,547,539,531,523,515,506,498,490,481,473,465,457,448,440,432,423,415,407,398,390,382,374,365,357,349,340,332];
   
   // Format: "s", 1, "d", "<xml/>", "t", [array]
   // XML is embedded directly with single quotes - no escaping needed since it's wrapped in double quotes
@@ -1197,7 +1051,7 @@ async function handlePractice(context) {
   
   return { 
     body,
-    source: "generated:practice:physics" 
+    source: "generated:practice" 
   };
 }
 
@@ -1271,220 +1125,9 @@ async function handleGetRacerSearch(context) {
 }
 
 async function handleGetDescription(context) {
-  const partId = Number(context.params.get("id") || 0);
   return {
-    body: wrapSuccessData(buildPartDescriptionNode(partId)),
-    source: "generated:getdescription",
-  };
-}
-
-async function handleGetCarPartsBin(context) {
-  const { supabase, params } = context;
-  if (!supabase) {
-    return null;
-  }
-
-  const caller = await resolveCallerSession(context, "supabase:getcarpartsbin");
-  if (!caller?.ok) {
-    return {
-      body: caller?.body || failureBody(),
-      source: caller?.source || "supabase:getcarpartsbin:bad-session",
-    };
-  }
-
-  const accountCarId = Number(params.get("acid") || 0);
-  if (!accountCarId) {
-    return { body: wrapSuccessData("<pb></pb>"), source: "supabase:getcarpartsbin:missing-car" };
-  }
-
-  const car = await getCarById(supabase, accountCarId);
-  if (!car || Number(car.player_id) !== Number(caller.playerId)) {
-    return { body: wrapSuccessData("<pb></pb>"), source: "supabase:getcarpartsbin:not-found" };
-  }
-
-  return {
-    body: wrapSuccessData(buildCarPartsBinNode(car.parts_xml || "")),
-    source: "supabase:getcarpartsbin",
-  };
-}
-
-async function handleGetUserRemarks(context) {
-  const { supabase } = context;
-  if (supabase) {
-    const caller = await resolveCallerSession(context, "supabase:getuserremarks");
-    if (!caller?.ok) {
-      return {
-        body: caller?.body || failureBody(),
-        source: caller?.source || "supabase:getuserremarks:bad-session",
-      };
-    }
-  }
-
-  return {
-    body: wrapSuccessData("<remarks/>"),
-    source: "getuserremarks:empty",
-  };
-}
-
-async function handleGetAllMyApps(context) {
-  const { supabase } = context;
-  if (supabase) {
-    const caller = await resolveCallerSession(context, "supabase:getallmyapps");
-    if (!caller?.ok) {
-      return {
-        body: caller?.body || failureBody(),
-        source: caller?.source || "supabase:getallmyapps:bad-session",
-      };
-    }
-  }
-
-  return {
-    body: wrapSuccessData("<apps/>"),
-    source: "getallmyapps:empty",
-  };
-}
-
-async function handleGetEmailList(context) {
-  const { supabase } = context;
-  if (!supabase) {
-    return null;
-  }
-
-  const caller = await resolveCallerSession(context, "supabase:getemaillist");
-  if (!caller?.ok) {
-    return {
-      body: caller?.body || failureBody(),
-      source: caller?.source || "supabase:getemaillist:bad-session",
-    };
-  }
-
-  return {
-    body: wrapSuccessData(buildEmailListNode(getInboxForPlayer(caller.playerId))),
-    source: "supabase:getemaillist",
-  };
-}
-
-async function handleSendEmail(context) {
-  const { supabase, params } = context;
-  if (!supabase) {
-    return null;
-  }
-
-  const caller = await resolveCallerSession(context, "supabase:sendemail");
-  if (!caller?.ok) {
-    return {
-      body: caller?.body || failureBody(),
-      source: caller?.source || "supabase:sendemail:bad-session",
-    };
-  }
-
-  const toUsername = normalizeUsername(params.get("tu") || params.get("to") || params.get("u"));
-  const subject = params.get("s") || "";
-  const bodyText = params.get("b") || "";
-  if (!toUsername) {
-    return { body: failureBody(), source: "supabase:sendemail:missing-recipient" };
-  }
-
-  const recipient = await getPlayerByUsername(supabase, toUsername);
-  if (!recipient) {
-    return { body: failureBody(), source: "supabase:sendemail:missing-recipient" };
-  }
-
-  const sender = await getPlayerById(supabase, caller.playerId);
-  const message = {
-    id: nextEmailId++,
-    fromUsername: sender?.username || "Player",
-    toUsername: recipient.username,
-    subject,
-    body: bodyText,
-    sentAt: formatLegacyEmailTimestamp(),
-    read: false,
-  };
-  getInboxForPlayer(recipient.id).unshift(message);
-
-  return {
-    body: `"s", 1`,
-    source: "supabase:sendemail",
-  };
-}
-
-async function handleGetEmail(context) {
-  const { supabase, params } = context;
-  if (!supabase) {
-    return null;
-  }
-
-  const caller = await resolveCallerSession(context, "supabase:getemail");
-  if (!caller?.ok) {
-    return {
-      body: caller?.body || failureBody(),
-      source: caller?.source || "supabase:getemail:bad-session",
-    };
-  }
-
-  const emailId = Number(params.get("id") || params.get("i") || 0);
-  const inbox = getInboxForPlayer(caller.playerId);
-  const message = inbox.find((entry) => Number(entry.id) === emailId) || null;
-  if (message) {
-    message.read = true;
-  }
-
-  return {
-    body: wrapSuccessData(buildEmailDetailNode(message)),
-    source: "supabase:getemail",
-  };
-}
-
-async function handleMarkEmailRead(context) {
-  const { supabase, params } = context;
-  if (!supabase) {
-    return null;
-  }
-
-  const caller = await resolveCallerSession(context, "supabase:markemailread");
-  if (!caller?.ok) {
-    return {
-      body: caller?.body || failureBody(),
-      source: caller?.source || "supabase:markemailread:bad-session",
-    };
-  }
-
-  const emailId = Number(params.get("id") || params.get("i") || 0);
-  const message = getInboxForPlayer(caller.playerId).find((entry) => Number(entry.id) === emailId);
-  if (message) {
-    message.read = true;
-  }
-
-  return {
-    body: `"s", 1`,
-    source: "supabase:markemailread",
-  };
-}
-
-async function handleDeleteEmail(context) {
-  const { supabase, params } = context;
-  if (!supabase) {
-    return null;
-  }
-
-  const caller = await resolveCallerSession(context, "supabase:deleteemail");
-  if (!caller?.ok) {
-    return {
-      body: caller?.body || failureBody(),
-      source: caller?.source || "supabase:deleteemail:bad-session",
-    };
-  }
-
-  const emailId = Number(params.get("id") || params.get("i") || 0);
-  const inbox = getInboxForPlayer(caller.playerId);
-  const index = inbox.findIndex((entry) => Number(entry.id) === emailId);
-  if (index >= 0) {
-    inbox.splice(index, 1);
-  }
-
-  return {
-    body: `"s", 1`,
-    source: "supabase:deleteemail",
+    body: wrapSuccessData(`<d></d>`),
+    source: "stub:getdescription",
   };
 }
 
@@ -1627,14 +1270,7 @@ const handlers = {
   // --- Social / Mail / Badges ---
   gettotalnewmail: handleGetTotalNewMail,
   getremarks: handleGetRemarks,
-  getuserremarks: handleGetUserRemarks,
-  getallmyapps: handleGetAllMyApps,
   getblackcardprogress: handleGetBlackCardProgress,
-  getemaillist: handleGetEmailList,
-  sendemail: handleSendEmail,
-  getemail: handleGetEmail,
-  markemailread: handleMarkEmailRead,
-  deleteemail: handleDeleteEmail,
   checktestdrive: handleCheckTestDrive,
   teaminfo: handleTeamInfo,
   getteaminfo: handleTeamInfo,
@@ -1644,7 +1280,6 @@ const handlers = {
   getspotlightracers: handleGetSpotlightRacers,
   racersearch: handleGetRacerSearch,
   getdescription: handleGetDescription,
-  getcarpartsbin: handleGetCarPartsBin,
   getavatarage: handleGetAvatarAge,
   getteamavatarage: handleGetTeamAvatarAge,
   // --- Buddies ---
