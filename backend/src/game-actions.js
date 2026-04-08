@@ -2211,7 +2211,7 @@ const handlers = {
     });
 
     return {
-      body: `"s", 1`,
+      body: `"s", 1, "d", ""`,
       source: "generated:ctct",
     };
   },
