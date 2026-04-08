@@ -27,6 +27,7 @@ const tcpServer = new TcpServer({
   notify: null, // Will be set after tcpNotify is created
   proxy: tcpProxy,
   supabase,
+  raceRoomRegistry,
   port: config.tcpPort,
   host: config.tcpHost,
 });

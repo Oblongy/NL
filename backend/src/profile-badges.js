@@ -131,14 +131,6 @@ function shouldShowBadge(player, badgeId) {
   }
 }
 
-export function renderBadgeCatalogXml() {
-  const items = BADGE_DEFINITIONS.map(
-    (badge) =>
-      `<b i='${badge.id}' n='${escapeXml(badge.name)}' d='${escapeXml(badge.description)}'/>`,
-  ).join("");
-  return `<b>${items}</b>`;
-}
-
 export function renderVisibleBadgesXml(player) {
   const manual = parseBadgesJson(player?.badges_json);
   if (manual) {
