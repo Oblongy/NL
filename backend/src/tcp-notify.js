@@ -1,3 +1,5 @@
+import { escapeXml } from "./game-xml.js";
+
 export class TcpNotify {
   constructor({ logger, tcpServer }) {
     this.logger = logger;
@@ -8,7 +10,7 @@ export class TcpNotify {
     this.logger.info("TCP notify", { channel, payload });
   }
 
-  // Broadcast a message to all players in a room
+  // Broadcast a message to all players in a room (batched — one write per socket)
   broadcastToRoom(roomId, room, messageType = "room_update") {
     if (!this.tcpServer) {
       this.logger.warn("TCP server not available for broadcast");
@@ -17,41 +19,34 @@ export class TcpNotify {
 
     const playerCount = room.players?.length || 0;
     const playersXml = (room.players || []).map(p => 
-      `<player id='${p.publicId}' name='${this.escapeXml(p.name)}' ready='${p.ready ? 1 : 0}'/>`
+      `<player id='${p.publicId}' name='${escapeXml(p.name)}' ready='${p.ready ? 1 : 0}'/>`
     ).join('');
     
-    const roomXml = `<room id='${room.roomId}' name='${this.escapeXml(room.name)}' type='${room.type}' players='${playerCount}' max='${room.maxPlayers}' status='${room.status}'>${playersXml}</room>`;
+    const roomXml = `<room id='${room.roomId}' name='${escapeXml(room.name)}' type='${room.type}' players='${playerCount}' max='${room.maxPlayers}' status='${room.status}'>${playersXml}</room>`;
     
-    // Send to all players in the room
     const playerIds = (room.players || []).map(p => p.id);
-    this.tcpServer.broadcastToPlayers(playerIds, `"ac", "RU", "d", "${this.escapeForTcp(roomXml)}"`);
-    
-    this.logger.info("Broadcast room update", { roomId, playerCount, messageType });
+    const message = `"ac", "RU", "d", "${this.escapeForTcp(roomXml)}"`;
+
+    const sent = this.tcpServer.broadcastToPlayers(playerIds, message);
+    this.logger.info("Broadcast room update", { roomId, playerCount, sent, messageType });
   }
 
   // Notify a specific player
   notifyPlayer(playerId, message) {
     if (!this.tcpServer) {
       this.logger.warn("TCP server not available for notify");
-      return;
+      return false;
     }
 
-    this.tcpServer.sendToPlayer(playerId, message);
-  }
-
-  escapeXml(str) {
-    if (!str) return "";
-    return String(str)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&apos;");
+    const sent = this.tcpServer.sendToPlayer(playerId, message);
+    if (!sent) {
+      this.logger.warn("TCP notify failed (player not connected)", { playerId });
+    }
+    return sent;
   }
 
   escapeForTcp(str) {
     if (!str) return "";
-    // Escape quotes for TCP message format
     return String(str).replace(/"/g, '\\"');
   }
 }

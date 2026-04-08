@@ -333,12 +333,8 @@ export async function createOwnedCar(
     insert.test_drive_expires_at = testDriveExpiresAt;
   }
 
-  if (selected) {
-    await supabase
-      .from("game_cars")
-      .update({ selected: false })
-      .eq("player_id", Number(playerId));
-  }
+  // Insert with selected=false first; we atomically select via RPC afterward.
+  insert.selected = false;
 
   let car;
   try {
@@ -356,11 +352,14 @@ export async function createOwnedCar(
     car = await insertGameCarCompat(supabase, insert);
   }
 
+  // Atomically unselect all → select this car → update player default
   if (selected) {
-    await supabase
-      .from("game_players")
-      .update({ default_car_game_id: Number(car.game_car_id) })
-      .eq("id", Number(playerId));
+    const { error: rpcError } = await supabase.rpc("select_player_car", {
+      p_player_id: Number(playerId),
+      p_game_car_id: Number(car.game_car_id),
+    });
+    if (rpcError) throw rpcError;
+    car.selected = true;
   }
 
   return normalizeOwnedCarRecord(car);
@@ -542,28 +541,15 @@ export async function updatePlayerDefaultCar(supabase, playerId, gameCarId) {
     return false;
   }
 
-  // First, unselect all cars for this player
-  await supabase
-    .from("game_cars")
-    .update({ selected: false })
-    .eq("player_id", Number(playerId));
-
-  // Then select the specified car
-  const { error } = await supabase
-    .from("game_cars")
-    .update({ selected: true })
-    .eq("game_car_id", Number(gameCarId))
-    .eq("player_id", Number(playerId));
+  // Atomic: unselect all → select one → update player default in a single DB transaction
+  const { error } = await supabase.rpc("select_player_car", {
+    p_player_id: Number(playerId),
+    p_game_car_id: Number(gameCarId),
+  });
 
   if (error) {
     throw error;
   }
-
-  // Also update the player's default_car_game_id
-  await supabase
-    .from("game_players")
-    .update({ default_car_game_id: Number(gameCarId) })
-    .eq("id", Number(playerId));
 
   return true;
 }

@@ -40,7 +40,7 @@ export function setEngineConditionPercent(carId, conditionPercent) {
 
   const normalizedPercent = Number(conditionPercent);
   const nextValue = Number.isFinite(normalizedPercent)
-    ? Math.max(0, Number(normalizedPercent.toFixed(2)))
+    ? Math.min(100, Math.max(0, Number(normalizedPercent.toFixed(2))))
     : DEFAULT_ENGINE_CONDITION_PERCENT;
 
   engineConditionByCarId.set(numericCarId, nextValue);

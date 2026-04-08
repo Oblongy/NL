@@ -13,9 +13,10 @@ import {
   renderUserSummary,
   wrapSuccessData,
 } from "./game-xml.js";
-import { hashGamePassword, normalizeUsername, verifyGamePassword } from "./player-identity.js";
+import { hashGamePassword, normalizeUsername, verifyGamePassword, isPlaintextPassword } from "./player-identity.js";
 import { getPublicIdForPlayer } from "./public-id.js";
 import { createLoginSession, getSessionPlayerId, validateOrCreateSession } from "./session.js";
+import { loginAttemptsTotal } from "./metrics.js";
 import {
   getPlayerById,
   getPlayerByUsername,
@@ -235,6 +236,7 @@ async function handleLogin(context) {
 
   if (!username || !password) {
     logger.warn("Login failed: missing credentials", { username: username || "(empty)" });
+    loginAttemptsTotal.inc({ result: "missing_credentials" });
     return { body: failureBody(), source: "supabase:login:missing-credentials" };
   }
 
@@ -247,10 +249,26 @@ async function handleLogin(context) {
         playerExists: !!player,
         passwordMatch: player ? verifyGamePassword(password, player.password_hash) : false
       });
+      loginAttemptsTotal.inc({ result: "invalid" });
       return { body: failureBody(), source: "supabase:login:invalid" };
     }
 
     logger.info("Login successful", { username, playerId: player.id, publicId: player.public_id });
+    loginAttemptsTotal.inc({ result: "success" });
+
+    // Auto-migrate legacy plaintext passwords to SHA-256 on successful login
+    if (isPlaintextPassword(player.password_hash)) {
+      try {
+        const hashed = hashGamePassword(password);
+        await supabase
+          .from("game_players")
+          .update({ password_hash: hashed })
+          .eq("id", player.id);
+        logger.info("Migrated plaintext password to SHA-256", { playerId: player.id });
+      } catch (migrationErr) {
+        logger.error("Password migration failed", { playerId: player.id, error: migrationErr.message });
+      }
+    }
 
     const cars = await ensurePlayerHasGarageCar(supabase, player.id, {
       catalogCarId: DEFAULT_STARTER_CATALOG_CAR_ID,
@@ -267,6 +285,7 @@ async function handleLogin(context) {
     };
   } catch (error) {
     logger.error("Login error", { error: error.message, stack: error.stack });
+    loginAttemptsTotal.inc({ result: "error" });
     return { body: failureBody(), source: "supabase:login:error" };
   }
 }
@@ -1878,7 +1897,7 @@ function buildComputerTournamentCompetitorNode(tournament, index) {
 
   return (
     `<r id='${competitorId}' i='${accountCarId}' n='${escapeXml(username)}' u='${escapeXml(username)}' ` +
-    `bt='0' rt='${formatMetric(reactionTime)}' et='${formatMetric(elapsedTime)}' ts='${formatMetric(trapSpeed, 2)}' ` +
+    `bt='${formatMetric(totalTime)}' rt='${formatMetric(reactionTime)}' et='${formatMetric(elapsedTime)}' ts='${formatMetric(trapSpeed, 2)}' ` +
     `total='${formatMetric(totalTime)}' racerNum='${racerNumber}' type='C' hp='${horsepower}' w='${weight}'/>`
   );
 }

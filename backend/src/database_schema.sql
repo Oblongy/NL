@@ -214,6 +214,37 @@ CREATE TRIGGER update_game_team_members_updated_at
   EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================================================
+-- ATOMIC CAR SELECTION
+-- Unselect all cars, mark one as selected, and update the player's default
+-- in a single transaction so a mid-flight crash can never leave orphan state.
+-- ============================================================================
+CREATE OR REPLACE FUNCTION select_player_car(
+  p_player_id BIGINT,
+  p_game_car_id BIGINT
+) RETURNS BOOLEAN AS $$
+BEGIN
+  -- Unselect every car for this player
+  UPDATE game_cars SET selected = FALSE
+  WHERE player_id = p_player_id;
+
+  -- Select the requested car (must belong to this player)
+  UPDATE game_cars SET selected = TRUE
+  WHERE game_car_id = p_game_car_id
+    AND player_id = p_player_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'car_not_found: % does not own car %', p_player_id, p_game_car_id;
+  END IF;
+
+  -- Sync the player's default pointer
+  UPDATE game_players SET default_car_game_id = p_game_car_id
+  WHERE id = p_player_id;
+
+  RETURN TRUE;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ============================================================================
 -- SAMPLE DATA (OPTIONAL - FOR TESTING)
 -- ============================================================================
 

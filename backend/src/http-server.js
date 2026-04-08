@@ -6,6 +6,7 @@ import { decodeGameCodeQuery, encryptPayload } from "./nitto-cipher.js";
 import { handleGameAction } from "./game-actions.js";
 import { getSessionPlayerId } from "./session.js";
 import { getCarById, getPlayerById, listCarsForPlayer } from "./user-service.js";
+import { httpRequestsTotal, uploadsTotal, collectMetrics } from "./metrics.js";
 
 const LOCAL_STATIC_ROUTES = new Map([
   [
@@ -82,7 +83,11 @@ const LOCAL_STATIC_ROUTES = new Map([
   ],
 ]);
 
-const pendingUploadsByRemote = new Map();
+const pendingUploadsBySession = new Map();
+
+// Upload constraints
+const MAX_UPLOAD_BYTES = 2 * 1024 * 1024; // 2 MB
+const ALLOWED_UPLOAD_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".bmp"]);
 
 // Cleanup stale uploads every 10 minutes
 setInterval(() => {
@@ -90,9 +95,9 @@ setInterval(() => {
   const staleThreshold = 10 * 60 * 1000; // 10 minutes
   let cleaned = 0;
   
-  for (const [remote, upload] of pendingUploadsByRemote.entries()) {
+  for (const [key, upload] of pendingUploadsBySession.entries()) {
     if (upload.timestamp && now - upload.timestamp > staleThreshold) {
-      pendingUploadsByRemote.delete(remote);
+      pendingUploadsBySession.delete(key);
       cleaned++;
     }
   }
@@ -263,6 +268,19 @@ export function createHttpServer({ config, logger, fixtureStore, supabase, servi
         bytes: bodyBytes.length,
       });
 
+      httpRequestsTotal.inc({ method: req.method, path: requestUrl.pathname.split("?")[0] });
+
+      // Prometheus-compatible metrics endpoint
+      if (requestUrl.pathname === "/metrics") {
+        const body = collectMetrics();
+        res.writeHead(200, {
+          "Content-Type": "text/plain; version=0.0.4; charset=utf-8",
+          "Content-Length": Buffer.byteLength(body, "utf8"),
+        });
+        res.end(body, "utf8");
+        return;
+      }
+
       if (requestUrl.pathname.toLowerCase().endsWith("status.aspx")) {
         sendText(res, 200, "1");
         return;
@@ -291,6 +309,14 @@ export function createHttpServer({ config, logger, fixtureStore, supabase, servi
       }
 
       if (requestUrl.pathname.toLowerCase().endsWith("upload.aspx")) {
+        // --- File size limit ---
+        if (bodyBytes.length > MAX_UPLOAD_BYTES) {
+          logger.warn("Upload rejected (too large)", { bytes: bodyBytes.length, max: MAX_UPLOAD_BYTES });
+          uploadsTotal.inc({ type: "unknown", result: "rejected_size" });
+          sendText(res, 413, `<r s='0'/>`);
+          return;
+        }
+
         const contentType = req.headers["content-type"] || "";
         const boundaryMatch = contentType.match(/boundary=(.+)$/);
         
@@ -306,10 +332,27 @@ export function createHttpServer({ config, logger, fixtureStore, supabase, servi
             const nameMatch = headers.match(/name="([^"]+)"/);
             const filenameMatch = headers.match(/filename="([^"]+)"/);
             if (!nameMatch || !filenameMatch) continue;
+
+            // --- MIME / extension validation ---
+            const uploadedFilename = filenameMatch[1].toLowerCase();
+            const ext = uploadedFilename.includes(".") ? "." + uploadedFilename.split(".").pop() : "";
+            if (!ALLOWED_UPLOAD_EXTENSIONS.has(ext)) {
+              logger.warn("Upload rejected (disallowed extension)", { filename: filenameMatch[1], ext });
+              uploadsTotal.inc({ type: "unknown", result: "rejected_mime" });
+              sendText(res, 415, `<r s='0'/>`);
+              return;
+            }
             
             const fieldName = nameMatch[1];
             const fileData = Buffer.from(part.substring(headerEnd + 4, part.length - 2), "binary");
-            const pendingUpload = pendingUploadsByRemote.get(remoteAddress);
+
+            // Resolve pending upload by session key extracted from the
+            // preceding uploadrequest action (falls back to IP for legacy compat).
+            const sessionKeyFromHeader = requestUrl.searchParams.get("sk") || "";
+            const pendingUpload =
+              pendingUploadsBySession.get(sessionKeyFromHeader) ||
+              pendingUploadsBySession.get(remoteAddress) ||
+              null;
             
             // Sanitize decalId to prevent path traversal
             const rawDecalId = Date.now() % 100000;
@@ -343,6 +386,7 @@ export function createHttpServer({ config, logger, fixtureStore, supabase, servi
             try {
               ensureParentDir(targetPath);
               writeFileSync(targetPath, fileData);
+              uploadsTotal.inc({ type: pendingUpload?.type || "userDecals", result: "success" });
               logger.info("Saved upload file", {
                 fieldName,
                 bytes: fileData.length,
@@ -350,10 +394,16 @@ export function createHttpServer({ config, logger, fixtureStore, supabase, servi
                 targetPath,
               });
             } catch (err) {
+              uploadsTotal.inc({ type: pendingUpload?.type || "userDecals", result: "error" });
               logger.error("Failed to save upload", { error: err.message, targetPath });
             }
 
-            pendingUploadsByRemote.delete(remoteAddress);
+            // Remove by whichever key matched
+            if (sessionKeyFromHeader && pendingUploadsBySession.has(sessionKeyFromHeader)) {
+              pendingUploadsBySession.delete(sessionKeyFromHeader);
+            } else {
+              pendingUploadsBySession.delete(remoteAddress);
+            }
             
             sendText(res, 200, responseBody);
             return;
@@ -481,7 +531,10 @@ export function createHttpServer({ config, logger, fixtureStore, supabase, servi
       });
 
       if (decoded.action === "uploadrequest") {
-        pendingUploadsByRemote.set(remoteAddress, {
+        // Key by session key to prevent collisions when multiple players
+        // share the same NAT/proxy IP. Fall back to IP if no session key.
+        const uploadSessionKey = String(decoded.params.get("sk") || "") || remoteAddress;
+        pendingUploadsBySession.set(uploadSessionKey, {
           type: String(decoded.params.get("t") || "").toLowerCase(),
           targetId: Number(decoded.params.get("id") || 0),
           filename: String(decoded.params.get("fn") || ""),

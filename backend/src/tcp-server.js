@@ -5,6 +5,19 @@ import { advanceEngineConditionForCars } from "./engine-state.js";
 import { getPublicIdForPlayer } from "./public-id.js";
 import { ensureDefaultRaceRooms, getDefaultRaceRoom } from "./race-room-catalog.js";
 import { getSessionPlayerId } from "./session.js";
+import {
+  tcpConnectionsTotal,
+  tcpActiveConnections,
+  tcpMessagesReceived,
+  tcpMessagesSent,
+  tcpErrors,
+  tcpMalformedFrames,
+  tcpActiveRaces,
+  tcpPendingChallenges,
+  racesStartedTotal,
+  racesCompletedTotal,
+  cleanupEvictionsTotal,
+} from "./metrics.js";
 
 const MESSAGE_DELIMITER = "\x04";
 const FIELD_DELIMITER = "\x1e";
@@ -34,7 +47,7 @@ export class TcpServer {
     
     // Cleanup stale challenges every 5 minutes
     this.challengeCleanupInterval = setInterval(() => {
-      this.cleanupStaleChallenges();
+      this.cleanupStaleState();
     }, 5 * 60 * 1000);
   }
 
@@ -77,6 +90,8 @@ export class TcpServer {
   handleConnection(socket) {
     const connId = this.nextConnId++;
     const remoteAddr = `${socket.remoteAddress}:${socket.remotePort}`;
+    tcpConnectionsTotal.inc();
+    tcpActiveConnections.inc();
     this.logger.info("TCP connection opened", { connId, remoteAddr });
 
     const conn = {
@@ -105,12 +120,15 @@ export class TcpServer {
 
     socket.on("end", () => {
       this.logger.info("TCP connection closed", { connId, remoteAddr });
+      tcpActiveConnections.dec();
       this.leaveRoom(conn);
       this.connections.delete(connId);
     });
 
     socket.on("error", (error) => {
       this.logger.error("TCP socket error", { connId, error: error.message });
+      tcpActiveConnections.dec();
+      tcpErrors.inc({ category: "socket" });
       this.leaveRoom(conn);
       this.connections.delete(connId);
     });
@@ -161,6 +179,7 @@ export class TcpServer {
 
       const parts = decodedMessage.split(FIELD_DELIMITER);
       const messageType = parts[0];
+      tcpMessagesReceived.inc({ type: messageType });
 
       this.logger.info("TCP message received", {
         connId: conn.id,
@@ -273,6 +292,8 @@ export class TcpServer {
           if (allPlayersCompleted) {
             this.races.delete(race.id);
             this.raceCompletions.delete(race.id);
+            racesCompletedTotal.inc();
+            tcpActiveRaces.set({}, this.races.size);
             this.logger.info("TCP race cleaned up", { raceId: race.id });
           }
         } else if (playerId && conn.raceId) {
@@ -382,7 +403,7 @@ export class TcpServer {
         this.logger.info("TCP chat received", { connId: conn.id, messageType, chatText });
         if (conn.roomId && chatText) {
           const room = this.rooms.get(conn.roomId) || [];
-          const chatMsg = `"ac", "TE", "i", "${conn.playerId}", "t", "${chatText}"`;
+          const chatMsg = `"ac", "TE", "i", "${conn.playerId}", "t", "${this.escapeForTcp(chatText)}"`;
           for (const member of room) {
             const memberConn = this.connections.get(member.connId);
             if (memberConn) this.sendMessage(memberConn, chatMsg);
@@ -408,6 +429,20 @@ export class TcpServer {
           try {
             const playerId = await getSessionPlayerId({ supabase: this.supabase, sessionKey: srcSessionKey });
             if (playerId) {
+              // Close any stale *race-channel* connection for the same player
+              // before adopting this new race-channel socket. A race-channel
+              // connection has `raceId` set. The lobby connection (no raceId)
+              // must NOT be destroyed here.
+              for (const [existingConnId, existingConn] of this.connections.entries()) {
+                if (existingConnId !== conn.id &&
+                    existingConn.playerId === playerId &&
+                    existingConn.raceId) {
+                  this.logger.info("SRC closing stale race connection for player", { staleConnId: existingConnId, playerId, newConnId: conn.id, staleRaceId: existingConn.raceId });
+                  this.leaveRoom(existingConn);
+                  existingConn.socket?.destroy();
+                  this.connections.delete(existingConnId);
+                }
+              }
               conn.playerId = playerId;
               conn.sessionKey = srcSessionKey;
               const { data: player } = await this.supabase
@@ -503,9 +538,11 @@ export class TcpServer {
       if (race) {
         race.players = race.players.filter((player) => player.connId !== conn.id);
         if (race.players.length === 0) {
-          this.races.delete(conn.raceId);
-          this.raceCompletions.delete(conn.raceId);
-          this.logger.info("TCP race cleaned up (all players left)", { raceId: conn.raceId });
+          // Don't delete the race immediately — players may be reconnecting
+          // their race channels. Mark it with an emptiness timestamp so the
+          // stale-state cleanup can remove it after a grace period.
+          race.emptiedAt = Date.now();
+          this.logger.info("TCP race emptied (kept for reconnect grace)", { raceId: conn.raceId });
         }
       }
     }
@@ -513,6 +550,12 @@ export class TcpServer {
     const room = this.rooms.get(conn.roomId) || [];
     const updated = room.filter(p => p.connId !== conn.id);
     this.rooms.set(conn.roomId, updated);
+
+    // Keep registry in sync — remove this player from the authoritative roster
+    if (this.raceRoomRegistry && conn.playerId) {
+      this.raceRoomRegistry.removePlayer(conn.roomId, Number(conn.playerId));
+    }
+
     // Notify remaining players
     if (updated.length > 0) {
       for (const member of updated) {
@@ -686,6 +729,36 @@ export class TcpServer {
     // Observed client packets carry a trailing `-1` when no bracket/bet is set.
     // In 10.0.03 XML this maps to the `b` (bracket time) attribute, not `bt`.
     const bracketTime = Number(parts[5] || -1);
+
+    // --- Validate client-supplied fields ---
+    if (!Number.isFinite(requesterPlayerId) || requesterPlayerId <= 0) {
+      this.logger.warn("TCP RRQ rejected (invalid requester)", { connId: conn.id, requesterPlayerId });
+      return;
+    }
+    if (!Number.isFinite(targetPlayerId) || targetPlayerId <= 0) {
+      this.logger.warn("TCP RRQ rejected (invalid target)", { connId: conn.id, targetPlayerId });
+      return;
+    }
+    if (requesterPlayerId === targetPlayerId) {
+      this.logger.warn("TCP RRQ rejected (self-challenge)", { connId: conn.id, requesterPlayerId });
+      return;
+    }
+    if (!Number.isFinite(requesterCarId) || requesterCarId <= 0) {
+      this.logger.warn("TCP RRQ rejected (invalid requester car)", { connId: conn.id, requesterCarId });
+      return;
+    }
+    if (!Number.isFinite(targetCarId) || targetCarId <= 0) {
+      this.logger.warn("TCP RRQ rejected (invalid target car)", { connId: conn.id, targetCarId });
+      return;
+    }
+    if (!Number.isInteger(lane) || lane < 0 || lane > 2) {
+      this.logger.warn("TCP RRQ rejected (invalid lane)", { connId: conn.id, lane });
+      return;
+    }
+    if (!Number.isFinite(bracketTime)) {
+      this.logger.warn("TCP RRQ rejected (invalid bracket time)", { connId: conn.id, bracketTime });
+      return;
+    }
 
     this.sendMessage(conn, '"ac", "RRQ", "s", 1');
 
@@ -992,6 +1065,8 @@ export class TcpServer {
     this.races.set(race.id, race);
     challengerConn.raceId = race.id;
     challengedConn.raceId = race.id;
+    racesStartedTotal.inc();
+    tcpActiveRaces.set({}, this.races.size);
 
     const rnXml = this.buildRnXml({
       challengerPlayerId: pending.challenger.playerId,
@@ -1100,6 +1175,7 @@ export class TcpServer {
       const seed = Math.floor(Math.random() * 90) + 10;
       const encrypted = encryptPayload(message, seed);
       conn.socket.write(Buffer.from(encrypted + MESSAGE_DELIMITER, "latin1"));
+      tcpMessagesSent.inc();
       this.logger.info("TCP message sent", {
         connId: conn.id,
         seed,
@@ -1108,23 +1184,124 @@ export class TcpServer {
       });
     } catch (error) {
       this.logger.error("TCP send error", { connId: conn.id, error: error.message });
+      tcpErrors.inc({ category: "send" });
     }
   }
 
-  cleanupStaleChallenges() {
-    const now = Date.now();
-    const staleThreshold = 2 * 60 * 1000; // 2 minutes
-    let cleaned = 0;
+  /**
+   * Send a message to a single player by their playerId.
+   * Returns true if the message was sent, false if the player was not found.
+   */
+  sendToPlayer(playerId, message) {
+    const conn = this.findConnectionByPlayerId(playerId);
+    if (!conn) return false;
+    this.sendMessage(conn, message);
+    return true;
+  }
 
-    for (const [guid, challenge] of this.pendingRaceChallenges.entries()) {
-      if (now - challenge.createdAt > staleThreshold) {
-        this.pendingRaceChallenges.delete(guid);
-        cleaned++;
+  /**
+   * Send a batch of messages to multiple players in a single write per player.
+   * Each message is encrypted individually, then the frames are concatenated
+   * into one buffer per socket so the kernel sends them in a single TCP segment.
+   */
+  broadcastToPlayers(playerIds, messages) {
+    const msgList = Array.isArray(messages) ? messages : [messages];
+    let sent = 0;
+
+    for (const playerId of playerIds) {
+      const conn = this.findConnectionByPlayerId(playerId);
+      if (!conn) continue;
+
+      try {
+        const frames = msgList.map((msg) => {
+          const seed = Math.floor(Math.random() * 90) + 10;
+          return encryptPayload(msg, seed) + MESSAGE_DELIMITER;
+        });
+        const combined = Buffer.from(frames.join(""), "latin1");
+        conn.socket.write(combined);
+        sent++;
+        this.logger.info("TCP batch sent", {
+          connId: conn.id,
+          playerId,
+          messageCount: msgList.length,
+          bytes: combined.length,
+        });
+      } catch (error) {
+        this.logger.error("TCP batch send error", { connId: conn.id, playerId, error: error.message });
       }
     }
 
-    if (cleaned > 0) {
-      this.logger.info("Cleaned up stale challenges", { count: cleaned });
+    return sent;
+  }
+
+  cleanupStaleState() {
+    const now = Date.now();
+    const challengeTtl = 2 * 60 * 1000;   // 2 minutes
+    const raceTtl      = 10 * 60 * 1000;  // 10 minutes
+
+    // --- Pending race challenges ---
+    let cleanedChallenges = 0;
+    for (const [guid, challenge] of this.pendingRaceChallenges.entries()) {
+      if (now - challenge.createdAt > challengeTtl) {
+        this.pendingRaceChallenges.delete(guid);
+        cleanedChallenges++;
+      }
+    }
+
+    // --- Active races that have gone stale (both players likely disconnected) ---
+    let cleanedRaces = 0;
+    const emptyRaceGraceMs = 2 * 60 * 1000; // 2 minutes reconnect grace
+    for (const [raceId, race] of this.races.entries()) {
+      // Races that were emptied get a shorter grace period for reconnects
+      if (race.emptiedAt && now - race.emptiedAt > emptyRaceGraceMs) {
+        this.races.delete(raceId);
+        this.raceCompletions.delete(raceId);
+        cleanedRaces++;
+        continue;
+      }
+      // Races that were never emptied get the full TTL
+      if (!race.emptiedAt && now - race.createdAt > raceTtl) {
+        this.races.delete(raceId);
+        this.raceCompletions.delete(raceId);
+        cleanedRaces++;
+      }
+    }
+
+    // --- Room members whose TCP connection is no longer alive ---
+    let cleanedMembers = 0;
+    for (const [roomId, members] of this.rooms.entries()) {
+      const live = members.filter((m) => this.connections.has(m.connId));
+      if (live.length !== members.length) {
+        const dead = members.filter((m) => !this.connections.has(m.connId));
+        cleanedMembers += dead.length;
+        this.rooms.set(roomId, live);
+
+        // Sync removals to the authoritative registry
+        if (this.raceRoomRegistry) {
+          for (const m of dead) {
+            if (m.playerId) this.raceRoomRegistry.removePlayer(roomId, Number(m.playerId));
+          }
+        }
+
+        // Notify surviving members of the updated roster
+        for (const m of live) {
+          const mc = this.connections.get(m.connId);
+          if (mc) this.sendRoomUsers(mc, live);
+        }
+      }
+    }
+
+    if (cleanedChallenges > 0 || cleanedRaces > 0 || cleanedMembers > 0) {
+      cleanupEvictionsTotal.inc({ type: "challenges" }, cleanedChallenges);
+      cleanupEvictionsTotal.inc({ type: "races" }, cleanedRaces);
+      cleanupEvictionsTotal.inc({ type: "room_members" }, cleanedMembers);
+      tcpActiveRaces.set({}, this.races.size);
+      tcpPendingChallenges.set({}, this.pendingRaceChallenges.size);
+      this.logger.info("TCP stale state cleaned up", {
+        challenges: cleanedChallenges,
+        races: cleanedRaces,
+        roomMembers: cleanedMembers,
+      });
     }
   }
 }

@@ -1,4 +1,5 @@
 import { getClientRoleForPlayer } from "./player-role.js";
+import { escapeXml } from "./game-xml.js";
 
 const BADGE_DEFINITIONS = [
   { id: 1, name: "Administrator", description: "Server staff account." },
@@ -6,15 +7,6 @@ const BADGE_DEFINITIONS = [
   { id: 3, name: "Veteran", description: "High street credit racer." },
   { id: 4, name: "Champion", description: "Has cleared at least one track rank." },
 ];
-
-function escapeXml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
 
 function normalizeBadgeId(value) {
   const numeric = Number(value || 0);

@@ -9,6 +9,7 @@ import { TeamState } from "./team-state.js";
 import { TcpNotify } from "./tcp-notify.js";
 import { TcpProxy } from "./tcp-proxy.js";
 import { TcpServer } from "./tcp-server.js";
+import { purgeExpiredSessions } from "./session.js";
 
 const fixtureStore = new FixtureStore({
   fixturesRoot: config.fixturesRoot,
@@ -63,6 +64,24 @@ const server = createHttpServer({
 });
 
 await tcpServer.start();
+
+// Periodic in-process cleanup (rivals: 30 min TTL, teams: 60 min TTL, sessions: 7 day TTL)
+setInterval(() => {
+  const evictedRivals = rivalsState.cleanup();
+  const evictedTeams  = teamState.cleanup();
+  if (evictedRivals > 0 || evictedTeams > 0) {
+    logger.info("In-process state cleaned up", { evictedRivals, evictedTeams });
+  }
+}, 15 * 60 * 1000); // every 15 minutes
+
+setInterval(async () => {
+  try {
+    const deleted = await purgeExpiredSessions({ supabase });
+    if (deleted > 0) logger.info("Expired sessions purged", { deleted });
+  } catch (err) {
+    logger.error("Session purge failed", { error: err.message });
+  }
+}, 60 * 60 * 1000); // every hour
 
 server.listen(config.port, config.httpHost, () => {
   logger.info("Backend listening", {
