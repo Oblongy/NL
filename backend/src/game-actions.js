@@ -1885,7 +1885,7 @@ function buildComputerTournamentCompetitorNode(tournament, index) {
 
 function buildComputerTournamentFieldXml(tournamentId) {
   const tournament = getComputerTournamentDefinition(tournamentId);
-  const competitorsXml = Array.from({ length: 31 }, (_, index) =>
+  const competitorsXml = Array.from({ length: 32 }, (_, index) =>
     buildComputerTournamentCompetitorNode(tournament, index)
   ).join("");
   return `<n2>${competitorsXml}</n2>`;
@@ -1893,7 +1893,7 @@ function buildComputerTournamentFieldXml(tournamentId) {
 
 function buildComputerTournamentOpponentXml(session) {
   const tournament = getComputerTournamentDefinition(session?.tournamentId);
-  const opponentIndex = Number(session?.wins || 0) % 31;
+  const opponentIndex = Number(session?.wins || 0) % 32;
   const purse = Number(tournament.purse || 0) * (Number(session?.wins || 0) + 1);
   const seedBase = Number(tournament.id) * 300 + opponentIndex * 19;
   const reactionTime = interpolate(tournament.minRt, tournament.maxRt, seededFraction(seedBase + 1));
@@ -2160,7 +2160,7 @@ const handlers = {
 
     logger.info("ctgr called - returning computer tournament racers", {
       tournamentId,
-      racerCount: 31,
+      racerCount: 32,
     });
 
     return {
