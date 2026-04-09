@@ -1,6 +1,7 @@
 import { buildLoginBody } from "./login-payload.js";
 import { PARTS_CATALOG_XML } from "./parts-catalog.js";
 import { randomUUID } from "node:crypto";
+import { normalizeOwnedPartsXmlValue } from "./parts-xml.js";
 import {
   escapeXml,
   failureBody,
@@ -56,6 +57,7 @@ const PART_XML_ENTRY_REGEX = /<p\b[^>]*\/>/g;
 const PART_XML_ATTR_REGEX = /(\w+)='([^']*)'/g;
 
 let partsCatalogById = null;
+let wheelCatalogById = null;
 const pendingTestDriveInvitationsById = new Map();
 const pendingTestDriveInvitationsByPlayerId = new Map();
 const activeTestDriveCarsByPlayerId = new Map();
@@ -86,6 +88,32 @@ function getPartsCatalogById() {
   }
   PART_XML_ENTRY_REGEX.lastIndex = 0;
   return partsCatalogById;
+}
+
+async function getWheelCatalogById() {
+  if (wheelCatalogById) {
+    return wheelCatalogById;
+  }
+
+  try {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const wheelLookupPath = resolve(process.cwd(), "src/wheel-lookup.json");
+    const wheelData = JSON.parse(readFileSync(wheelLookupPath, "utf-8"));
+    
+    wheelCatalogById = new Map();
+    if (wheelData.sampleWheels && Array.isArray(wheelData.sampleWheels)) {
+      for (const wheel of wheelData.sampleWheels) {
+        if (wheel.partId) {
+          wheelCatalogById.set(wheel.partId, wheel);
+        }
+      }
+    }
+  } catch (err) {
+    wheelCatalogById = new Map();
+  }
+  
+  return wheelCatalogById;
 }
 
 function createInstalledPartId() {
@@ -131,6 +159,10 @@ function buildInstalledCatalogPartXml(catalogPart, installId, overrides = {}) {
     .map((key) => `${key}='${escapeXml(String(attrs[key]))}'`)
     .join(" ");
   return `<p ${serialized}/>`;
+}
+
+function buildOwnedInstalledCatalogPartXml(catalogPart, installId, overrides = {}) {
+  return normalizeOwnedPartsXmlValue(buildInstalledCatalogPartXml(catalogPart, installId, overrides));
 }
 
 function findInstalledPartBySlotId(partsXml, slotId) {
@@ -742,7 +774,7 @@ async function handleBuyPart(context) {
         logger?.error("Failed to rename decal", { error: err.message });
       }
 
-      const installedPartXml = `<p ai='${installId}' i='${partId}' pi='${slotId}' t='c' n='Custom Graphic' in='1' cc='0' pdi='${decalId}' di='${decalId}' ps=''/>`;
+      const installedPartXml = `<p ai='${installId}' i='${partId}' ci='${slotId}' pt='c' n='Custom Graphic' in='1' cc='0' pdi='${decalId}' di='${decalId}' ps=''/>`;
       const partsXml = upsertInstalledPartXml(car.parts_xml || "", slotId, installedPartXml);
       const { error: updateError1 } = await supabase.from("game_cars").update({ parts_xml: partsXml }).eq("game_car_id", accountCarId);
       if (updateError1) {
@@ -751,7 +783,7 @@ async function handleBuyPart(context) {
         logger?.info("Saved custom graphic to car", { accountCarId, partId, slotId, partsXmlLength: partsXml.length });
       }
     } else if (catalogPart && partSlotId) {
-      const installedPartXml = buildInstalledCatalogPartXml(catalogPart, installId, {
+      const installedPartXml = buildOwnedInstalledCatalogPartXml(catalogPart, installId, {
         t: catalogPart.t || partType || "",
         ps: partPs,
       });
@@ -818,7 +850,7 @@ async function handleBuyEnginePart(context) {
 
   const installId = createInstalledPartId();
   const slotId = String(catalogPart.pi || "");
-  const installedPartXml = buildInstalledCatalogPartXml(catalogPart, installId);
+  const installedPartXml = buildOwnedInstalledCatalogPartXml(catalogPart, installId);
   const partsXml = upsertInstalledPartXml(car.parts_xml || "", slotId, installedPartXml);
   const { error: updateError } = await supabase.from("game_cars").update({ parts_xml: partsXml }).eq("game_car_id", accountCarId);
   if (updateError) {
@@ -830,6 +862,72 @@ async function handleBuyEnginePart(context) {
   return {
     body: `"s", 1, "d1", "<r s='2' b='${newBalance}' ai='${installId}'/>", "d", "<r s='1' b='0'></r>"`,
     source: "supabase:buyenginepart",
+  };
+}
+
+async function handleBuyWheel(context) {
+  const { supabase, params, logger } = context;
+  const accountCarId = params.get("acid") || "";
+  const wheelPartId = Number(params.get("wid") || 0);
+  const wheelPrice = Number(params.get("pr") || 0);
+
+  if (!accountCarId || !wheelPartId) {
+    return { body: failureBody(), source: "buywheel:missing-params" };
+  }
+
+  if (!supabase) {
+    return null;
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:buywheel");
+  if (!caller?.ok) {
+    return {
+      body: caller?.body || failureBody(),
+      source: caller?.source || "supabase:buywheel:bad-session",
+    };
+  }
+
+  const player = await getPlayerById(supabase, caller.playerId);
+  if (!player) {
+    return { body: failureBody(), source: "supabase:buywheel:no-player" };
+  }
+
+  const car = await getCarById(supabase, accountCarId);
+  if (!car || Number(car.player_id) !== Number(caller.playerId)) {
+    return { body: failureBody(), source: "supabase:buywheel:no-car" };
+  }
+
+  const wheelCatalog = await getWheelCatalogById();
+  const wheel = wheelCatalog.get(wheelPartId);
+  if (!wheel) {
+    return { body: failureBody(), source: "supabase:buywheel:no-wheel" };
+  }
+
+  const price = wheelPrice || wheel.price || 0;
+  const newBalance = Number(player.money) - price;
+  if (newBalance < 0) {
+    return { body: failureBody(), source: "supabase:buywheel:insufficient-funds" };
+  }
+
+  await updatePlayerMoney(supabase, caller.playerId, newBalance);
+
+  const wheelId = createInstalledPartId();
+  const wheelXml = `<ws><w wid='${wheelId}' id='${wheelPartId}' ws='${wheel.wheelSize || 17}'/></ws>`;
+  
+  const { error: updateError } = await supabase
+    .from("game_cars")
+    .update({ wheel_xml: wheelXml })
+    .eq("game_car_id", accountCarId);
+
+  if (updateError) {
+    logger?.error("Failed to save wheel", { error: updateError, accountCarId, wheelPartId });
+  } else {
+    logger?.info("Saved wheel to car", { accountCarId, wheelPartId, wheelId, wheelSize: wheel.wheelSize });
+  }
+
+  return {
+    body: `"s", 1, "d1", "<r s='2' b='${newBalance}' wid='${wheelId}'/>", "d", "<r s='1' b='0'></r>"`,
+    source: "supabase:buywheel",
   };
 }
 
@@ -923,7 +1021,7 @@ async function handleInstallPart(context) {
     await addPartInventoryItem(supabase, caller.playerId, Number(existingPart.i), 1);
   }
 
-  const installedPartXml = buildInstalledCatalogPartXml(catalogPart, createInstalledPartId(), {
+  const installedPartXml = buildOwnedInstalledCatalogPartXml(catalogPart, createInstalledPartId(), {
     in: "1",
   });
   const partsXml = upsertInstalledPartXml(car.parts_xml || "", slotId, installedPartXml);
@@ -2285,6 +2383,7 @@ const handlers = {
   buydyno: handleBuyDyno,
   buypart: handleBuyPart,
   buyenginepart: handleBuyEnginePart,
+  buywheel: handleBuyWheel,
   installpart: handleInstallPart,
   // --- Showroom / Dealership ---
   buycar: handleBuyCar,
