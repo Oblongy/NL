@@ -37,7 +37,13 @@ const STATIC_BADGES_XML = "<n id='badges'><b></b></n>";
 
 const STATIC_BANNERS_XML = "<n id='banners'><w></w></n>";
 
-const STATIC_DYNO_XML = "<n id='dyno' p='500'/>";
+function renderDynoNode(player) {
+  const hasDyno = player.has_dyno === 1 || player.has_dyno === true;
+  if (hasDyno) {
+    return "<n id='dyno'/>";
+  }
+  return "<n id='dyno' p='500'/>";
+}
 
 const STATIC_GEARS_XML = "<n id='gears' p='0' pp='0'/>";
 
@@ -122,7 +128,7 @@ export function buildLoginBody(player, cars, _templateBody, sessionKey, logger, 
     STATIC_PAINTS_XML +
     STATIC_BANNERS_XML +
     renderOwnedCarsNode(cars) +
-    STATIC_DYNO_XML +
+    renderDynoNode(player) +
     STATIC_BADGES_XML +
     STATIC_GEARS_XML +
     STATIC_BROADCAST_XML +

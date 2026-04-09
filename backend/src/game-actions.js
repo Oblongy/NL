@@ -2389,41 +2389,23 @@ const handlers = {
   getcarpartsbin: handleGetCarPartsBin,
   getallwheelstires: async (context) => {
     // Get all wheels and tires catalog
-    const { logger, fixtureStore } = context;
+    const { logger } = context;
     
-    // Try fixture first since it's known to work
-    const fixture = fixtureStore?.find("getallwheelstires");
-    if (fixture) {
-      if (logger) {
-        logger.info("Serving wheels/tires from fixture", {
-          bodyLength: fixture.body.length,
-        });
-      }
-      return { body: fixture.body, source: `fixture:${fixture.key}` };
-    }
+    logger.info("getallwheelstires ACTION CALLED!");
     
-    // Fallback to generated catalog
-    try {
-      const catalogXml = buildWheelsTiresCatalogXml();
-      
-      if (logger) {
-        logger.info("Serving generated wheels/tires catalog", {
-          xmlLength: catalogXml.length,
-        });
-      }
-      
-      return { 
-        body: `"s", 1, "d", ${JSON.stringify(catalogXml)}`, 
-        source: "generated:getallwheelstires" 
-      };
-    } catch (error) {
-      if (logger) {
-        logger.error("Error generating wheels/tires catalog", { error: error.message });
-      }
-      
-      // Last resort: return minimal catalog
-      return { body: `"s", 1, "d", "<p></p>"`, source: "stub:getallwheelstires" };
-    }
+    // Use our custom wheels catalog
+    const catalogXml = buildWheelsTiresCatalogXml();
+    
+    logger.info("Serving wheels/tires catalog", {
+      source: "wheels-catalog",
+      xmlLength: catalogXml.length,
+      firstChars: catalogXml.substring(0, 100),
+    });
+    
+    return { 
+      body: wrapSuccessData(catalogXml), 
+      source: "wheels-catalog:getallwheelstires" 
+    };
   },
   getonecarengine: handleGetOneCarEngine,
   getgearinfo: handleGetGearInfo,

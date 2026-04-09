@@ -1,6 +1,16 @@
 // Wheels and Tires Catalog
 // Based on wheel-lookup.json data and fixture format
 
+// Tires catalog (pi=13)
+const TIRES = [
+  { i: 1300, n: 'Nitto NT450 Street Tire', p: 300, pp: 3, g: 'C', l: 100, ps: 0 },
+  { i: 1301, n: 'Nitto NT555 Performance Tire', p: 650, pp: 6, g: 'C', l: 100, ps: 5 },
+  { i: 1302, n: 'Nitto NT555R Drag Radial', p: 1400, pp: 14, g: 'C', l: 200, ps: 8 },
+  { i: 1303, n: 'Nitto NT05 Competition Tire', p: 2800, pp: 28, g: 'B', l: 300, ps: 10 },
+  { i: 1304, n: 'Nitto NT01 Track Tire', p: 5200, pp: 52, g: 'B', l: 400, ps: 12 },
+  { i: 1305, n: 'Nitto Invo Max Performance Tire', p: 9000, pp: 90, g: 'A', l: 500, ps: 15 },
+];
+
 export const WHEEL_BRANDS = [
   { id: 1, name: "Konig", slug: "konig" },
   { id: 2, name: "Enkei", slug: "enkei" },
@@ -63,13 +73,19 @@ function generateWheelCatalog() {
 
 // Build XML for wheels and tires catalog matching fixture format
 export function buildWheelsTiresCatalogXml() {
-  const wheels = generateWheelCatalog();
+  // Start with tires (pi=13)
+  const tiresXml = TIRES.map(t => 
+    `<p i='${t.i}' pi='13' t='c' n='${t.n}' p='${t.p}' pp='${t.pp}' g='${t.g}' di='${t.i - 1299}' pdi='${t.i - 1299}' ` +
+    `b='nitto' bn='Nitto' mn='NT${t.i - 1299}' l='${t.l}' mo='0' hp='0' tq='0' wt='0' cc='0' ps='${t.ps}'/>`
+  ).join("");
   
+  // Then add wheels (pi=14)
+  const wheels = generateWheelCatalog();
   const wheelsXml = wheels.map(w => 
     `<p i='${w.i}' pi='${w.pi}' t='${w.t}' n='${w.n}' p='${w.p}' pp='${w.pp}' g='${w.g}' ` +
     `di='${w.di}' pdi='${w.pdi}' b='${w.b}' bn='${w.bn}' mn='${w.mn}' l='${w.l}' mo='${w.mo}' ` +
     `hp='${w.hp}' tq='${w.tq}' wt='${w.wt}' cc='${w.cc}' ps='${w.ps}'/>`
   ).join("");
   
-  return `<p>${wheelsXml}</p>`;
+  return `<p>${tiresXml}${wheelsXml}</p>`;
 }
