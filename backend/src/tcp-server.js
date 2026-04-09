@@ -480,8 +480,8 @@ export class TcpServer {
             srcSessionKey,
             srcRaceGuid,
           });
-          // Just ack and ignore - don't try to process as race channel
-          this.sendMessage(conn, '"ac", "SRC", "s", 0');
+          // Just ack with success but don't process - prevents client crash
+          this.sendMessage(conn, '"ac", "SRC", "s", 1');
           return;
         }
         
