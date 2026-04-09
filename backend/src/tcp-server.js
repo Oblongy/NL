@@ -647,15 +647,128 @@ export class TcpServer {
   }
 
   handleKingOfHillQueue(conn) {
-    this.sendMessage(conn, '"ac", "KU", "s", "<q><k i=\'0\' ks=\'0\' ci=\'0\'/></q>"');
+    const roomId = conn.roomId || 4;
+    const roomPlayers = this.rooms.get(roomId) || [];
+    
+    // Filter players who have made a KOTH selection (are in queue)
+    const queuedPlayers = [];
+    for (const player of roomPlayers) {
+      const playerConn = this.connections.get(player.connId);
+      if (playerConn?.kingOfHillSelection) {
+        queuedPlayers.push({
+          playerId: player.playerId,
+          carId: playerConn.kingOfHillSelection.carId,
+        });
+      }
+    }
+    
+    const queueXml = queuedPlayers.length > 0
+      ? queuedPlayers.map(p => `<k i='${p.playerId}' ks='0' ci='${p.carId}'/>`).join("")
+      : "<k i='0' ks='0' ci='0'/>";
+    
+    this.sendMessage(conn, `"ac", "KU", "s", "<q>${queueXml}</q>"`);
   }
 
   handleKingOfHillJoin(conn, parts) {
+    const carId = Number(parts[1] || 0);
+    const lane = Number(parts[2] || -1);
+    
     conn.kingOfHillSelection = {
-      carId: Number(parts[1] || 0),
-      lane: Number(parts[2] || 0),
+      carId,
+      lane,
     };
+    
     this.sendMessage(conn, '"ac", "UNU", "i", 1, "s", 1, "ul", ""');
+    
+    // Try to match with another player in the KOTH queue
+    const roomId = conn.roomId || 4;
+    const roomPlayers = this.rooms.get(roomId) || [];
+    
+    // Find all players in queue (excluding current player)
+    const waitingPlayers = [];
+    for (const player of roomPlayers) {
+      if (player.connId === conn.id) continue;
+      const playerConn = this.connections.get(player.connId);
+      if (playerConn?.kingOfHillSelection && !playerConn.raceId) {
+        waitingPlayers.push({
+          conn: playerConn,
+          playerId: player.playerId,
+          carId: playerConn.kingOfHillSelection.carId,
+          lane: playerConn.kingOfHillSelection.lane,
+        });
+      }
+    }
+    
+    // If there's at least one waiting player, match them
+    if (waitingPlayers.length > 0 && !conn.raceId) {
+      const opponent = waitingPlayers[0];
+      
+      this.logger.info("KOTH match found", {
+        player1: { connId: conn.id, playerId: conn.playerId, carId },
+        player2: { connId: opponent.conn.id, playerId: opponent.playerId, carId: opponent.carId },
+      });
+      
+      // Create race request for player 1
+      const request1 = {
+        connId: conn.id,
+        requesterPlayerId: Number(conn.playerId),
+        requesterCarId: carId,
+        roomId,
+        lane: lane >= 0 ? lane : 0,
+        bet: 0,
+      };
+      
+      // Create race request for player 2
+      const request2 = {
+        connId: opponent.conn.id,
+        requesterPlayerId: Number(opponent.playerId),
+        requesterCarId: opponent.carId,
+        roomId,
+        lane: opponent.lane >= 0 ? opponent.lane : 1,
+        bet: 0,
+      };
+      
+      // Clear their KOTH selections
+      delete conn.kingOfHillSelection;
+      delete opponent.conn.kingOfHillSelection;
+      
+      // Create the race session
+      this.createRaceSession(request1, request2);
+      
+      // Broadcast updated queue to room
+      this.broadcastKothQueueUpdate(roomId);
+    } else {
+      // Broadcast updated queue to show this player joined
+      this.broadcastKothQueueUpdate(roomId);
+    }
+  }
+  
+  broadcastKothQueueUpdate(roomId) {
+    const roomPlayers = this.rooms.get(roomId) || [];
+    const queuedPlayers = [];
+    
+    for (const player of roomPlayers) {
+      const playerConn = this.connections.get(player.connId);
+      if (playerConn?.kingOfHillSelection) {
+        queuedPlayers.push({
+          playerId: player.playerId,
+          carId: playerConn.kingOfHillSelection.carId,
+        });
+      }
+    }
+    
+    const queueXml = queuedPlayers.length > 0
+      ? queuedPlayers.map(p => `<k i='${p.playerId}' ks='0' ci='${p.carId}'/>`).join("")
+      : "<k i='0' ks='0' ci='0'/>";
+    
+    const queueMessage = `"ac", "LR", "s", "<q>${queueXml}</q>"`;
+    
+    for (const player of roomPlayers) {
+      const playerConn = this.connections.get(player.connId);
+      if (playerConn) {
+        this.sendMessage(playerConn, queueMessage);
+      }
+    }
   }
 
   leaveRoom(conn) {
