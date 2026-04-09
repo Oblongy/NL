@@ -385,19 +385,19 @@ export class TcpServer {
         const chatText = messageType === "CRC"
           ? parts.slice(1).find(p => p.length > 1 && !/^\d+$/.test(p)) || ""
           : (parts[1] || "");
-        this.logger.info("TCP chat received", { connId: conn.id, messageType, chatText });
-        if (chatText) {
+        this.logger.info("TCP chat received", { connId: conn.id, messageType, chatText, username: conn.username });
+        if (chatText && conn.playerId && conn.username) {
           // Broadcast to room if in a room, otherwise to all lobby connections
           if (conn.roomId) {
             const room = this.rooms.get(conn.roomId) || [];
-            const chatMsg = `"ac", "TE", "i", "${conn.playerId}", "t", "${this.escapeForTcp(chatText)}"`;
+            const chatMsg = `"ac", "TE", "i", "${conn.playerId}", "u", "${this.escapeForTcp(conn.username)}", "t", "${this.escapeForTcp(chatText)}"`;
             for (const member of room) {
               const memberConn = this.connections.get(member.connId);
               if (memberConn) this.sendMessage(memberConn, chatMsg);
             }
           } else {
             // Lobby chat - broadcast to all connected players
-            const chatMsg = `"ac", "TE", "i", "${conn.playerId}", "t", "${this.escapeForTcp(chatText)}"`;
+            const chatMsg = `"ac", "TE", "i", "${conn.playerId}", "u", "${this.escapeForTcp(conn.username)}", "t", "${this.escapeForTcp(chatText)}"`;
             for (const [, otherConn] of this.connections) {
               if (otherConn.playerId && !otherConn.roomId) {
                 this.sendMessage(otherConn, chatMsg);
@@ -417,12 +417,12 @@ export class TcpServer {
           messageText 
         });
         
-        if (targetPlayerId && messageText && conn.playerId) {
+        if (targetPlayerId && messageText && conn.playerId && conn.username) {
           // Find target player's connection
           const targetConn = this.findConnectionByPlayerId(targetPlayerId);
           if (targetConn) {
-            // Send instant message to target
-            const imMsg = `"ac", "NIM", "i", "${conn.playerId}", "t", "${this.escapeForTcp(messageText)}"`;
+            // Send instant message to target with sender's username
+            const imMsg = `"ac", "NIM", "i", "${conn.playerId}", "u", "${this.escapeForTcp(conn.username)}", "t", "${this.escapeForTcp(messageText)}"`;
             this.sendMessage(targetConn, imMsg);
             // Ack to sender
             this.sendMessage(conn, '"ac", "NIM", "s", 1');
