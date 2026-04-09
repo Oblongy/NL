@@ -35,6 +35,10 @@ import {
   getCarById,
   deleteCar,
   clearCarTestDriveState,
+  listPartsInventoryForPlayer,
+  getPartInventoryItemById,
+  addPartInventoryItem,
+  consumePartInventoryItem,
 } from "./user-service.js";
 
 const DEFAULT_STARTER_CATALOG_CAR_ID = 1; // Acura Integra GSR
@@ -129,6 +133,25 @@ function buildInstalledCatalogPartXml(catalogPart, installId, overrides = {}) {
   return `<p ${serialized}/>`;
 }
 
+function findInstalledPartBySlotId(partsXml, slotId) {
+  const source = String(partsXml || "");
+  let match;
+  while ((match = PART_XML_ENTRY_REGEX.exec(source)) !== null) {
+    const attrs = parsePartXmlAttributes(match[0]);
+    if (String(attrs.pi || attrs.ci || "") === String(slotId || "")) {
+      PART_XML_ENTRY_REGEX.lastIndex = 0;
+      return attrs;
+    }
+  }
+  PART_XML_ENTRY_REGEX.lastIndex = 0;
+  return null;
+}
+
+function buildPartsInventoryXml(items) {
+  const partsXml = items.map((item) => item.xml).join("");
+  return `<n2>${partsXml}</n2>`;
+}
+
 function parseShowroomPurchaseCatalogCarId(params) {
   return Number(
     params.get("acid")
@@ -150,8 +173,8 @@ function parseShowroomPurchasePrice(params) {
 }
 
 function getCatalogCarPrice(catalogCarId) {
-  const car = FULL_CAR_CATALOG.find(([cid]) => cid === catalogCarId);
-  return car ? car[2] : 0;
+  const car = FULL_CAR_CATALOG.find(([cid]) => String(cid) === String(catalogCarId));
+  return car ? Number(car[2] || 0) : 0;
 }
 
 async function resolveInternalPlayerIdByPublicId(supabase, publicId) {
@@ -810,6 +833,124 @@ async function handleBuyEnginePart(context) {
   };
 }
 
+async function handleGetCarPartsBin(context) {
+  const { supabase } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:getcarpartsbin");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:getcarpartsbin:bad-session" };
+  }
+
+  const inventory = await listPartsInventoryForPlayer(supabase, caller.playerId);
+  const catalog = getPartsCatalogById();
+  const items = [];
+
+  for (const row of inventory) {
+    const catalogPart = catalog.get(Number(row.part_catalog_id || 0));
+    if (!catalogPart) {
+      continue;
+    }
+
+    const quantity = Math.max(1, Number(row.quantity || 1));
+    for (let index = 0; index < quantity; index += 1) {
+      const syntheticId = index === 0 ? Number(row.id) : `${row.id}-${index + 1}`;
+      items.push({
+        id: syntheticId,
+        xml: buildInstalledCatalogPartXml(catalogPart, syntheticId, {
+          in: "0",
+        }),
+      });
+    }
+  }
+
+  return {
+    body: wrapSuccessData(buildPartsInventoryXml(items)),
+    source: "supabase:getcarpartsbin",
+  };
+}
+
+async function handleInstallPart(context) {
+  const { supabase, params, logger } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:installpart");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:installpart:bad-session" };
+  }
+
+  const accountPartId = Number(params.get("acpid") || 0);
+  const partId = Number(params.get("pid") || 0);
+  const accountCarId = Number(params.get("acid") || 0);
+
+  if (!accountPartId || !partId || !accountCarId) {
+    return { body: failureBody(), source: "supabase:installpart:missing-params" };
+  }
+
+  const [inventoryItem, car] = await Promise.all([
+    getPartInventoryItemById(supabase, accountPartId, caller.playerId),
+    getCarById(supabase, accountCarId),
+  ]);
+
+  if (!inventoryItem || Number(inventoryItem.part_catalog_id || 0) !== partId) {
+    return { body: failureBody(), source: "supabase:installpart:no-inventory-part" };
+  }
+
+  if (!car || Number(car.player_id) !== Number(caller.playerId)) {
+    return { body: failureBody(), source: "supabase:installpart:no-car" };
+  }
+
+  const catalogPart = getPartsCatalogById().get(partId);
+  if (!catalogPart) {
+    return { body: failureBody(), source: "supabase:installpart:no-catalog-part" };
+  }
+
+  const slotId = String(catalogPart.pi || "");
+  if (!slotId) {
+    return { body: failureBody(), source: "supabase:installpart:no-slot" };
+  }
+
+  const existingPart = findInstalledPartBySlotId(car.parts_xml || "", slotId);
+  if (Number(existingPart?.i || 0) === partId) {
+    return { body: `"s", 1`, source: "supabase:installpart:already-installed" };
+  }
+
+  if (existingPart?.i) {
+    await addPartInventoryItem(supabase, caller.playerId, Number(existingPart.i), 1);
+  }
+
+  const installedPartXml = buildInstalledCatalogPartXml(catalogPart, createInstalledPartId(), {
+    in: "1",
+  });
+  const partsXml = upsertInstalledPartXml(car.parts_xml || "", slotId, installedPartXml);
+  const { error: updateError } = await supabase
+    .from("game_cars")
+    .update({ parts_xml: partsXml })
+    .eq("game_car_id", accountCarId);
+
+  if (updateError) {
+    return { body: failureBody(), source: "supabase:installpart:update-failed" };
+  }
+
+  await consumePartInventoryItem(supabase, accountPartId, caller.playerId);
+  logger?.info("Installed spare part onto car", {
+    playerId: caller.playerId,
+    accountCarId,
+    accountPartId,
+    partId,
+    slotId,
+  });
+
+  return {
+    body: `"s", 1`,
+    source: "supabase:installpart",
+  };
+}
+
 async function handleBuyCar(context) {
   const { supabase, params } = context;
   if (!supabase) {
@@ -848,7 +989,7 @@ async function handleBuyCar(context) {
   const createdCar = await createOwnedCar(supabase, {
     playerId: caller.playerId,
     catalogCarId,
-    selected: existingCars.length === 0,
+    selected: true,
     paintIndex: 4,
     plateName: "",
     colorCode: selectedColor,
@@ -2114,6 +2255,7 @@ const handlers = {
   sellcar: handleSellCar,
   // --- Parts & Engine ---
   getallparts: handleGetAllParts,
+  getcarpartsbin: handleGetCarPartsBin,
   getallwheelstires: async (context) => {
     // Get all wheels and tires catalog - this is a large response
     // For now, return from fixture if available
@@ -2129,6 +2271,7 @@ const handlers = {
   buydyno: handleBuyDyno,
   buypart: handleBuyPart,
   buyenginepart: handleBuyEnginePart,
+  installpart: handleInstallPart,
   // --- Showroom / Dealership ---
   buycar: handleBuyCar,
   buyshowroomcar: handleBuyCar,

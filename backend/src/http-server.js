@@ -163,11 +163,51 @@ function renderTournamentKeyJpeg(code) {
 }
 
 function avatarPathForPlayerId(playerId) {
-  return resolve(process.cwd(), "../cache/avatars/0/0/0", `${playerId}.jpg`);
+  return resolve(process.cwd(), "../cache/avatars", `${playerId}.jpg`);
 }
 
 function teamAvatarPathForTeamId(teamId) {
-  return resolve(process.cwd(), "../cache/teamavatars/0/0/0", `${teamId}.jpg`);
+  return resolve(process.cwd(), "../cache/teamAvatars", `${teamId}.jpg`);
+}
+
+function normalizeCompatAssetPath(pathname) {
+  const normalized = String(pathname || "")
+    .replace(/\\/g, "/")
+    .replace(/\/+/g, "/");
+  return normalized.length > 1 && normalized.endsWith("/") ? normalized.slice(0, -1) : normalized;
+}
+
+function resolveExistingPath(candidates) {
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function avatarCandidates(playerId, shardPath = "") {
+  const candidates = [
+    resolve(process.cwd(), "../cache/avatars", `${playerId}.jpg`),
+  ];
+  if (shardPath) {
+    candidates.push(resolve(process.cwd(), "../cache/avatars", shardPath, `${playerId}.jpg`));
+  }
+  return candidates;
+}
+
+function teamAvatarCandidates(teamId, shardPath = "") {
+  const candidates = [
+    resolve(process.cwd(), "../cache/teamAvatars", `${teamId}.jpg`),
+    resolve(process.cwd(), "../cache/teamavatars", `${teamId}.jpg`),
+  ];
+  if (shardPath) {
+    candidates.push(
+      resolve(process.cwd(), "../cache/teamAvatars", shardPath, `${teamId}.jpg`),
+      resolve(process.cwd(), "../cache/teamavatars", shardPath, `${teamId}.jpg`),
+    );
+  }
+  return candidates;
 }
 
 function userDecalPath(filename) {
@@ -182,20 +222,23 @@ function userDecalPath(filename) {
 function serveCompatAsset(res, pathname) {
   let filePath = null;
   let contentType = "application/octet-stream";
+  const normalizedPath = normalizeCompatAssetPath(pathname);
 
-  const avatarMatch = pathname.match(/^\/avatars\/0\/0\/0\/(\d+)\.jpg$/i);
+  const avatarMatch = normalizedPath.match(/^\/(?:cache\/)?avatars(?:\/(\d+)\/(\d+)\/(\d+))?\/(\d+)\.jpg$/i);
   if (avatarMatch) {
-    filePath = avatarPathForPlayerId(avatarMatch[1]);
+    const shardPath = [avatarMatch[1], avatarMatch[2], avatarMatch[3]].filter(Boolean).join("/");
+    filePath = resolveExistingPath(avatarCandidates(avatarMatch[4], shardPath));
     contentType = "image/jpeg";
   }
 
-  const teamAvatarMatch = pathname.match(/^\/teamavatars\/0\/0\/0\/(\d+)\.jpg$/i);
+  const teamAvatarMatch = normalizedPath.match(/^\/(?:cache\/)?teamavatars(?:\/(\d+)\/(\d+)\/(\d+))?\/(\d+)\.jpg$/i);
   if (!filePath && teamAvatarMatch) {
-    filePath = teamAvatarPathForTeamId(teamAvatarMatch[1]);
+    const shardPath = [teamAvatarMatch[1], teamAvatarMatch[2], teamAvatarMatch[3]].filter(Boolean).join("/");
+    filePath = resolveExistingPath(teamAvatarCandidates(teamAvatarMatch[4], shardPath));
     contentType = "image/jpeg";
   }
 
-  const userDecalMatch = pathname.match(/^\/cache\/car\/userDecals\/([^/]+)$/i);
+  const userDecalMatch = normalizedPath.match(/^\/cache\/car\/userDecals\/([^/]+)$/i);
   if (!filePath && userDecalMatch) {
     filePath = userDecalPath(userDecalMatch[1]);
     contentType = userDecalMatch[1].toLowerCase().endsWith(".swf")

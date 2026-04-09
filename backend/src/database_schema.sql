@@ -108,6 +108,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_game_cars_one_selected
   ON game_cars(player_id) 
   WHERE selected = TRUE;
 
+CREATE TABLE IF NOT EXISTS game_parts_inventory (
+  id BIGSERIAL PRIMARY KEY,
+  player_id BIGINT NOT NULL REFERENCES game_players(id) ON DELETE CASCADE,
+  part_catalog_id INTEGER NOT NULL,
+  quantity INTEGER NOT NULL DEFAULT 1,
+  acquired_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE (player_id, part_catalog_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_game_parts_inventory_player ON game_parts_inventory(player_id);
+
 -- ============================================================================
 -- GAME SESSIONS TABLE
 -- ============================================================================
