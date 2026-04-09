@@ -1,6 +1,7 @@
 import { buildLoginBody } from "./login-payload.js";
 import { PARTS_CATALOG_XML } from "./parts-catalog.js";
 import { randomUUID } from "node:crypto";
+import { normalizeOwnedPartsXmlValue } from "./parts-xml.js";
 import {
   escapeXml,
   failureBody,
@@ -131,6 +132,10 @@ function buildInstalledCatalogPartXml(catalogPart, installId, overrides = {}) {
     .map((key) => `${key}='${escapeXml(String(attrs[key]))}'`)
     .join(" ");
   return `<p ${serialized}/>`;
+}
+
+function buildOwnedInstalledCatalogPartXml(catalogPart, installId, overrides = {}) {
+  return normalizeOwnedPartsXmlValue(buildInstalledCatalogPartXml(catalogPart, installId, overrides));
 }
 
 function findInstalledPartBySlotId(partsXml, slotId) {
@@ -742,7 +747,7 @@ async function handleBuyPart(context) {
         logger?.error("Failed to rename decal", { error: err.message });
       }
 
-      const installedPartXml = `<p ai='${installId}' i='${partId}' pi='${slotId}' t='c' n='Custom Graphic' in='1' cc='0' pdi='${decalId}' di='${decalId}' ps=''/>`;
+      const installedPartXml = `<p ai='${installId}' i='${partId}' ci='${slotId}' pt='c' n='Custom Graphic' in='1' cc='0' pdi='${decalId}' di='${decalId}' ps=''/>`;
       const partsXml = upsertInstalledPartXml(car.parts_xml || "", slotId, installedPartXml);
       const { error: updateError1 } = await supabase.from("game_cars").update({ parts_xml: partsXml }).eq("game_car_id", accountCarId);
       if (updateError1) {
@@ -751,7 +756,7 @@ async function handleBuyPart(context) {
         logger?.info("Saved custom graphic to car", { accountCarId, partId, slotId, partsXmlLength: partsXml.length });
       }
     } else if (catalogPart && partSlotId) {
-      const installedPartXml = buildInstalledCatalogPartXml(catalogPart, installId, {
+      const installedPartXml = buildOwnedInstalledCatalogPartXml(catalogPart, installId, {
         t: catalogPart.t || partType || "",
         ps: partPs,
       });
@@ -818,7 +823,7 @@ async function handleBuyEnginePart(context) {
 
   const installId = createInstalledPartId();
   const slotId = String(catalogPart.pi || "");
-  const installedPartXml = buildInstalledCatalogPartXml(catalogPart, installId);
+  const installedPartXml = buildOwnedInstalledCatalogPartXml(catalogPart, installId);
   const partsXml = upsertInstalledPartXml(car.parts_xml || "", slotId, installedPartXml);
   const { error: updateError } = await supabase.from("game_cars").update({ parts_xml: partsXml }).eq("game_car_id", accountCarId);
   if (updateError) {
@@ -923,7 +928,7 @@ async function handleInstallPart(context) {
     await addPartInventoryItem(supabase, caller.playerId, Number(existingPart.i), 1);
   }
 
-  const installedPartXml = buildInstalledCatalogPartXml(catalogPart, createInstalledPartId(), {
+  const installedPartXml = buildOwnedInstalledCatalogPartXml(catalogPart, createInstalledPartId(), {
     in: "1",
   });
   const partsXml = upsertInstalledPartXml(car.parts_xml || "", slotId, installedPartXml);
