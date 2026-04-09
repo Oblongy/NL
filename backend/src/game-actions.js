@@ -1733,27 +1733,41 @@ function buildShowroomXml(locationId, starterOnly = false) {
   const catId = locationToCatId[targetLocationId] || 1001;
 
   const selectedCarId = eligible.length > 0 ? eligible[0][0] : "0";
+  const showroomColors = [
+    { paintId: "5", colorCode: "C0C0C0" },
+    { paintId: "15", colorCode: "CC0000" },
+    { paintId: "3", colorCode: "000000" },
+    { paintId: "4", colorCode: "FFFFFF" },
+    { paintId: "16", colorCode: "0033FF" },
+    { paintId: "6", colorCode: "FFD700" },
+    { paintId: "7", colorCode: "00AA00" },
+    { paintId: "8", colorCode: "FF6600" },
+  ];
 
   const carNodes = eligible
     .map(([cid, name, price], index) => {
       const escapedName = escapeXml(name);
-      const colorCode = ["C0C0C0","CC0000","000000","FFFFFF","0033FF","FFD700","00AA00","FF6600"][index % 8];
-      const paintIds = ["5","15","3","4","16","6","7","8"]; // Corresponding paint IDs
-      const paintId = paintIds[index % 8];
       const spec = getShowroomCarSpec(cid);
+      const primarySwatch = showroomColors[index % showroomColors.length];
+      const wheelSize = String(Math.max(15, Math.min(19, 15 + (index % 5))));
+      const wheelId = String(1 + (index % 8));
+      const swatchNodes = showroomColors
+        .map(({ paintId, colorCode }) => `<p i='${paintId}' cd='${colorCode}'/>`)
+        .join("");
+      const purchasePrice = Number(price) || 0;
+      const pointPrice = getCatalogCarPointPrice(cid);
       return (
         `<c ai='0' id='${cid}' i='${cid}' ci='${cid}' ` +
         `sel='${index === 0 ? "1" : "0"}' pi='${catId}' pn='' ` +
         `l='${targetLocationId}' lid='${targetLocationId}' cid='${targetLocationId}' ` +
-        `b='0' n='${escapedName}' c='${escapedName}' p='${price}' pr='${price}' pp='0' cp='${price}' ` +
-        `lk='0' ae='0' cc='${colorCode}' g='' ` +
+        `b='0' n='${escapedName}' c='${escapedName}' p='${purchasePrice}' pr='${purchasePrice}' pp='${pointPrice}' cp='${purchasePrice}' ` +
+        `lk='0' ae='0' cc='${primarySwatch.colorCode}' g='' ii='0' ` +
+        `wid='${wheelId}' ws='${wheelSize}' rh='0' ts='0' mo='0' ` +
+        `cbl='0' cb='0' po='0' poc='0' led='' ` +
         `le='0' lea='999' les='0' lec='999' let='0' ` +
         `eo='${escapeXml(spec.eo)}' dt='${escapeXml(spec.dt)}' np='${escapeXml(spec.np)}' ct='${escapeXml(spec.ct)}' ` +
-        `et='${escapeXml(spec.et)}' tt='${escapeXml(spec.tt)}' sw='${escapeXml(spec.sw)}' st='${escapeXml(spec.st)}' y='${escapeXml(spec.y)}' ` +
-        `wid='1' ws='17'>` +
-        `<ws><w wid='1' id='1001' ws='17'/></ws>` +
-        `<p i='1001' ci='14' n='Factory 17&quot;' in='1' cc='' pdi='1' di='1' pt='c' ps='17'/>` +
-        `<ps><p i='${paintId}' cd='${colorCode}'/></ps>` +
+        `et='${escapeXml(spec.et)}' tt='${escapeXml(spec.tt)}' sw='${escapeXml(spec.sw)}' st='${escapeXml(spec.st)}' y='${escapeXml(spec.y)}'>` +
+        swatchNodes +
         `</c>`
       );
     })
@@ -1944,7 +1958,7 @@ async function handleSellCar(context) {
 
 async function handleGetCarCategories(context) {
   const catNodes = DEALER_CATEGORIES
-    .map((c) => `<c i='${c.i}' pi='${c.pi}' n='${escapeXml(c.n)}' cl='${c.cl}' l='${c.l}'/>`)
+    .map((c) => `<c i='${c.i}' pi='${c.pi}' c='0' p='0' n='${escapeXml(c.n)}' cl='${c.cl}' l='${c.l}'/>`)
     .join("");
   return {
     body: wrapSuccessData(`<cats>${catNodes}</cats>`),
