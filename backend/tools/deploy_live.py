@@ -113,7 +113,7 @@ def run_local_bytes(*args: str) -> bytes:
 def normalize_backend_relative_path(path: str) -> str:
     normalized = str(path).replace("\\", "/").strip().lstrip("./")
     if normalized.startswith("backend/"):
-        normalized = normalized[len("backend/"):]
+        normalized = normalized[len("backend/") :]
     if not normalized or normalized.startswith("../") or normalized.startswith("/"):
         raise ValueError(f"Invalid backend-relative path: {path}")
     return Path(normalized).as_posix()
@@ -223,6 +223,29 @@ def exec_remote(client: paramiko.SSHClient, command: str) -> tuple[int, str, str
     err = stderr.read().decode("utf-8", "replace")
     status = stdout.channel.recv_exit_status()
     return status, out, err
+
+
+def safe_exec_remote(
+    client: paramiko.SSHClient, command: str, retries: int = 2, delay: float = 1.0
+) -> tuple[int, str, str]:
+    """Execute a remote command with simple retry/backoff.
+
+    This helps tolerate transient network hiccups or remote hiccups during live deploys.
+    """
+    last_status: int = 1
+    last_out: str = ""
+    last_err: str = ""
+    for attempt in range(retries + 1):
+        last_status, last_out, last_err = exec_remote(client, command)
+        if last_status == 0:
+            return last_status, last_out, last_err
+        if attempt < retries:
+            log(
+                f"Remote command failed (attempt {attempt + 1}/{retries}). retrying in {delay}s: {command}"
+            )
+            time.sleep(delay)
+    log(f"Remote command ultimately failed after {retries + 1} attempts: {command}")
+    return last_status, last_out, last_err
 
 
 def read_remote_git_manifest(client: paramiko.SSHClient, remote_dir: str) -> list[str]:
@@ -344,7 +367,9 @@ def main() -> int:
             desired_manifest = set(upload_candidates)
             files_to_delete = sorted(previous_manifest - desired_manifest)
         else:
-            desired_manifest = (previous_manifest - set(files_to_delete)) | set(upload_candidates)
+            desired_manifest = (previous_manifest - set(files_to_delete)) | set(
+                upload_candidates
+            )
 
         changed_files = []
         for relative_path in sorted(upload_candidates):
@@ -391,22 +416,26 @@ def main() -> int:
         if not changed_files and not files_to_delete:
             log("No content changes detected on the VPS.")
         else:
-            status, out, err = exec_remote(
+            status, out, err = safe_exec_remote(
                 client,
                 f"cd {shlex.quote(args.remote_dir)} && node --check src/index.js",
             )
             if status != 0:
                 raise RuntimeError(err.strip() or out.strip() or "node --check failed")
 
-            if any(name in {"package.json", "package-lock.json"} for name in changed_files):
-                status, out, err = exec_remote(
+            if any(
+                name in {"package.json", "package-lock.json"} for name in changed_files
+            ):
+                status, out, err = safe_exec_remote(
                     client,
                     f"cd {shlex.quote(args.remote_dir)} && npm install --omit=dev",
                 )
                 if status != 0:
-                    raise RuntimeError(err.strip() or out.strip() or "npm install failed")
+                    raise RuntimeError(
+                        err.strip() or out.strip() or "npm install failed"
+                    )
 
-            status, out, err = exec_remote(
+            status, out, err = safe_exec_remote(
                 client,
                 f"cd {shlex.quote(args.remote_dir)} && pm2 restart {shlex.quote(args.app_name)} --update-env",
             )
@@ -415,7 +444,7 @@ def main() -> int:
             if out.strip():
                 write_output(out.rstrip())
 
-        status, out, err = exec_remote(
+        status, out, err = safe_exec_remote(
             client,
             f"cd {shlex.quote(args.remote_dir)} && pm2 status {shlex.quote(args.app_name)} --no-color",
         )
@@ -424,7 +453,9 @@ def main() -> int:
         write_output(out.rstrip())
 
         if not args.skip_healthcheck:
-            status, out, err = exec_remote(client, f"curl -sf {shlex.quote(args.health_url)}")
+            status, out, err = safe_exec_remote(
+                client, f"curl -sf {shlex.quote(args.health_url)}"
+            )
             if status != 0:
                 raise RuntimeError(err.strip() or out.strip() or "health check failed")
             log(f"Health check: {out.strip()}")

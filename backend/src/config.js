@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 const currentDir = dirname(fileURLToPath(import.meta.url));
 const backendRoot = resolve(currentDir, "..");
 const projectRoot = resolve(backendRoot, "..");
-const fixturesRoot = resolve(backendRoot, "fixtures");
 
 function loadDotEnvFile() {
   const envPath = resolve(backendRoot, ".env");
@@ -48,5 +47,4 @@ export const config = {
   supabaseServiceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY || "",
   backendRoot,
   projectRoot,
-  fixturesRoot,
 };

@@ -9,7 +9,7 @@ import {
 const LEGACY_LOGIN_ROLE = 5;
 
 // ---------------------------------------------------------------------------
-// Static game data — these never change per-player, sourced from game data
+// Static game data - these never change per-player, sourced from game data
 // ---------------------------------------------------------------------------
 
 const STATIC_LOCATIONS_XML =
@@ -114,7 +114,7 @@ function buildLoginTail(player, sessionKey) {
 }
 
 // ---------------------------------------------------------------------------
-// Main export — fully self-contained, no fixture dependency
+// Main export - fully self-contained, no runtime capture dependency
 // ---------------------------------------------------------------------------
 
 export function buildLoginBody(player, cars, _templateBody, sessionKey, logger, options = {}) {

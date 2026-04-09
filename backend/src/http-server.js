@@ -298,7 +298,7 @@ async function resolveCompatSessionInfo(supabase, sessionKey) {
   };
 }
 
-export function createHttpServer({ config, logger, fixtureStore, supabase, services = {} }) {
+export function createHttpServer({ config, logger, supabase, services = {} }) {
   return createServer(async (req, res) => {
     try {
       const requestUrl = new URL(req.url, `http://${req.headers.host || `${config.host}:${config.port}`}`);
@@ -499,19 +499,6 @@ export function createHttpServer({ config, logger, fixtureStore, supabase, servi
           return;
         }
 
-        // Fall back to decoded capture fixtures for the remaining static routes.
-        const fixture = fixtureStore.find(requestUrl.pathname);
-        if (fixture) {
-          logger.info("Serving static route from fixture", { 
-            path: requestUrl.pathname, 
-            source: fixture.key 
-          });
-          sendText(res, 200, fixture.body, {
-            "X-Nitto-Source": `fixture:${fixture.key}`,
-          });
-          return;
-        }
-
         notFound(res, requestUrl.pathname);
         return;
       }
@@ -537,7 +524,6 @@ export function createHttpServer({ config, logger, fixtureStore, supabase, servi
             params: plainParams,
             rawQuery,
             decodedQuery: rawQuery,
-            fixtureStore,
             supabase,
             logger,
             services,
@@ -567,7 +553,6 @@ export function createHttpServer({ config, logger, fixtureStore, supabase, servi
         params: decoded.params,
         rawQuery,
         decodedQuery: decoded.decoded,
-        fixtureStore,
         supabase,
         logger,
         services,

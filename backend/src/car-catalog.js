@@ -1,5 +1,5 @@
 import { escapeXml } from "./game-xml.js";
-import { getFixtureCarsCatalogEntries } from "./fixture-catalogs.js";
+import { getStaticCarsCatalogEntries } from "./catalog-data-source.js";
 
 const BASE_CAR_PRICES = [
   ["1", 24000], ["2", 35000], ["3", 30000], ["4", 32000], ["5", 150000],
@@ -64,7 +64,7 @@ for (const [carId, price] of SPECIAL_SHOWROOM_PRICE_OVERRIDES.entries()) {
   priceByCarId.set(carId, price);
 }
 
-export const FULL_CAR_CATALOG = getFixtureCarsCatalogEntries().map(({ id, name, locationId }) => [
+export const FULL_CAR_CATALOG = getStaticCarsCatalogEntries().map(({ id, name, locationId }) => [
   id,
   name,
   priceByCarId.get(id) ?? 0,

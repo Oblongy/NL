@@ -21,6 +21,7 @@ import {
 
 const MESSAGE_DELIMITER = "\x04";
 const FIELD_DELIMITER = "\x1e";
+const DEFAULT_GLOBAL_CHAT_CLASS = 2;
 
 export class TcpServer {
   constructor({ logger, notify, proxy, supabase, raceRoomRegistry = null, port = 3724, host = "127.0.0.1" }) {
@@ -411,50 +412,10 @@ export class TcpServer {
         this.logger.info("TCP CRC handled as KOTH room create", { connId: conn.id, parts });
       } else if (messageType === "TE" || messageType === "CRC") {
         this.logger.info("TCP chat parts", { connId: conn.id, messageType, parts, partsCount: parts.length });
-        // CRC has 8 parts - find the text (longest non-numeric part after index 0)
-        const chatText = messageType === "CRC"
-          ? parts.slice(1).find(p => p.length > 1 && !/^\d+$/.test(p)) || ""
-          : (parts[1] || "");
-        this.logger.info("TCP chat received", { 
-          connId: conn.id, 
-          messageType, 
-          chatText, 
-          username: conn.username,
-          playerId: conn.playerId,
-          roomId: conn.roomId,
-          hasUsername: !!conn.username,
-          hasPlayerId: !!conn.playerId
+        this.broadcastChatMessage(conn, {
+          messageType,
+          chatText: this.extractChatText(messageType, parts),
         });
-        if (chatText && conn.playerId && conn.username) {
-          // Broadcast to room if in a room, otherwise to all lobby connections
-          if (conn.roomId) {
-            const room = this.rooms.get(conn.roomId) || [];
-            const chatMsg = `"ac", "TE", "i", "${conn.playerId}", "u", "${this.escapeForTcp(conn.username)}", "t", "${this.escapeForTcp(chatText)}"`;
-            this.logger.info("Broadcasting room chat", { roomId: conn.roomId, memberCount: room.length });
-            for (const member of room) {
-              const memberConn = this.connections.get(member.connId);
-              if (memberConn) this.sendMessage(memberConn, chatMsg);
-            }
-          } else {
-            // Lobby chat - broadcast to all connected players
-            const chatMsg = `"ac", "TE", "i", "${conn.playerId}", "u", "${this.escapeForTcp(conn.username)}", "t", "${this.escapeForTcp(chatText)}"`;
-            let lobbyCount = 0;
-            for (const [, otherConn] of this.connections) {
-              if (otherConn.playerId && !otherConn.roomId) {
-                this.sendMessage(otherConn, chatMsg);
-                lobbyCount++;
-              }
-            }
-            this.logger.info("Broadcasting lobby chat", { recipientCount: lobbyCount });
-          }
-        } else {
-          this.logger.warn("Chat message rejected", {
-            connId: conn.id,
-            hasChatText: !!chatText,
-            hasPlayerId: !!conn.playerId,
-            hasUsername: !!conn.username
-          });
-        }
 
       // --- NIM: Instant message (private message) ---
       } else if (messageType === "NIM") {
@@ -506,45 +467,11 @@ export class TcpServer {
         
         if (!isValidSessionKey) {
           // Client is sending chat as SRC - treat it as a chat message
-          const chatText = srcSessionKey;
-          this.logger.info("TCP SRC chat received", {
-            connId: conn.id,
-            chatText,
-            username: conn.username,
-            playerId: conn.playerId,
-            roomId: conn.roomId,
+          this.broadcastChatMessage(conn, {
+            messageType,
+            chatText: srcSessionKey,
+            logLabel: "TCP SRC chat received",
           });
-          
-          if (chatText && conn.playerId && conn.username) {
-            // Broadcast to room if in a room, otherwise to all lobby connections
-            if (conn.roomId) {
-              const room = this.rooms.get(conn.roomId) || [];
-              const chatMsg = `"ac", "TE", "i", "${conn.playerId}", "u", "${this.escapeForTcp(conn.username)}", "t", "${this.escapeForTcp(chatText)}"`;
-              this.logger.info("Broadcasting room chat (from SRC)", { roomId: conn.roomId, memberCount: room.length });
-              for (const member of room) {
-                const memberConn = this.connections.get(member.connId);
-                if (memberConn) this.sendMessage(memberConn, chatMsg);
-              }
-            } else {
-              // Lobby chat - broadcast to all connected players
-              const chatMsg = `"ac", "TE", "i", "${conn.playerId}", "u", "${this.escapeForTcp(conn.username)}", "t", "${this.escapeForTcp(chatText)}"`;
-              let lobbyCount = 0;
-              for (const [, otherConn] of this.connections) {
-                if (otherConn.playerId && !otherConn.roomId) {
-                  this.sendMessage(otherConn, chatMsg);
-                  lobbyCount++;
-                }
-              }
-              this.logger.info("Broadcasting lobby chat (from SRC)", { recipientCount: lobbyCount });
-            }
-          } else {
-            this.logger.warn("SRC chat message rejected", {
-              connId: conn.id,
-              hasChatText: !!chatText,
-              hasPlayerId: !!conn.playerId,
-              hasUsername: !!conn.username,
-            });
-          }
           
           // Ack the message
           this.sendMessage(conn, '"ac", "SRC", "s", 1');
@@ -735,6 +662,67 @@ export class TcpServer {
   normalizeNumericToken(value, fallback = "0") {
     const token = String(value ?? "").trim();
     return token !== "" && Number.isFinite(Number(token)) ? token : String(fallback);
+  }
+
+  extractChatText(messageType, parts) {
+    if (messageType === "CRC") {
+      return parts.slice(1).find((part) => part.length > 1 && !/^\d+$/.test(part)) || "";
+    }
+    return parts[1] || "";
+  }
+
+  broadcastChatMessage(conn, { messageType, chatText, logLabel = "TCP chat received" }) {
+    this.logger.info(logLabel, {
+      connId: conn.id,
+      messageType,
+      chatText,
+      username: conn.username,
+      playerId: conn.playerId,
+      roomId: conn.roomId,
+      hasUsername: !!conn.username,
+      hasPlayerId: !!conn.playerId,
+    });
+
+    if (!(chatText && conn.playerId && conn.username)) {
+      this.logger.warn("Chat message rejected", {
+        connId: conn.id,
+        messageType,
+        hasChatText: !!chatText,
+        hasPlayerId: !!conn.playerId,
+        hasUsername: !!conn.username,
+      });
+      return false;
+    }
+
+    if (conn.roomId) {
+      const room = this.rooms.get(conn.roomId) || [];
+      const roomChatMsg =
+        `"ac", "TE", "i", "${conn.playerId}", "u", "${this.escapeForTcp(conn.username)}", "t", "${this.escapeForTcp(chatText)}"`;
+      this.logger.info("Broadcasting room chat", { connId: conn.id, roomId: conn.roomId, memberCount: room.length });
+      for (const member of room) {
+        const memberConn = this.connections.get(member.connId);
+        if (memberConn) {
+          this.sendMessage(memberConn, roomChatMsg);
+        }
+      }
+      return true;
+    }
+
+    const globalChatMsg =
+      `"ac", "GC", "u", "${this.escapeForTcp(conn.username)}", "m", "${this.escapeForTcp(chatText)}", "c", ${DEFAULT_GLOBAL_CHAT_CLASS}`;
+    let recipientCount = 0;
+    for (const [, otherConn] of this.connections) {
+      if (otherConn.playerId && !otherConn.roomId) {
+        this.sendMessage(otherConn, globalChatMsg);
+        recipientCount += 1;
+      }
+    }
+    this.logger.info("Broadcasting global chat", {
+      connId: conn.id,
+      recipientCount,
+      chatClass: DEFAULT_GLOBAL_CHAT_CLASS,
+    });
+    return true;
   }
 
   handleRaceTelemetry(conn, messageType, parts) {
@@ -1155,7 +1143,7 @@ export class TcpServer {
 
   resolveRoomIdForJoin(conn, parts = []) {
     // 10.0.03 uses chatJoin(roomType, cid, ..., asInvisible), so the canonical
-    // category/room id arrives in JRC field #2. Older synthetic fixtures in
+    // category/room id arrives in JRC field #2. Older synthetic test inputs in
     // this repo sometimes placed the room id in field #1, so keep that only as
     // a defensive fallback.
     const requestedRoomId = Number(parts[2] || 0);

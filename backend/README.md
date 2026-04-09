@@ -7,7 +7,7 @@ The intended shape is:
 1. Flash client talks to this backend only.
 2. This backend decodes the legacy payload.
 3. Implemented actions read and write Supabase tables.
-4. Unimplemented actions fall back to your captured fixtures so the game can keep working while we port features over.
+4. Capture bundles are used for gap analysis only; runtime responses come from explicit handlers, local static data, or minimal stubs.
 
 ## Quick start
 
@@ -15,8 +15,14 @@ The intended shape is:
 2. Run [schema.sql](/Users/Dilldo/Music/Library/1320%20V2.5/backend/supabase/schema.sql) in the Supabase SQL editor.
 3. Copy `.env.example` to `.env` and fill in your project URL and service role key.
 4. Run `npm install` inside [backend](/Users/Dilldo/Music/Library/1320%20V2.5/backend).
-5. Keep the runtime fallback fixtures in `backend/fixtures/`.
-6. Start the backend with `npm run dev`.
+5. Start the backend with `npm run dev`.
+
+To compare live capture data against the current backend without using runtime fixtures:
+
+```powershell
+cd backend
+node tools\analyze_capture_bundle.js C:\Users\Dilldo\Music\Library\1320L\captures\live_tooling\20260408_181740\shareable_race_flow.zip
+```
 
 ## Deploying to the VPS
 
@@ -53,7 +59,7 @@ Useful flags:
 - `.\deploy_live.ps1 -AllTracked`
 - `.\deploy_live.ps1 -SkipHealthcheck`
 
-## Current real actions
+## Current runtime behavior
 
 - `login`
 - `getuser`
@@ -61,7 +67,7 @@ Useful flags:
 - `/Status.aspx`
 - `/Upload.aspx`
 
-Everything else currently falls back to fixtures loaded from `backend/fixtures/*.decoded_http_responses.json`.
+Everything else now resolves through explicit handlers, local static catalog data, or a minimal success stub while the remaining 10.0.03 flows are being ported.
 
 ## Starter Supabase tables
 
@@ -107,4 +113,4 @@ This backend keeps the service role key private, lets us preserve the original e
 1. Port `teaminfo`
 2. Port `getallcars`
 3. Port `buyenginepart` and `buypart`
-4. Move more login-side XML nodes from fixture/template mode to real database-backed payloads
+4. Move more login-side XML nodes from static/template mode to real database-backed payloads

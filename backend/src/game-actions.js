@@ -1,6 +1,7 @@
 import { buildLoginBody } from "./login-payload.js";
 import { PARTS_CATALOG_XML } from "./parts-catalog.js";
 import { buildWheelsTiresCatalogXml } from "./wheels-catalog.js";
+import { buildStaticCarsXml } from "./car-catalog.js";
 import { randomUUID } from "node:crypto";
 import { normalizeOwnedPartsXmlValue } from "./parts-xml.js";
 import {
@@ -320,7 +321,7 @@ async function handleLogin(context) {
 }
 
 async function handleCreateAccount(context) {
-  const { supabase, params, fixtureStore } = context;
+  const { supabase, params } = context;
   if (!supabase) {
     return null;
   }
@@ -1467,8 +1468,8 @@ async function handleRejectTestDrive(context) {
 }
 
 // ---------------------------------------------------------------------------
-// Stub / generated handlers — actions the Python server handled that are not
-// in our fixture data. Returning "s", 0 for any of these causes the game to
+// Stub / generated handlers — actions we have not fully ported yet.
+// Returning "s", 0 for any of these causes the game to
 // emit "error 003" on the client. All stubs return "s", 1 (OK) with minimal
 // valid XML so the client can move on.
 // ---------------------------------------------------------------------------
@@ -2255,41 +2256,9 @@ async function handleGetBuddies(context) {
 async function handleTeamInfo(context) {
   const { supabase, params } = context;
   if (!supabase) {
-    // In fixture mode, return test team data
-    const testTeam = {
-      id: 1,
-      name: "Test Team",
-      score: 50000,
-      background_color: "FF0000",
-      created_at: new Date().toISOString(),
-      team_fund: 10000,
-      location_code: "",
-      wins: 5,
-      losses: 2,
-      recruitment_type: "open",
-      vip: 0,
-      members: [
-        {
-          player_id: 1,
-          contribution_score: 15000,
-          player: { id: 1, username: "Admin", score: 20000 }
-        },
-        {
-          player_id: 2,
-          contribution_score: 12000,
-          player: { id: 2, username: "LedermanX", score: 18000 }
-        },
-        {
-          player_id: 3,
-          contribution_score: 8000,
-          player: { id: 3, username: "Oliracing", score: 12000 }
-        }
-      ]
-    };
-    
     return {
-      body: wrapSuccessData(renderTeams([testTeam])),
-      source: "fixture:teaminfo",
+      body: wrapSuccessData(renderTeams([{ id: 0, name: "", members: [] }])),
+      source: "stub:teaminfo:no-supabase",
     };
   }
 
@@ -2372,14 +2341,10 @@ const handlers = {
   getallcars: handleGetAllCars,
   getonecar: handleGetAllCars, // same shape as getallcars, returns the player's car(s)
   getallcats: async (context) => {
-    // Get all categories/parts catalog - this is a large response
-    // For now, return from fixture if available
-    const fixture = context.fixtureStore?.find("getallcats");
-    if (fixture) {
-      return { body: fixture.body, source: `fixture:${fixture.key}` };
-    }
-    // Fallback: return empty catalog
-    return { body: `"s", 1, "d", "<n2 />"`, source: "stub:getallcats" };
+    return {
+      body: wrapSuccessData(buildStaticCarsXml()),
+      source: "static:getallcats",
+    };
   },
   updatedefaultcar: handleUpdateDefaultCar,
   getcarprice: handleGetCarPrice,
@@ -2802,7 +2767,7 @@ const handlers = {
 };
 
 export async function handleGameAction(context) {
-  const { action, rawQuery, decodedQuery, fixtureStore, logger } = context;
+  const { action, decodedQuery, logger } = context;
   const handler = handlers[action];
 
   if (handler) {
@@ -2812,15 +2777,7 @@ export async function handleGameAction(context) {
     }
   }
 
-  const fixture = fixtureStore.find(decodedQuery, action, rawQuery);
-  if (fixture) {
-    return {
-      body: fixture.body,
-      source: `fixture:${fixture.key}`,
-    };
-  }
-
-  logger.warn("No handler or fixture for action", { action, decodedQuery });
+  logger.warn("No handler for action", { action, decodedQuery });
   // Return success stub so the client doesn't show error 003 for unknown actions.
   // Returning "s", 0 breaks the UI flow for many calls.
   return {

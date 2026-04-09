@@ -1,5 +1,5 @@
 // Wheels and Tires Catalog
-// Based on wheel-lookup.json data and fixture format
+// Based on wheel-lookup.json data and the legacy 10.0.03 catalog shape
 
 // Tires catalog (pi=13)
 const TIRES = [
@@ -22,7 +22,7 @@ export const WHEEL_BRANDS = [
   { id: 8, name: "OZ Racing", slug: "ozracing" },
 ];
 
-// Generate wheel catalog matching the fixture format
+// Generate wheel catalog matching the legacy client XML shape
 function generateWheelCatalog() {
   const wheels = [];
   const sizes = [15, 16, 17, 18, 19, 20];
@@ -71,7 +71,7 @@ function generateWheelCatalog() {
   return wheels;
 }
 
-// Build XML for wheels and tires catalog matching fixture format
+// Build XML for wheels and tires catalog matching the legacy client XML shape
 export function buildWheelsTiresCatalogXml() {
   // Start with tires (pi=13)
   const tiresXml = TIRES.map(t => 

@@ -11,7 +11,7 @@ const CARS_CATALOG_PATH = path.join(CATALOG_DIR, "cars-catalog.json");
 let cachedPartsCatalogXml = null;
 let cachedCarsCatalogEntries = null;
 
-export function getFixturePartsCatalogXml() {
+export function getStaticPartsCatalogXml() {
   if (cachedPartsCatalogXml) {
     return cachedPartsCatalogXml;
   }
@@ -20,7 +20,7 @@ export function getFixturePartsCatalogXml() {
   return cachedPartsCatalogXml;
 }
 
-export function getFixtureCarsCatalogEntries() {
+export function getStaticCarsCatalogEntries() {
   if (cachedCarsCatalogEntries) {
     return cachedCarsCatalogEntries;
   }

@@ -1,4 +1,4 @@
-import { getFixturePartsCatalogXml } from "./fixture-catalogs.js";
+import { getStaticPartsCatalogXml } from "./catalog-data-source.js";
 
 const PART_LOCATIONS = ["100", "200", "300", "400", "500"];
 
@@ -78,4 +78,4 @@ function rebalancePartNeighborhoods(partsCatalogXml) {
   return wrapperMatch ? `<p>${rebalancedInnerXml}</p>` : rebalancedInnerXml;
 }
 
-export const PARTS_CATALOG_XML = rebalancePartNeighborhoods(getFixturePartsCatalogXml());
+export const PARTS_CATALOG_XML = rebalancePartNeighborhoods(getStaticPartsCatalogXml());
