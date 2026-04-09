@@ -450,6 +450,21 @@ export class TcpServer {
       } else if (messageType === "SRC") {
         const srcSessionKey = parts[1] || "";
         const srcRaceGuid   = parts[2] || "";
+        
+        // Validate session key format - should be alphanumeric, not chat text
+        const isValidSessionKey = srcSessionKey && /^[a-zA-Z0-9_-]{8,}$/.test(srcSessionKey);
+        
+        if (!isValidSessionKey) {
+          this.logger.warn("TCP SRC received with invalid session key (possibly misrouted chat)", {
+            connId: conn.id,
+            srcSessionKey,
+            srcRaceGuid,
+          });
+          // Just ack and ignore - don't try to process as race channel
+          this.sendMessage(conn, '"ac", "SRC", "s", 0');
+          return;
+        }
+        
         this.logger.info("TCP SRC received (race channel open)", {
           connId: conn.id,
           srcSessionKey,
