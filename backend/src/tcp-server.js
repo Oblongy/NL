@@ -119,10 +119,20 @@ export class TcpServer {
     });
 
     socket.on("end", () => {
-      this.logger.info("TCP connection closed", { connId, remoteAddr });
+      this.logger.info("TCP connection ended", { connId, remoteAddr });
       tcpActiveConnections.dec();
       this.leaveRoom(conn);
       this.connections.delete(connId);
+    });
+
+    socket.on("close", () => {
+      this.logger.info("TCP connection closed", { connId, remoteAddr });
+      // Only cleanup if not already cleaned up by 'end' event
+      if (this.connections.has(connId)) {
+        tcpActiveConnections.dec();
+        this.leaveRoom(conn);
+        this.connections.delete(connId);
+      }
     });
 
     socket.on("error", (error) => {
@@ -337,6 +347,13 @@ export class TcpServer {
       // --- LRC: Room refresh / content check ---
       } else if (messageType === "LRC") {
         this.handleLobbyRoomRefresh(conn);
+
+      // --- LR: Leave room ---
+      } else if (messageType === "LR" && parts.length === 1) {
+        // LR with no additional params means leave current room
+        this.logger.info("TCP LR (leave room) received", { connId: conn.id, roomId: conn.roomId });
+        this.leaveRoom(conn);
+        this.sendMessage(conn, '"ac", "LR", "s", 1');
 
       // --- GR: Get race (after JRC, triggers race announcement) ---
       } else if (messageType === "GR") {
