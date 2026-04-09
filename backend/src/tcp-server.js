@@ -45,6 +45,10 @@ export class TcpServer {
     // Track race completion for cleanup
     this.raceCompletions = new Map(); // raceId -> Set of playerIds who sent RD
     
+    // Performance optimization: O(1) lookups instead of O(n) scans
+    this.connIdByPlayerId = new Map(); // playerId -> connId for fast player lookup
+    this.raceIdByPlayerId = new Map(); // playerId -> raceId for fast race lookup
+    
     // Cleanup stale challenges every 5 minutes
     this.challengeCleanupInterval = setInterval(() => {
       this.cleanupStaleState();
@@ -82,6 +86,9 @@ export class TcpServer {
       try { conn.socket.destroy(); } catch {}
     }
     this.connections.clear();
+    this.connIdByPlayerId.clear();
+    this.raceIdByPlayerId.clear();
+    
     return new Promise((resolve) => {
       this.server.close(() => { this.started = false; resolve(); });
     });
@@ -122,6 +129,11 @@ export class TcpServer {
       this.logger.info("TCP connection ended", { connId, remoteAddr });
       tcpActiveConnections.dec();
       this.leaveRoom(conn);
+      // Clean up reverse lookups
+      if (conn.playerId) {
+        this.connIdByPlayerId.delete(conn.playerId);
+        this.raceIdByPlayerId.delete(conn.playerId);
+      }
       this.connections.delete(connId);
     });
 
@@ -131,6 +143,11 @@ export class TcpServer {
       if (this.connections.has(connId)) {
         tcpActiveConnections.dec();
         this.leaveRoom(conn);
+        // Clean up reverse lookups
+        if (conn.playerId) {
+          this.connIdByPlayerId.delete(conn.playerId);
+          this.raceIdByPlayerId.delete(conn.playerId);
+        }
         this.connections.delete(connId);
       }
     });
@@ -140,6 +157,11 @@ export class TcpServer {
       tcpActiveConnections.dec();
       tcpErrors.inc({ category: "socket" });
       this.leaveRoom(conn);
+      // Clean up reverse lookups
+      if (conn.playerId) {
+        this.connIdByPlayerId.delete(conn.playerId);
+        this.raceIdByPlayerId.delete(conn.playerId);
+      }
       this.connections.delete(connId);
     });
   }
@@ -216,9 +238,14 @@ export class TcpServer {
                   this.leaveRoom(existingConn);
                   existingConn.socket?.destroy();
                   this.connections.delete(existingConnId);
+                  // Clean up reverse lookup
+                  this.connIdByPlayerId.delete(playerId);
                 }
               }
               conn.playerId = playerId;
+              // Set reverse lookup for O(1) player->connection mapping
+              this.connIdByPlayerId.set(playerId, conn.id);
+              
               // Also fetch username for room display
               const { data: player } = await this.supabase
                 .from("game_players")
@@ -329,9 +356,8 @@ export class TcpServer {
           }
         }
 
-        // Send JR, LR, LRCU x2 to joining player
+        // 10.0.03 only acks the join here. The room snapshot follows after `GR`.
         this.sendMessage(conn, '"ac", "JR", "s", 1');
-        this.sendRoomSnapshot(conn, filtered, { duplicateUsers: true });
 
         // Notify all OTHER players in room that someone joined (send updated LRCU)
         for (const member of filtered) {
@@ -358,7 +384,11 @@ export class TcpServer {
       // --- GR: Get race (after JRC, triggers race announcement) ---
       } else if (messageType === "GR") {
         this.logger.info("TCP GR received", { connId: conn.id });
-        this.sendMessage(conn, '"ac", "GR", "s", 1');
+        const roomId = Number(conn.roomId || 0);
+        const roomPlayers = this.rooms.get(roomId) || [];
+        if (roomId > 0 && roomPlayers.some((player) => player.connId === conn.id)) {
+          this.sendRoomSnapshot(conn, roomPlayers, { duplicateUsers: true });
+        }
 
       // --- TC: Team / title channel selection ---
       } else if (messageType === "TC") {
@@ -475,12 +505,48 @@ export class TcpServer {
         const isValidSessionKey = srcSessionKey && /^[a-zA-Z0-9_-]{8,}$/.test(srcSessionKey);
         
         if (!isValidSessionKey) {
-          this.logger.warn("TCP SRC received with invalid session key (possibly misrouted chat)", {
+          // Client is sending chat as SRC - treat it as a chat message
+          const chatText = srcSessionKey;
+          this.logger.info("TCP SRC chat received", {
             connId: conn.id,
-            srcSessionKey,
-            srcRaceGuid,
+            chatText,
+            username: conn.username,
+            playerId: conn.playerId,
+            roomId: conn.roomId,
           });
-          // Just ack with success but don't process - prevents client crash
+          
+          if (chatText && conn.playerId && conn.username) {
+            // Broadcast to room if in a room, otherwise to all lobby connections
+            if (conn.roomId) {
+              const room = this.rooms.get(conn.roomId) || [];
+              const chatMsg = `"ac", "TE", "i", "${conn.playerId}", "u", "${this.escapeForTcp(conn.username)}", "t", "${this.escapeForTcp(chatText)}"`;
+              this.logger.info("Broadcasting room chat (from SRC)", { roomId: conn.roomId, memberCount: room.length });
+              for (const member of room) {
+                const memberConn = this.connections.get(member.connId);
+                if (memberConn) this.sendMessage(memberConn, chatMsg);
+              }
+            } else {
+              // Lobby chat - broadcast to all connected players
+              const chatMsg = `"ac", "TE", "i", "${conn.playerId}", "u", "${this.escapeForTcp(conn.username)}", "t", "${this.escapeForTcp(chatText)}"`;
+              let lobbyCount = 0;
+              for (const [, otherConn] of this.connections) {
+                if (otherConn.playerId && !otherConn.roomId) {
+                  this.sendMessage(otherConn, chatMsg);
+                  lobbyCount++;
+                }
+              }
+              this.logger.info("Broadcasting lobby chat (from SRC)", { recipientCount: lobbyCount });
+            }
+          } else {
+            this.logger.warn("SRC chat message rejected", {
+              connId: conn.id,
+              hasChatText: !!chatText,
+              hasPlayerId: !!conn.playerId,
+              hasUsername: !!conn.username,
+            });
+          }
+          
+          // Ack the message
           this.sendMessage(conn, '"ac", "SRC", "s", 1');
           return;
         }
@@ -508,10 +574,20 @@ export class TcpServer {
                   this.leaveRoom(existingConn);
                   existingConn.socket?.destroy();
                   this.connections.delete(existingConnId);
+                  // Clean up reverse lookups for stale connection
+                  if (this.connIdByPlayerId.get(playerId) === existingConnId) {
+                    this.connIdByPlayerId.delete(playerId);
+                  }
+                  if (existingConn.raceId) {
+                    this.raceIdByPlayerId.delete(playerId);
+                  }
                 }
               }
               conn.playerId = playerId;
               conn.sessionKey = srcSessionKey;
+              // Set reverse lookup for O(1) player->connection mapping
+              this.connIdByPlayerId.set(playerId, conn.id);
+              
               const { data: player } = await this.supabase
                 .from("game_players")
                 .select("username, default_car_game_id")
@@ -531,10 +607,17 @@ export class TcpServer {
           srcRace = this.races.get(srcRaceGuid) || this.pendingRaceChallenges.get(srcRaceGuid) || null;
         }
         if (!srcRace && conn.playerId) {
-          for (const [, r] of this.races) {
-            if (r.players.some(p => Number(p.playerId) === Number(conn.playerId))) {
-              srcRace = r;
-              break;
+          // Use O(1) lookup if available, otherwise fall back to scan
+          const cachedRaceId = this.raceIdByPlayerId.get(conn.playerId);
+          if (cachedRaceId) {
+            srcRace = this.races.get(cachedRaceId);
+          }
+          if (!srcRace) {
+            for (const [, r] of this.races) {
+              if (r.players.some(p => Number(p.playerId) === Number(conn.playerId))) {
+                srcRace = r;
+                break;
+              }
             }
           }
         }
@@ -542,6 +625,10 @@ export class TcpServer {
         if (srcRace) {
           // Attach this race-channel connection to the race
           conn.raceId = srcRace.id;
+          // Set reverse lookup for O(1) race lookup
+          if (conn.playerId) {
+            this.raceIdByPlayerId.set(conn.playerId, srcRace.id);
+          }
           
           // Update the race player's connId to point to this race channel connection
           // This ensures I/S packets are forwarded to the correct connection
@@ -614,16 +701,32 @@ export class TcpServer {
   }
 
   findRaceForConnection(conn) {
+    // Fast path: use cached raceId on connection
     let race = conn.raceId ? this.races.get(conn.raceId) : null;
+    
+    // Fallback: use O(1) player->race lookup
+    if (!race && conn.playerId) {
+      const cachedRaceId = this.raceIdByPlayerId.get(conn.playerId);
+      if (cachedRaceId) {
+        race = this.races.get(cachedRaceId);
+        if (race) {
+          conn.raceId = cachedRaceId;
+        }
+      }
+    }
+    
+    // Last resort: O(n) scan (should rarely happen now)
     if (!race && conn.playerId) {
       for (const [, candidate] of this.races) {
         if (candidate.players.some((player) => Number(player.playerId) === Number(conn.playerId))) {
           race = candidate;
           conn.raceId = candidate.id;
+          this.raceIdByPlayerId.set(conn.playerId, candidate.id);
           break;
         }
       }
     }
+    
     return race || null;
   }
 
@@ -983,7 +1086,7 @@ export class TcpServer {
     }
 
     const queueXml = roomPlayers.map((player) =>
-      `<r i='${player.playerId}' icid='${player.carId}' ci='${player.playerId}' cicid='${player.carId}' bt='0' b='0'/>`
+      `<r i='${player.playerId}' icid='${player.carId}' ci='${player.playerId}' cicid='${player.carId}'/>`
     ).join("");
     return `<q>${queueXml}</q>`;
   }
@@ -1000,7 +1103,19 @@ export class TcpServer {
   }
 
   sendRoomSnapshot(conn, roomPlayers, { duplicateUsers = false } = {}) {
-    this.sendMessage(conn, `"ac", "LR", "s", "${this.escapeForTcp(this.buildRoomQueueXml(roomPlayers, conn.roomId))}"`);
+    const roomType = this.getRoomDefinition(conn.roomId)?.type || "";
+    const isKothRoom = roomType === "bracket_koth" || roomType === "h2h_koth";
+    const selfEntry =
+      roomPlayers.find((player) => player.connId === conn.id) ||
+      roomPlayers.find((player) => Number(player.playerId) === Number(conn.playerId)) ||
+      null;
+    const queuePlayers = isKothRoom
+      ? roomPlayers
+      : selfEntry
+        ? [selfEntry]
+        : [];
+
+    this.sendMessage(conn, `"ac", "LR", "s", "${this.escapeForTcp(this.buildRoomQueueXml(queuePlayers, conn.roomId))}"`);
     this.sendRoomUsers(conn, roomPlayers);
     if (duplicateUsers) {
       this.sendRoomUsers(conn, roomPlayers);
@@ -1044,12 +1159,9 @@ export class TcpServer {
     const roomId = Number(conn.roomId || 0);
     const roomPlayers = this.rooms.get(roomId) || [];
 
-    // 10.0.03 captures show `LRC` as a standalone lobby packet after room
-    // entry. Treat it as a room-content refresh using the canonical `LR` +
-    // `LRCU` snapshot we already emit on join, but do not invent a new ack.
-    if (roomId > 0 && roomPlayers.some((player) => player.connId === conn.id)) {
-      this.sendRoomSnapshot(conn, roomPlayers);
-    }
+    // Friend-capture wire data shows `LRC` is a simple ack, not a room
+    // snapshot refresh. The full queue + user list already arrived via `GR`.
+    this.sendMessage(conn, '"ac", "LRC", "s", 1');
 
     this.logger.info("TCP LRC received", {
       connId: conn.id,
@@ -1098,10 +1210,9 @@ export class TcpServer {
       return;
     }
 
-    this.sendMessage(conn, '"ac", "RRQ", "s", 1');
-
     const targetConn = this.findConnectionByPlayerId(targetPlayerId);
     if (!targetConn) {
+      this.sendMessage(conn, '"ac", "RRQ", "s", -1');
       this.logger.info("TCP RRQ ignored (target not connected)", {
         connId: conn.id,
         requesterPlayerId,
@@ -1139,6 +1250,7 @@ export class TcpServer {
     };
 
     this.pendingRaceChallenges.set(raceGuid, challenge);
+    this.sendMessage(conn, `"ac", "RRQ", "s", 1, "d", "${raceGuid}"`);
 
     this.logger.info("TCP RRQ queued", {
       connId: conn.id,
@@ -1172,9 +1284,24 @@ export class TcpServer {
 
   findConnectionByPlayerId(playerId) {
     if (!playerId) return null;
-    for (const [, candidate] of this.connections) {
-      if (Number(candidate.playerId || 0) === Number(playerId)) return candidate;
+    
+    // O(1) lookup using reverse map
+    const connId = this.connIdByPlayerId.get(playerId);
+    if (connId) {
+      const conn = this.connections.get(connId);
+      if (conn) return conn;
+      // Stale entry, clean it up
+      this.connIdByPlayerId.delete(playerId);
     }
+    
+    // Fallback: O(n) scan and update cache (should rarely happen)
+    for (const [, candidate] of this.connections) {
+      if (Number(candidate.playerId || 0) === Number(playerId)) {
+        this.connIdByPlayerId.set(playerId, candidate.id);
+        return candidate;
+      }
+    }
+    
     return null;
   }
 
@@ -1324,9 +1451,6 @@ export class TcpServer {
               })
             )}"`
           );
-          // Fallback: if the client doesn't emit RO, bootstrap the track anyway.
-          this.sendMessage(participantConn, '"ac", "RO", "t", 32');
-          this.sendInitialIoFrames(participantConn);
         }
         this.logger.info("TCP race ready broadcast sent", { raceId: existingRace.id });
       }
@@ -1403,6 +1527,15 @@ export class TcpServer {
     this.races.set(race.id, race);
     challengerConn.raceId = race.id;
     challengedConn.raceId = race.id;
+    
+    // Set reverse lookups for O(1) race finding
+    if (pending.challenger.playerId) {
+      this.raceIdByPlayerId.set(pending.challenger.playerId, race.id);
+    }
+    if (pending.challenged.playerId) {
+      this.raceIdByPlayerId.set(pending.challenged.playerId, race.id);
+    }
+    
     racesStartedTotal.inc();
     tcpActiveRaces.set({}, this.races.size);
 
@@ -1423,9 +1556,7 @@ export class TcpServer {
     for (const participantConn of [challengerConn, challengedConn]) {
       this.sendMessage(participantConn, `"ac", "RN", "d", "${this.escapeForTcp(rnXml)}"`);
       this.sendMessage(participantConn, `"ac", "RRA", "d", "${this.escapeForTcp(rraXml)}"`);
-      // Fallback: some clients don't send RO after RN/RRA. Bootstrap anyway.
-      this.sendMessage(participantConn, `"ac", "RO", "t", ${pending.trackId}`);
-      this.sendInitialIoFrames(participantConn);
+      // Don't send RO and IO frames here - wait for the client to open the race channel via SRC
     }
 
     this.logger.info("TCP race started from RRQ/RRS", {
@@ -1452,7 +1583,6 @@ export class TcpServer {
     this.logger.info("TCP RO received", { connId: conn.id, raceId: race.id, openedCount: race.players.filter((entry) => entry.opened).length });
 
     this.sendMessage(conn, '"ac", "RO", "t", 32');
-    this.sendInitialIoFrames(conn);
   }
 
   handleRaceResult(conn, parts, raceOverride = null) {
@@ -1535,6 +1665,13 @@ export class TcpServer {
       completions && race.players.every((player) => completions.has(player.playerId));
     if (!allPlayersCompleted) {
       return;
+    }
+
+    // Clean up reverse lookups for all players in this race
+    for (const player of race.players) {
+      if (player.playerId && this.raceIdByPlayerId.get(player.playerId) === race.id) {
+        this.raceIdByPlayerId.delete(player.playerId);
+      }
     }
 
     this.races.delete(race.id);
@@ -1661,6 +1798,12 @@ export class TcpServer {
     for (const [raceId, race] of this.races.entries()) {
       // Races that were emptied get a shorter grace period for reconnects
       if (race.emptiedAt && now - race.emptiedAt > emptyRaceGraceMs) {
+        // Clean up reverse lookups for all players in this race
+        for (const player of race.players) {
+          if (player.playerId && this.raceIdByPlayerId.get(player.playerId) === raceId) {
+            this.raceIdByPlayerId.delete(player.playerId);
+          }
+        }
         this.races.delete(raceId);
         this.raceCompletions.delete(raceId);
         cleanedRaces++;
@@ -1668,6 +1811,12 @@ export class TcpServer {
       }
       // Races that were never emptied get the full TTL
       if (!race.emptiedAt && now - race.createdAt > raceTtl) {
+        // Clean up reverse lookups for all players in this race
+        for (const player of race.players) {
+          if (player.playerId && this.raceIdByPlayerId.get(player.playerId) === raceId) {
+            this.raceIdByPlayerId.delete(player.playerId);
+          }
+        }
         this.races.delete(raceId);
         this.raceCompletions.delete(raceId);
         cleanedRaces++;

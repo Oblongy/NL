@@ -2203,7 +2203,42 @@ async function handleGetBuddies(context) {
 async function handleTeamInfo(context) {
   const { supabase, params } = context;
   if (!supabase) {
-    return null;
+    // In fixture mode, return test team data
+    const testTeam = {
+      id: 1,
+      name: "Test Team",
+      score: 50000,
+      background_color: "FF0000",
+      created_at: new Date().toISOString(),
+      team_fund: 10000,
+      location_code: "",
+      wins: 5,
+      losses: 2,
+      recruitment_type: "open",
+      vip: 0,
+      members: [
+        {
+          player_id: 1,
+          contribution_score: 15000,
+          player: { id: 1, username: "Admin", score: 20000 }
+        },
+        {
+          player_id: 2,
+          contribution_score: 12000,
+          player: { id: 2, username: "LedermanX", score: 18000 }
+        },
+        {
+          player_id: 3,
+          contribution_score: 8000,
+          player: { id: 3, username: "Oliracing", score: 12000 }
+        }
+      ]
+    };
+    
+    return {
+      body: wrapSuccessData(renderTeams([testTeam])),
+      source: "fixture:teaminfo",
+    };
   }
 
   const caller = await resolveCallerSession(context, "supabase:teaminfo");
@@ -2313,6 +2348,13 @@ const handlers = {
   getonecarengine: handleGetOneCarEngine,
   getgearinfo: handleGetGearInfo,
   buydyno: handleBuyDyno,
+  loaddynograph: async (context) => {
+    // Load a saved dyno graph - return empty XML node
+    return {
+      body: `"s", 1, "d", "<dyno/>"`,
+      source: "stub:loaddynograph",
+    };
+  },
   buypart: handleBuyPart,
   buyenginepart: handleBuyEnginePart,
   installpart: handleInstallPart,
@@ -2439,7 +2481,7 @@ const handlers = {
     });
 
     return {
-      body: `"s", 1, "d", "${opponent.xml}", "b", ${opponent.purse}`,
+      body: `"s", 1, "d", ${JSON.stringify(opponent.xml)}, "b", ${opponent.purse}`,
       source: "generated:ctrt",
     };
   },
@@ -2467,7 +2509,7 @@ const handlers = {
     });
 
     return {
-      body: `"s", 1, "d", "<n2 w='${winState}' b='${payout}'/>"`,
+      body: `"s", 1, "d", ${JSON.stringify(`<n2 w='${winState}' b='${payout}'/>`)}, "t", ${session.wins || 0}`,
       source: "generated:ctst",
     };
   },
