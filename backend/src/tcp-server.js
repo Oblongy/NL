@@ -380,17 +380,27 @@ export class TcpServer {
       } else if (messageType === "CRC" && this.handleKingOfHillRoomCreate(conn, parts)) {
         this.logger.info("TCP CRC handled as KOTH room create", { connId: conn.id, parts });
       } else if (messageType === "TE" || messageType === "CRC") {
-        this.logger.info("TCP chat parts", { connId: conn.id, messageType, parts });
+        this.logger.info("TCP chat parts", { connId: conn.id, messageType, parts, partsCount: parts.length });
         // CRC has 8 parts - find the text (longest non-numeric part after index 0)
         const chatText = messageType === "CRC"
           ? parts.slice(1).find(p => p.length > 1 && !/^\d+$/.test(p)) || ""
           : (parts[1] || "");
-        this.logger.info("TCP chat received", { connId: conn.id, messageType, chatText, username: conn.username });
+        this.logger.info("TCP chat received", { 
+          connId: conn.id, 
+          messageType, 
+          chatText, 
+          username: conn.username,
+          playerId: conn.playerId,
+          roomId: conn.roomId,
+          hasUsername: !!conn.username,
+          hasPlayerId: !!conn.playerId
+        });
         if (chatText && conn.playerId && conn.username) {
           // Broadcast to room if in a room, otherwise to all lobby connections
           if (conn.roomId) {
             const room = this.rooms.get(conn.roomId) || [];
             const chatMsg = `"ac", "TE", "i", "${conn.playerId}", "u", "${this.escapeForTcp(conn.username)}", "t", "${this.escapeForTcp(chatText)}"`;
+            this.logger.info("Broadcasting room chat", { roomId: conn.roomId, memberCount: room.length });
             for (const member of room) {
               const memberConn = this.connections.get(member.connId);
               if (memberConn) this.sendMessage(memberConn, chatMsg);
@@ -398,12 +408,22 @@ export class TcpServer {
           } else {
             // Lobby chat - broadcast to all connected players
             const chatMsg = `"ac", "TE", "i", "${conn.playerId}", "u", "${this.escapeForTcp(conn.username)}", "t", "${this.escapeForTcp(chatText)}"`;
+            let lobbyCount = 0;
             for (const [, otherConn] of this.connections) {
               if (otherConn.playerId && !otherConn.roomId) {
                 this.sendMessage(otherConn, chatMsg);
+                lobbyCount++;
               }
             }
+            this.logger.info("Broadcasting lobby chat", { recipientCount: lobbyCount });
           }
+        } else {
+          this.logger.warn("Chat message rejected", {
+            connId: conn.id,
+            hasChatText: !!chatText,
+            hasPlayerId: !!conn.playerId,
+            hasUsername: !!conn.username
+          });
         }
 
       // --- NIM: Instant message (private message) ---
