@@ -386,13 +386,60 @@ export class TcpServer {
           ? parts.slice(1).find(p => p.length > 1 && !/^\d+$/.test(p)) || ""
           : (parts[1] || "");
         this.logger.info("TCP chat received", { connId: conn.id, messageType, chatText });
-        if (conn.roomId && chatText) {
-          const room = this.rooms.get(conn.roomId) || [];
-          const chatMsg = `"ac", "TE", "i", "${conn.playerId}", "t", "${this.escapeForTcp(chatText)}"`;
-          for (const member of room) {
-            const memberConn = this.connections.get(member.connId);
-            if (memberConn) this.sendMessage(memberConn, chatMsg);
+        if (chatText) {
+          // Broadcast to room if in a room, otherwise to all lobby connections
+          if (conn.roomId) {
+            const room = this.rooms.get(conn.roomId) || [];
+            const chatMsg = `"ac", "TE", "i", "${conn.playerId}", "t", "${this.escapeForTcp(chatText)}"`;
+            for (const member of room) {
+              const memberConn = this.connections.get(member.connId);
+              if (memberConn) this.sendMessage(memberConn, chatMsg);
+            }
+          } else {
+            // Lobby chat - broadcast to all connected players
+            const chatMsg = `"ac", "TE", "i", "${conn.playerId}", "t", "${this.escapeForTcp(chatText)}"`;
+            for (const [, otherConn] of this.connections) {
+              if (otherConn.playerId && !otherConn.roomId) {
+                this.sendMessage(otherConn, chatMsg);
+              }
+            }
           }
+        }
+
+      // --- NIM: Instant message (private message) ---
+      } else if (messageType === "NIM") {
+        const targetPlayerId = Number(parts[1] || 0);
+        const messageText = parts[2] || "";
+        this.logger.info("TCP NIM received", { 
+          connId: conn.id, 
+          fromPlayerId: conn.playerId, 
+          targetPlayerId, 
+          messageText 
+        });
+        
+        if (targetPlayerId && messageText && conn.playerId) {
+          // Find target player's connection
+          const targetConn = this.findConnectionByPlayerId(targetPlayerId);
+          if (targetConn) {
+            // Send instant message to target
+            const imMsg = `"ac", "NIM", "i", "${conn.playerId}", "t", "${this.escapeForTcp(messageText)}"`;
+            this.sendMessage(targetConn, imMsg);
+            // Ack to sender
+            this.sendMessage(conn, '"ac", "NIM", "s", 1');
+            this.logger.info("TCP NIM delivered", { 
+              fromPlayerId: conn.playerId, 
+              targetPlayerId 
+            });
+          } else {
+            // Target not online
+            this.sendMessage(conn, '"ac", "NIM", "s", 0');
+            this.logger.info("TCP NIM failed (target offline)", { 
+              fromPlayerId: conn.playerId, 
+              targetPlayerId 
+            });
+          }
+        } else {
+          this.sendMessage(conn, '"ac", "NIM", "s", 0');
         }
 
       // --- SRC: Start Race Connection ---
