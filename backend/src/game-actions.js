@@ -1,5 +1,6 @@
 import { buildLoginBody } from "./login-payload.js";
 import { PARTS_CATALOG_XML } from "./parts-catalog.js";
+import { buildWheelsTiresCatalogXml } from "./wheels-catalog.js";
 import { randomUUID } from "node:crypto";
 import { normalizeOwnedPartsXmlValue } from "./parts-xml.js";
 import {
@@ -667,6 +668,20 @@ async function handleBuyDyno(context) {
     return { body: failureBody(), source: "supabase:buydyno:no-player" };
   }
 
+  // Check if player already owns the dyno
+  if (player.has_dyno === 1 || player.has_dyno === true) {
+    return {
+      body:
+        `"s", 1, "b", ${player.money}, ` +
+        `"bs", ${DEFAULT_DYNO_PURCHASE_STATE.boostSetting}, ` +
+        `"mp", ${DEFAULT_DYNO_PURCHASE_STATE.maxPsi}, ` +
+        `"cs", ${DEFAULT_DYNO_PURCHASE_STATE.chipSetting}, ` +
+        `"sl", ${DEFAULT_DYNO_PURCHASE_STATE.shiftLightRpm}, ` +
+        `"rl", ${DEFAULT_DYNO_PURCHASE_STATE.redLine}`,
+      source: "supabase:buydyno:already-owned",
+    };
+  }
+
   const dynoPrice = 500;
   const newBalance = Number(player.money) - dynoPrice;
 
@@ -674,7 +689,16 @@ async function handleBuyDyno(context) {
     return { body: `"s", -2`, source: "supabase:buydyno:insufficient-funds" };
   }
 
-  await updatePlayerMoney(supabase, caller.playerId, newBalance);
+  // Update both money and dyno ownership
+  const { error } = await supabase
+    .from("game_players")
+    .update({ money: newBalance, has_dyno: 1 })
+    .eq("id", caller.playerId);
+
+  if (error) {
+    console.error("Failed to update dyno ownership:", error);
+    return { body: failureBody(), source: "supabase:buydyno:update-failed" };
+  }
 
   // 10.0.03 garageDynoBuyCB expects positional scalar args:
   // (s, b, bs, mp, cs, sl, rl)
@@ -2049,6 +2073,31 @@ const COMPUTER_TOURNAMENTS = [
 ];
 
 const computerTournamentSessions = new Map();
+const computerTournamentSessionsByPlayer = new Map(); // Fallback lookup by player ID
+
+// Clean up old tournament sessions (older than 2 hours)
+function cleanupOldTournamentSessions() {
+  const now = Date.now();
+  const maxAge = 2 * 60 * 60 * 1000; // 2 hours
+  let cleaned = 0;
+  
+  for (const [key, session] of computerTournamentSessions.entries()) {
+    if (now - session.createdAt > maxAge) {
+      computerTournamentSessions.delete(key);
+      if (session.playerId) {
+        computerTournamentSessionsByPlayer.delete(session.playerId);
+      }
+      cleaned++;
+    }
+  }
+  
+  if (cleaned > 0) {
+    console.log(`Cleaned up ${cleaned} old tournament sessions`);
+  }
+}
+
+// Run cleanup every 30 minutes
+setInterval(cleanupOldTournamentSessions, 30 * 60 * 1000);
 
 function getComputerTournamentDefinition(tournamentId) {
   return COMPUTER_TOURNAMENTS.find((entry) => Number(entry.id) === Number(tournamentId)) || COMPUTER_TOURNAMENTS[0];
@@ -2103,6 +2152,8 @@ function buildComputerTournamentOpponentXml(session) {
   const reactionTime = interpolate(tournament.minRt, tournament.maxRt, seededFraction(seedBase + 1));
   const elapsedTime = interpolate(tournament.minEt, tournament.maxEt, seededFraction(seedBase + 2));
   const trapSpeed = interpolate(tournament.minTrap, tournament.maxTrap, seededFraction(seedBase + 3));
+  const horsepower = Math.round(interpolate(tournament.minHp, tournament.maxHp, seededFraction(seedBase + 4)));
+  const weight = Math.round(interpolate(tournament.minWeight, tournament.maxWeight, seededFraction(seedBase + 5)));
   const opponentId = 5000 + Number(tournament.id) * 100 + opponentIndex;
   const opponentCarId = 6000 + Number(tournament.id) * 100 + opponentIndex;
   const opponentName = `${tournament.name} Opponent ${String(opponentIndex + 1).padStart(2, "0")}`;
@@ -2112,7 +2163,8 @@ function buildComputerTournamentOpponentXml(session) {
     xml:
       `<n2><r id='${opponentId}' i='${opponentCarId}' n='${escapeXml(opponentName)}' u='${escapeXml(opponentName)}' ` +
       `bt='0' rt='${formatMetric(reactionTime)}' et='${formatMetric(elapsedTime)}' ts='${formatMetric(trapSpeed, 2)}' ` +
-      `total='${formatMetric(reactionTime + elapsedTime)}' racerNum='${200 + opponentIndex}' type='C'/></n2>`,
+      `total='${formatMetric(reactionTime + elapsedTime)}' racerNum='${200 + opponentIndex}' type='C' ` +
+      `hp='${horsepower}' w='${weight}'/></n2>`,
   };
 }
 
@@ -2336,14 +2388,42 @@ const handlers = {
   getallparts: handleGetAllParts,
   getcarpartsbin: handleGetCarPartsBin,
   getallwheelstires: async (context) => {
-    // Get all wheels and tires catalog - this is a large response
-    // For now, return from fixture if available
-    const fixture = context.fixtureStore?.find("getallwheelstires");
+    // Get all wheels and tires catalog
+    const { logger, fixtureStore } = context;
+    
+    // Try fixture first since it's known to work
+    const fixture = fixtureStore?.find("getallwheelstires");
     if (fixture) {
+      if (logger) {
+        logger.info("Serving wheels/tires from fixture", {
+          bodyLength: fixture.body.length,
+        });
+      }
       return { body: fixture.body, source: `fixture:${fixture.key}` };
     }
-    // Fallback: return empty catalog
-    return { body: `"s", 1, "d", "<p />"`, source: "stub:getallwheelstires" };
+    
+    // Fallback to generated catalog
+    try {
+      const catalogXml = buildWheelsTiresCatalogXml();
+      
+      if (logger) {
+        logger.info("Serving generated wheels/tires catalog", {
+          xmlLength: catalogXml.length,
+        });
+      }
+      
+      return { 
+        body: `"s", 1, "d", ${JSON.stringify(catalogXml)}`, 
+        source: "generated:getallwheelstires" 
+      };
+    } catch (error) {
+      if (logger) {
+        logger.error("Error generating wheels/tires catalog", { error: error.message });
+      }
+      
+      // Last resort: return minimal catalog
+      return { body: `"s", 1, "d", "<p></p>"`, source: "stub:getallwheelstires" };
+    }
   },
   getonecarengine: handleGetOneCarEngine,
   getgearinfo: handleGetGearInfo,
@@ -2353,6 +2433,13 @@ const handlers = {
     return {
       body: `"s", 1, "d", "<dyno/>"`,
       source: "stub:loaddynograph",
+    };
+  },
+  savedynograph: async (context) => {
+    // Save dyno graph settings - just return success
+    return {
+      body: `"s", 1`,
+      source: "stub:savedynograph",
     };
   },
   buypart: handleBuyPart,
@@ -2417,21 +2504,38 @@ const handlers = {
     };
   },
   ctjt: async (context) => {
-    const { params, logger } = context;
+    const { params, logger, supabase } = context;
     const tournamentId = Number(params.get("ctid") || 1);
-    const tournamentKey = randomUUID();
+    
+    // Get player ID to create a unique but simple key
+    let tournamentKey = randomUUID();
+    
+    // Try to get player ID for a more stable key
+    const caller = await resolveCallerSession(context, "ctjt");
+    if (caller?.ok) {
+      // Create a simple numeric key based on player ID and timestamp
+      tournamentKey = `${caller.playerId}-${Date.now()}`;
+    }
+    
     const session = {
       tournamentId,
+      playerId: caller?.playerId || 0,
       createdAt: Date.now(),
       bracketTime: null,
       qualifyingComplete: false,
       wins: 0,
     };
     computerTournamentSessions.set(tournamentKey, session);
+    
+    // Also store by player ID for fallback lookup
+    if (caller?.playerId) {
+      computerTournamentSessionsByPlayer.set(caller.playerId, tournamentKey);
+    }
 
     logger.info("ctjt called - joined computer tournament", {
       tournamentId,
       tournamentKey,
+      playerId: caller?.playerId,
     });
 
     return {
@@ -2440,22 +2544,54 @@ const handlers = {
     };
   },
   ctct: async (context) => {
-    const { params, logger } = context;
+    const { params, logger, supabase } = context;
     const tournamentKey = params.get("k") || "";
+    
+    if (!tournamentKey) {
+      logger.warn("ctct called without tournament key");
+      return {
+        body: `"s", 0, "d", ""`,
+        source: "generated:ctct:no-key",
+      };
+    }
+    
     const bracketTime = Number(params.get("bt") || 0);
-    const session = computerTournamentSessions.get(tournamentKey) || {
-      tournamentId: 1,
-      createdAt: Date.now(),
-      wins: 0,
-    };
+    let session = computerTournamentSessions.get(tournamentKey);
+    let actualKey = tournamentKey;
+    
+    // Fallback: try to find session by player ID if key is invalid
+    if (!session) {
+      const caller = await resolveCallerSession(context, "ctct");
+      if (caller?.ok) {
+        const playerKey = computerTournamentSessionsByPlayer.get(caller.playerId);
+        if (playerKey) {
+          session = computerTournamentSessions.get(playerKey);
+          actualKey = playerKey;
+          logger.info("ctct using player ID fallback", { 
+            providedKey: tournamentKey, 
+            actualKey: playerKey,
+            playerId: caller.playerId 
+          });
+        }
+      }
+    }
+    
+    if (!session) {
+      logger.warn("ctct called with invalid tournament key", { tournamentKey });
+      return {
+        body: `"s", 0, "d", ""`,
+        source: "generated:ctct:invalid-key",
+      };
+    }
 
     session.bracketTime = bracketTime;
     session.qualifyingComplete = true;
-    computerTournamentSessions.set(tournamentKey, session);
+    computerTournamentSessions.set(actualKey, session);
 
     logger.info("ctct called - saved computer tournament qualifying pass", {
-      tournamentKey,
+      tournamentKey: actualKey,
       bracketTime,
+      sessionState: session,
     });
 
     return {
@@ -2464,13 +2600,43 @@ const handlers = {
     };
   },
   ctrt: async (context) => {
-    const { params, logger } = context;
+    const { params, logger, supabase } = context;
     const tournamentKey = params.get("k") || "";
-    const session = computerTournamentSessions.get(tournamentKey) || {
-      tournamentId: 1,
-      createdAt: Date.now(),
-      wins: 0,
-    };
+    
+    if (!tournamentKey) {
+      logger.warn("ctrt called without tournament key");
+      return {
+        body: `"s", 0, "d", "", "b", 0`,
+        source: "generated:ctrt:no-key",
+      };
+    }
+    
+    let session = computerTournamentSessions.get(tournamentKey);
+    
+    // Fallback: try to find session by player ID if key is invalid
+    if (!session) {
+      const caller = await resolveCallerSession(context, "ctrt");
+      if (caller?.ok) {
+        const playerKey = computerTournamentSessionsByPlayer.get(caller.playerId);
+        if (playerKey) {
+          session = computerTournamentSessions.get(playerKey);
+          logger.info("ctrt using player ID fallback", { 
+            providedKey: tournamentKey, 
+            actualKey: playerKey,
+            playerId: caller.playerId 
+          });
+        }
+      }
+    }
+    
+    if (!session) {
+      logger.warn("ctrt called with invalid tournament key", { tournamentKey });
+      return {
+        body: `"s", 0, "d", "", "b", 0`,
+        source: "generated:ctrt:invalid-key",
+      };
+    }
+    
     const opponent = buildComputerTournamentOpponentXml(session);
 
     logger.info("ctrt called - returning computer tournament opponent", {
@@ -2486,23 +2652,72 @@ const handlers = {
     };
   },
   ctst: async (context) => {
-    const { params, logger } = context;
+    const { params, logger, supabase } = context;
     const tournamentKey = params.get("k") || "";
-    const session = computerTournamentSessions.get(tournamentKey) || {
-      tournamentId: 1,
-      createdAt: Date.now(),
-      wins: 0,
-    };
+    
+    if (!tournamentKey) {
+      logger.warn("ctst called without tournament key");
+      return {
+        body: `"s", 0, "d", ${JSON.stringify(`<n2 w='0' b='0'/>`)}, "t", 0`,
+        source: "generated:ctst:no-key",
+      };
+    }
+    
+    let session = computerTournamentSessions.get(tournamentKey);
+    let actualKey = tournamentKey;
+    
+    // Fallback: try to find session by player ID if key is invalid
+    if (!session) {
+      const caller = await resolveCallerSession(context, "ctst");
+      if (caller?.ok) {
+        const playerKey = computerTournamentSessionsByPlayer.get(caller.playerId);
+        if (playerKey) {
+          session = computerTournamentSessions.get(playerKey);
+          actualKey = playerKey;
+          logger.info("ctst using player ID fallback", { 
+            providedKey: tournamentKey, 
+            actualKey: playerKey,
+            playerId: caller.playerId 
+          });
+        }
+      }
+    }
+    
+    if (!session) {
+      logger.warn("ctst called with invalid tournament key", { tournamentKey });
+      return {
+        body: `"s", 0, "d", ${JSON.stringify(`<n2 w='0' b='0'/>`)}, "t", 0`,
+        source: "generated:ctst:invalid-key",
+      };
+    }
+    
     const winState = Number(params.get("w") || 1) ? 1 : 0;
     const payout = Number(params.get("b") || getComputerTournamentDefinition(session.tournamentId).purse || 0);
 
     if (winState) {
       session.wins = Number(session.wins || 0) + 1;
     }
-    computerTournamentSessions.set(tournamentKey, session);
+    computerTournamentSessions.set(actualKey, session);
+
+    // Award money to player if they won
+    if (winState && payout > 0 && supabase) {
+      const caller = await resolveCallerSession(context, "ctst");
+      if (caller?.ok) {
+        const player = await getPlayerById(supabase, caller.playerId);
+        if (player) {
+          const newMoney = Number(player.money || 0) + payout;
+          await updatePlayerMoney(supabase, caller.playerId, newMoney);
+          logger.info("ctst awarded tournament winnings", {
+            playerId: caller.playerId,
+            payout,
+            newMoney,
+          });
+        }
+      }
+    }
 
     logger.info("ctst called - saved computer tournament race result", {
-      tournamentKey,
+      tournamentKey: actualKey,
       winState,
       payout,
       wins: session.wins,

@@ -557,8 +557,8 @@ export class TcpServer {
           srcRaceGuid,
         });
 
-        // Resolve the player from the session key
-        if (this.supabase && srcSessionKey) {
+        // Resolve the player from the session key (only if not already identified)
+        if (this.supabase && srcSessionKey && !conn.playerId) {
           try {
             const playerId = await getSessionPlayerId({ supabase: this.supabase, sessionKey: srcSessionKey });
             if (playerId) {
@@ -599,6 +599,8 @@ export class TcpServer {
           } catch (err) {
             this.logger.error("SRC session lookup failed", { connId: conn.id, error: err.message });
           }
+        } else if (!conn.playerId) {
+          this.logger.warn("SRC received without valid session or existing player", { connId: conn.id, hasSessionKey: !!srcSessionKey, hasPlayerId: !!conn.playerId });
         }
 
         // Find the active race for this player (by GUID hint or by playerId)
@@ -742,11 +744,15 @@ export class TcpServer {
       return;
     }
 
+    // Update race activity timestamp
+    race.lastActivity = Date.now();
+
     const distance = this.normalizeNumericToken(parts[1], 0);
     const velocity = this.normalizeNumericToken(parts[2], 0);
     const acceleration = this.normalizeNumericToken(parts[3], 0);
     const tick = messageType === "I" ? this.normalizeNumericToken(parts[4], 0) : "0";
 
+    // Send RIVRDY once when first telemetry is received
     if (!race.rivalsReadySent) {
       race.rivalsReadySent = true;
       for (const participant of race.players) {
@@ -757,6 +763,7 @@ export class TcpServer {
       }
     }
 
+    // Forward telemetry to opponent
     const ioMessage =
       `"ac", "IO", "d", ${distance}, "v", ${velocity}, "a", ${acceleration}, "t", ${tick}`;
 
@@ -765,6 +772,17 @@ export class TcpServer {
       const participantConn = this.connections.get(participant.connId);
       if (participantConn) {
         this.sendMessage(participantConn, ioMessage);
+      }
+    }
+
+    // Send periodic race state updates to keep connection alive
+    if (!race.lastStateUpdate || Date.now() - race.lastStateUpdate > 5000) {
+      race.lastStateUpdate = Date.now();
+      for (const participant of race.players) {
+        const participantConn = this.connections.get(participant.connId);
+        if (participantConn) {
+          this.sendMessage(participantConn, '"ac", "RKA", "s", 1'); // Race Keep Alive
+        }
       }
     }
   }
@@ -985,6 +1003,11 @@ export class TcpServer {
           race.emptiedAt = Date.now();
           this.logger.info("TCP race emptied (kept for reconnect grace)", { raceId: conn.raceId });
         }
+      }
+      // Clear race state from connection
+      conn.raceId = null;
+      if (conn.playerId) {
+        this.raceIdByPlayerId.delete(conn.playerId);
       }
     }
     if (!conn.roomId) return;
@@ -1582,7 +1605,16 @@ export class TcpServer {
     player.opened = true;
     this.logger.info("TCP RO received", { connId: conn.id, raceId: race.id, openedCount: race.players.filter((entry) => entry.opened).length });
 
+    // Send race open confirmation
     this.sendMessage(conn, '"ac", "RO", "t", 32');
+    
+    // Send initial IO frames to establish race state
+    this.sendInitialIoFrames(conn);
+    
+    // If both players have opened the race channel, start the race sequence
+    if (race.players.every((entry) => entry.opened)) {
+      this.startRaceSequence(race);
+    }
   }
 
   handleRaceResult(conn, parts, raceOverride = null) {
@@ -1629,6 +1661,21 @@ export class TcpServer {
       }
     }
 
+    // If a player left during the race, we can't complete it properly
+    if (race.players.length < 2) {
+      this.logger.info("Race incomplete - player left", { raceId: race.id, remainingPlayers: race.players.length });
+      // Send completion messages to remaining player
+      for (const participant of race.players) {
+        const participantConn = this.connections.get(participant.connId);
+        if (participantConn) {
+          this.sendMessage(participantConn, '"ac", "RR", "s", 1');
+          this.sendMessage(participantConn, '"ac", "UR", "s", 1');
+          this.sendMessage(participantConn, '"ac", "OR", "s", 1');
+        }
+      }
+      return;
+    }
+
     if (race.resultsByPlayer.size < race.players.length) {
       return;
     }
@@ -1657,6 +1704,14 @@ export class TcpServer {
       this.sendMessage(participantConn, '"ac", "UR", "s", 1');
       this.sendMessage(participantConn, '"ac", "OR", "s", 1');
     }
+
+    // Clear raceId on connections after race completion to return them to lobby state
+    for (const participant of race.players) {
+      const participantConn = this.connections.get(participant.connId);
+      if (participantConn) {
+        participantConn.raceId = null;
+      }
+    }
   }
 
   cleanupRaceIfComplete(race) {
@@ -1667,10 +1722,21 @@ export class TcpServer {
       return;
     }
 
-    // Clean up reverse lookups for all players in this race
+    // Clear raceId on connection objects so they return to lobby state
     for (const player of race.players) {
-      if (player.playerId && this.raceIdByPlayerId.get(player.playerId) === race.id) {
-        this.raceIdByPlayerId.delete(player.playerId);
+      const conn = this.connections.get(player.connId);
+      if (conn) {
+        conn.raceId = null;
+      }
+      // Also check all connections for this playerId (lobby conn may differ from race conn)
+      if (player.playerId) {
+        const lobbyConn = this.findConnectionByPlayerId(player.playerId);
+        if (lobbyConn && lobbyConn !== conn) {
+          lobbyConn.raceId = null;
+        }
+        if (this.raceIdByPlayerId.get(player.playerId) === race.id) {
+          this.raceIdByPlayerId.delete(player.playerId);
+        }
       }
     }
 
@@ -1696,6 +1762,31 @@ export class TcpServer {
   buildRraMessage(race) {
     const [playerOne, playerTwo] = race.players;
     return `"ac", "RRA", "d", "<r r1id='${playerOne.playerId}' r2id='${playerTwo.playerId}' r1cid='${playerOne.carId}' r2cid='${playerTwo.carId}' b1='-1' b2='-1' bt='0' sc1='0' sc2='0' t='32'/>"`;
+  }
+
+  startRaceSequence(race) {
+    if (race.sequenceStarted) {
+      return; // Prevent duplicate starts
+    }
+    race.sequenceStarted = true;
+    
+    this.logger.info("Starting race sequence", { raceId: race.id });
+    
+    // Send race start messages to both players
+    for (const participant of race.players) {
+      const participantConn = this.connections.get(participant.connId);
+      if (!participantConn) continue;
+      
+      // Send race start notification
+      this.sendMessage(participantConn, '"ac", "RS", "s", 1');
+      
+      // Send initial race state
+      this.sendMessage(participantConn, '"ac", "RST", "s", 1');
+    }
+    
+    // Set up race monitoring
+    race.startTime = Date.now();
+    race.lastActivity = Date.now();
   }
 
   sendInitialIoFrames(conn) {
@@ -1795,22 +1886,43 @@ export class TcpServer {
     // --- Active races that have gone stale (both players likely disconnected) ---
     let cleanedRaces = 0;
     const emptyRaceGraceMs = 2 * 60 * 1000; // 2 minutes reconnect grace
+    const raceTimeoutMs = 3 * 60 * 1000; // 3 minutes for active race timeout
+    
     for (const [raceId, race] of this.races.entries()) {
+      let shouldCleanup = false;
+      let reason = '';
+      
       // Races that were emptied get a shorter grace period for reconnects
       if (race.emptiedAt && now - race.emptiedAt > emptyRaceGraceMs) {
-        // Clean up reverse lookups for all players in this race
-        for (const player of race.players) {
-          if (player.playerId && this.raceIdByPlayerId.get(player.playerId) === raceId) {
-            this.raceIdByPlayerId.delete(player.playerId);
-          }
-        }
-        this.races.delete(raceId);
-        this.raceCompletions.delete(raceId);
-        cleanedRaces++;
-        continue;
+        shouldCleanup = true;
+        reason = 'empty race grace period expired';
       }
       // Races that were never emptied get the full TTL
-      if (!race.emptiedAt && now - race.createdAt > raceTtl) {
+      else if (!race.emptiedAt && now - race.createdAt > raceTtl) {
+        shouldCleanup = true;
+        reason = 'race TTL expired';
+      }
+      // Active races that have timed out due to inactivity
+      else if (race.lastActivity && now - race.lastActivity > raceTimeoutMs) {
+        shouldCleanup = true;
+        reason = 'race activity timeout';
+        
+        // Send timeout messages to remaining players before cleanup
+        for (const participant of race.players) {
+          const participantConn = this.connections.get(participant.connId);
+          if (participantConn) {
+            this.sendMessage(participantConn, '"ac", "RTO", "s", 1'); // Race Timeout
+            this.sendMessage(participantConn, '"ac", "RR", "s", 1');
+            this.sendMessage(participantConn, '"ac", "UR", "s", 1');
+            this.sendMessage(participantConn, '"ac", "OR", "s", 1');
+            participantConn.raceId = null;
+          }
+        }
+      }
+      
+      if (shouldCleanup) {
+        this.logger.info("Cleaning up race", { raceId, reason });
+        
         // Clean up reverse lookups for all players in this race
         for (const player of race.players) {
           if (player.playerId && this.raceIdByPlayerId.get(player.playerId) === raceId) {
