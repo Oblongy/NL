@@ -80,9 +80,26 @@ function normalizeWheelXmlValue(value) {
 
 function normalizePartsXmlValue(value) {
   const partsXml = String(value || "").trim();
-  // Return empty string for empty or paint-only parts to avoid login hang
-  // The client will render the car correctly with just paint state
-  return partsXml;
+  if (!partsXml) {
+    return "";
+  }
+
+  // Stored part fragments sometimes come from shop payloads (`pi` / `t`) rather
+  // than owned-car payloads (`ci` / `pt`). The 10.0.03 garage/client code reads
+  // owned-car nodes, so normalize the legacy shop shape into the canonical form.
+  return partsXml.replace(/<p\b([^>]*)\/>/gi, (fullMatch, rawAttrs) => {
+    let attrs = String(rawAttrs || "");
+
+    if (!/\bci=/.test(attrs) && /\bpi=/.test(attrs)) {
+      attrs = attrs.replace(/\bpi=/, "ci=");
+    }
+
+    if (!/\bpt=/.test(attrs) && /\bt=/.test(attrs)) {
+      attrs = attrs.replace(/\bt=/, "pt=");
+    }
+
+    return `<p${attrs}/>`;
+  });
 }
 
 function isMissingPartsInventoryTableError(error) {

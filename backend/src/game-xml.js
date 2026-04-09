@@ -5,6 +5,7 @@ import {
   DEFAULT_PAINT_INDEX,
   normalizeOwnedWheelXmlValue,
 } from "./car-defaults.js";
+import { normalizeOwnedPartsXmlValue } from "./parts-xml.js";
 
 export function escapeXml(value) {
   return String(value ?? "")
@@ -68,11 +69,7 @@ function normalizeWheelXml(car) {
 }
 
 function normalizePartsXml(car) {
-  const partsXml = String(car.parts_xml || "").trim();
-  if (!partsXml) {
-    return "";
-  }
-  return partsXml;
+  return normalizeOwnedPartsXmlValue(car.parts_xml);
 }
 
 function renderFallbackWheelPartXml(car, wheelXml, partsXml) {
