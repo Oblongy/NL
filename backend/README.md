@@ -18,6 +18,41 @@ The intended shape is:
 5. Keep the runtime fallback fixtures in `backend/fixtures/`.
 6. Start the backend with `npm run dev`.
 
+## Deploying to the VPS
+
+For live updates from this Windows workspace, use the local deploy helper instead of manual file sync:
+
+```powershell
+cd backend
+git add src/game-actions.js src/game-xml.js src/parts-xml.js
+.\deploy_live.ps1
+```
+
+What it does:
+
+- deploys staged backend files by default
+- can deploy explicit files or the full tracked backend tree when requested
+- leaves live `.env` and `node_modules/` alone
+- backs up replaced or removed live files under `/opt/NL/backend/.deploy-backups/<timestamp>/`
+- runs `node --check src/index.js`
+- restarts `pm2` app `nl-backend`
+- checks `http://127.0.0.1:8082/healthz`
+
+You can also run it without the PowerShell wrapper:
+
+```powershell
+cd backend
+$env:NL_VPS_PASSWORD = "..."
+python tools/deploy_live.py --host 173.249.220.49 --user root
+```
+
+Useful flags:
+
+- `.\deploy_live.ps1 -DryRun`
+- `.\deploy_live.ps1 -Files src/game-actions.js,src/game-xml.js,src/parts-xml.js`
+- `.\deploy_live.ps1 -AllTracked`
+- `.\deploy_live.ps1 -SkipHealthcheck`
+
 ## Current real actions
 
 - `login`
