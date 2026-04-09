@@ -1854,10 +1854,54 @@ async function handleMoveLocation(context) {
   return { body: `"s", 1`, source: `stub:movelocation:${locationId}` };
 }
 
-function generateCarStats(carId) {
+function calculatePartsStats(partsXml) {
+  const stats = { hp: 0, tq: 0, wt: 0, grip: 0 };
+  
+  if (!partsXml) return stats;
+  
+  const partMatches = String(partsXml).matchAll(/<p\b([^>]*)\/>/gi);
+  
+  for (const match of partMatches) {
+    const attrs = match[1];
+    const hpMatch = attrs.match(/\bhp='([^']*)'/i);
+    const tqMatch = attrs.match(/\btq='([^']*)'/i);
+    const wtMatch = attrs.match(/\bwt='([^']*)'/i);
+    const psMatch = attrs.match(/\bps='([^']*)'/i);
+    const piMatch = attrs.match(/\bpi='([^']*)'/i);
+    
+    if (hpMatch) stats.hp += Number(hpMatch[1]) || 0;
+    if (tqMatch) stats.tq += Number(tqMatch[1]) || 0;
+    if (wtMatch) stats.wt += Number(wtMatch[1]) || 0;
+    
+    // Only count grip (ps) from tires (pi=13)
+    if (psMatch && piMatch && piMatch[1] === '13') {
+      stats.grip += Number(psMatch[1]) || 0;
+    }
+  }
+  
+  return stats;
+}
+
+function generateCarStats(carId, partsXml = '') {
   const spec = getShowroomCarSpec(carId);
   const car = FULL_CAR_CATALOG.find(([cid]) => cid === carId);
   const price = car ? car[2] : 0;
+  
+  // Calculate parts bonuses
+  const partsStats = calculatePartsStats(partsXml);
+  const totalHp = (spec.hp || 170) + partsStats.hp;
+  const totalTq = (spec.tq || 128) + partsStats.tq;
+  const totalWeight = (spec.sw || 2800) + partsStats.wt;
+  
+  // Grip affects traction (s) and launch (p)
+  // Base traction is 0.815, grip adds up to 0.15 (max at ps=15)
+  const gripBonus = Math.min(partsStats.grip / 100, 0.15);
+  const traction = 0.815 + gripBonus;
+  
+  // Grip also improves launch coefficient (p)
+  // Base is 0.15, grip can add up to 0.05
+  const launchBonus = Math.min(partsStats.grip / 300, 0.05);
+  const launch = 0.15 + launchBonus;
 
   const stats = {
     es: 1,
@@ -1870,9 +1914,9 @@ function generateCarStats(carId) {
     a: 6800,
     n: 7600,
     o: 7800,
-    s: 0.815,
+    s: traction,
     b: 0,
-    p: 0.15,
+    p: launch,
     c: 11,
     e: 0,
     d: 'T',
@@ -1886,11 +1930,11 @@ function generateCarStats(carId) {
     q: spec.hp || 100,
     m: spec.tq || 100,
     t: 100,
-    u: 28,
+    u: totalWeight / 100,
     w: 0.144,
     x: 41.2,
-    y: spec.tq || 128,
-    z: spec.hp || 170,
+    y: totalTq,
+    z: totalHp,
     aa: 4,
     ab: carId,
     ac: 9,
@@ -1920,14 +1964,19 @@ function generateCarStats(carId) {
   return `<n2 ${Object.entries(stats).map(([key, value]) => `${key}='${value}'`).join(' ')}><r g1='${stats.f}' g2='${stats.g}' g3='${stats.h}' g4='${stats.i}' g5='${stats.j}' g6='0'/></n2>`;
 }
 
-function generateTimingArray(carId) {
+function generateTimingArray(carId, partsXml = '') {
   const spec = getShowroomCarSpec(carId);
-  const power = Number(spec.hp) || 170;
-  const weight = Number(spec.sw) || 2800;
+  const partsStats = calculatePartsStats(partsXml);
+  
+  const power = (Number(spec.hp) || 170) + partsStats.hp;
+  const weight = (Number(spec.sw) || 2800) + partsStats.wt;
   const pwr = power / weight;
+  
+  // Grip improves acceleration times
+  const gripFactor = 1 + (partsStats.grip / 150); // Max 10% improvement at ps=15
 
   const baseTime = 15.5;
-  const time = baseTime - (pwr - 0.06) * 20;
+  const time = (baseTime - (pwr - 0.06) * 20) / gripFactor;
 
   const baseTiming = [91,91,91,91,91,91,91,91,91,93,95,98,102,106,109,112,115,117,119,121,122,123,124,125,126,126,127,127,128,128,128,128,128,127,127,127,126,126,125,125,124,123,122,121,120,119,118,117,116,115,113,112,110,108,106,104,101,98,98,96,95,93,91,89,87,85,83,81,79,77,75,73,71,69,67,65,63,61,59,57,55,53,51,49,47,45,43,41,39,37,35,33,31,29,27,25,23,21,19,17,15,13];
   const scale = time / baseTime;
@@ -2042,12 +2091,28 @@ async function handleGetGearInfo(context) {
 }
 
 async function handlePractice(context) {
-  const { logger, params } = context;
+  const { logger, params, supabase } = context;
   
   // Get the car ID from the request
   const carId = params.get("acid");
-  const carStats = generateCarStats(carId);
-  const timing = generateTimingArray(carId);
+  let partsXml = '';
+  
+  // Try to get the actual car's parts if we have supabase
+  if (supabase && carId) {
+    try {
+      const car = await getCarById(supabase, Number(carId));
+      if (car) {
+        partsXml = car.parts_xml || '';
+      }
+    } catch (error) {
+      if (logger) {
+        logger.warn("Failed to fetch car for practice", { carId, error: error.message });
+      }
+    }
+  }
+  
+  const carStats = generateCarStats(carId, partsXml);
+  const timing = generateTimingArray(carId, partsXml);
   
   // Format: "s", 1, "d", "<xml/>", "t", [array]
   const body = `"s", 1, "d", "${carStats}", "t", [${timing.join(', ')}]`;
@@ -2057,7 +2122,8 @@ async function handlePractice(context) {
       carId,
       bodyLength: body.length,
       bodyPreview: body.substring(0, 200),
-      timingLength: timing.length
+      timingLength: timing.length,
+      hasPartsXml: !!partsXml
     });
   }
   
