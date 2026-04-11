@@ -80,11 +80,24 @@ CREATE TABLE IF NOT EXISTS game_cars (
   -- Parts and wheels (XML format)
   wheel_xml TEXT DEFAULT '',
   parts_xml TEXT DEFAULT '',
+
+  -- Test-drive state
+  test_drive_invitation_id BIGINT DEFAULT NULL,
+  test_drive_name TEXT DEFAULT NULL,
+  test_drive_money_price BIGINT DEFAULT NULL,
+  test_drive_point_price BIGINT DEFAULT NULL,
+  test_drive_expires_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
   
   -- Timestamps
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+ALTER TABLE game_cars ADD COLUMN IF NOT EXISTS test_drive_invitation_id BIGINT DEFAULT NULL;
+ALTER TABLE game_cars ADD COLUMN IF NOT EXISTS test_drive_name TEXT DEFAULT NULL;
+ALTER TABLE game_cars ADD COLUMN IF NOT EXISTS test_drive_money_price BIGINT DEFAULT NULL;
+ALTER TABLE game_cars ADD COLUMN IF NOT EXISTS test_drive_point_price BIGINT DEFAULT NULL;
+ALTER TABLE game_cars ADD COLUMN IF NOT EXISTS test_drive_expires_at TIMESTAMP WITH TIME ZONE DEFAULT NULL;
 
 -- Indexes for fast lookups
 CREATE INDEX IF NOT EXISTS idx_game_cars_player ON game_cars(player_id);

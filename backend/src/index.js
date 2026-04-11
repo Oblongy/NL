@@ -4,6 +4,7 @@ import { FixtureStore } from "./fixture-store.js";
 import { createGameSupabase } from "./supabase-client.js";
 import { createHttpServer } from "./http-server.js";
 import { RaceRoomRegistry } from "./race-room-registry.js";
+import { RaceManager } from "./race-manager.js";
 import { RivalsState } from "./rivals-state.js";
 import { TeamState } from "./team-state.js";
 import { TcpNotify } from "./tcp-notify.js";
@@ -17,6 +18,7 @@ const fixtureStore = new FixtureStore({
 
 const supabase = await createGameSupabase(config, logger);
 const raceRoomRegistry = new RaceRoomRegistry();
+const raceManager = new RaceManager();
 const rivalsState = new RivalsState();
 const teamState = new TeamState();
 const tcpProxy = new TcpProxy({ logger });
@@ -27,6 +29,7 @@ const tcpServer = new TcpServer({
   notify: null, // Will be set after tcpNotify is created
   proxy: tcpProxy,
   supabase,
+  raceRoomRegistry,
   port: config.tcpPort,
   host: config.tcpHost,
 });
@@ -40,6 +43,7 @@ tcpServer.notify = tcpNotify;
 // Set services in tcpProxy so it can access race room registry on disconnect
 tcpProxy.services = {
   raceRoomRegistry,
+  raceManager,
   rivalsState,
   teamState,
   tcpNotify,

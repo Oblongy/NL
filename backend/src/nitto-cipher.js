@@ -12,7 +12,7 @@ function buildDynamicKey(seedNumber) {
 }
 
 function wheelCrypt(plaintext, key) {
-  const keyIndexes = [...key].map((char) => INDEX.get(char));
+  const keyIndexes = [...key].map((char) => INDEX.get(char) ?? 0);
   const out = [];
   let keyPos = 0;
 

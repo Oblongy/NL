@@ -21,25 +21,49 @@ export class RaceRoomRegistry {
     return this.rooms.delete(String(roomId));
   }
 
+  removePlayerFromOtherRooms(roomId, playerId) {
+    const removedFrom = [];
+    for (const room of this.rooms.values()) {
+      if (Number(room.roomId) === Number(roomId)) {
+        continue;
+      }
+
+      const result = this.removePlayer(room.roomId, playerId);
+      if (result.removed) {
+        removedFrom.push(room.roomId);
+      }
+    }
+    return removedFrom;
+  }
+
   // Add a player to a room
   addPlayer(roomId, player) {
     const room = this.get(roomId);
     if (!room) return { success: false, error: "room_not_found" };
     
     if (!room.players) room.players = [];
+
+    const playerId = Number(player.id);
+    const existingPlayer = room.players.find((entry) => Number(entry.id) === playerId);
+
+    // A player can only belong to one room at a time. Normalize stale multi-room
+    // state by pruning every other membership before we return the target room.
+    const movedFrom = this.removePlayerFromOtherRooms(roomId, playerId);
+
+    if (existingPlayer) {
+      existingPlayer.publicId = player.publicId;
+      existingPlayer.name = player.name;
+      this.upsert(roomId, room);
+      return { success: true, room, alreadyPresent: true, movedFrom };
+    }
     
     // Check if room is full
     if (room.players.length >= room.maxPlayers) {
       return { success: false, error: "room_full" };
     }
-    
-    // Check if player already in room
-    if (room.players.some(p => p.id === player.id)) {
-      return { success: false, error: "already_in_room" };
-    }
-    
+
     room.players.push({
-      id: player.id,
+      id: playerId,
       publicId: player.publicId,
       name: player.name,
       ready: false,
@@ -47,7 +71,7 @@ export class RaceRoomRegistry {
     });
     
     this.upsert(roomId, room);
-    return { success: true, room };
+    return { success: true, room, movedFrom };
   }
 
   // Remove a player from a room

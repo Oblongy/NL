@@ -1,5 +1,10 @@
 import { escapeXml, renderOwnedGarageCars, wrapSuccessData } from "./game-xml.js";
 import { getPublicIdForPlayer } from "./public-id.js";
+import { buildStaticCarsXml } from "./car-catalog.js";
+import {
+  PAINT_CATEGORIES_XML as STATIC_PAINT_CATS_XML,
+  PAINTS_XML as STATIC_PAINTS_XML,
+} from "./paint-catalog-source.js";
 
 const LEGACY_LOGIN_ROLE = 5;
 
@@ -30,70 +35,82 @@ const STATIC_LICENSE_PLATES_XML =
 
 const STATIC_BADGES_XML = "<n id='badges'><b></b></n>";
 
-// Paint categories per location tier — sourced directly from game data
-const STATIC_PAINT_CATS_XML = "<n id='getpaintcats'><s>" +
-  // Toreno (l=100)
-  "<c i='-2' l='100' p='500' pp='5'/><c i='-1' l='100' p='500' pp='5'/>" +
-  "<c i='65' l='100' p='500' pp='5'>Spoilers</c><c i='68' l='100' p='500' pp='5'>Roof Effect</c>" +
-  "<c i='71' l='100' p='500' pp='5'>Hoods</c><c i='72' l='100' p='500' pp='5'>Hood Center Effect</c>" +
-  "<c i='73' l='100' p='500' pp='5'>Side Effect</c><c i='74' l='100' p='500' pp='5'>Hood Front Effect</c>" +
-  "<c i='75' l='100' p='500' pp='5'>Eyelids</c><c i='76' l='100' p='500' pp='5'>Headlights</c>" +
-  "<c i='77' l='100' p='500' pp='5'>Tail Lights</c><c i='128' l='100' p='500' pp='5'>Front Bumper</c>" +
-  "<c i='129' l='100' p='500' pp='5'>Side Skirts</c><c i='130' l='100' p='500' pp='5'>Rear Bumper</c>" +
-  "<c i='140' l='100' p='500' pp='5'>Grille</c><c i='141' l='100' p='500' pp='5'>C-Pillar Effect</c>" +
-  "<c i='142' l='100' p='500' pp='5'>Fender Effect</c><c i='143' l='100' p='500' pp='5'>Door Effect</c>" +
-  "<c i='144' l='100' p='500' pp='5'>Trunk</c><c i='174' l='100' p='500' pp='5'>Top</c>" +
-  // Newburge (l=200)
-  "<c i='-2' l='200' p='1000' pp='10'/><c i='-1' l='200' p='1000' pp='10'/>" +
-  "<c i='65' l='200' p='1000' pp='10'>Spoilers</c><c i='68' l='200' p='1000' pp='10'>Roof Effect</c>" +
-  "<c i='71' l='200' p='1000' pp='10'>Hoods</c><c i='72' l='200' p='1000' pp='10'>Hood Center Effect</c>" +
-  "<c i='73' l='200' p='1000' pp='10'>Side Effect</c><c i='74' l='200' p='1000' pp='10'>Hood Front Effect</c>" +
-  "<c i='75' l='200' p='1000' pp='10'>Eyelids</c><c i='76' l='200' p='1000' pp='10'>Headlights</c>" +
-  "<c i='77' l='200' p='1000' pp='10'>Tail Lights</c><c i='128' l='200' p='1000' pp='10'>Front Bumper</c>" +
-  "<c i='129' l='200' p='1000' pp='10'>Side Skirts</c><c i='130' l='200' p='1000' pp='10'>Rear Bumper</c>" +
-  "<c i='140' l='200' p='1000' pp='10'>Grille</c><c i='141' l='200' p='1000' pp='10'>C-Pillar Effect</c>" +
-  "<c i='142' l='200' p='1000' pp='10'>Fender Effect</c><c i='143' l='200' p='1000' pp='10'>Door Effect</c>" +
-  "<c i='144' l='200' p='1000' pp='10'>Trunk</c><c i='174' l='200' p='1000' pp='10'>Top</c>" +
-  // Creek Side (l=300)
-  "<c i='-2' l='300' p='1500' pp='15'/><c i='-1' l='300' p='1500' pp='15'/>" +
-  "<c i='65' l='300' p='1500' pp='15'>Spoilers</c><c i='68' l='300' p='1500' pp='15'>Roof Effect</c>" +
-  "<c i='71' l='300' p='1500' pp='15'>Hoods</c><c i='72' l='300' p='1500' pp='15'>Hood Center Effect</c>" +
-  "<c i='73' l='300' p='1500' pp='15'>Side Effect</c><c i='74' l='300' p='1500' pp='15'>Hood Front Effect</c>" +
-  "<c i='75' l='300' p='1500' pp='15'>Eyelids</c><c i='76' l='300' p='1500' pp='15'>Headlights</c>" +
-  "<c i='77' l='300' p='1500' pp='15'>Tail Lights</c><c i='128' l='300' p='1500' pp='15'>Front Bumper</c>" +
-  "<c i='129' l='300' p='1500' pp='15'>Side Skirts</c><c i='130' l='300' p='1500' pp='15'>Rear Bumper</c>" +
-  "<c i='140' l='300' p='1500' pp='15'>Grille</c><c i='141' l='300' p='1500' pp='15'>C-Pillar Effect</c>" +
-  "<c i='142' l='300' p='1500' pp='15'>Fender Effect</c><c i='143' l='300' p='1500' pp='15'>Door Effect</c>" +
-  "<c i='144' l='300' p='1500' pp='15'>Trunk</c><c i='174' l='300' p='1500' pp='15'>Top</c>" +
-  // Vista Heights (l=400)
-  "<c i='-2' l='400' p='2500' pp='25'/><c i='-1' l='400' p='2500' pp='25'/>" +
-  "<c i='65' l='400' p='2500' pp='25'>Spoilers</c><c i='68' l='400' p='2500' pp='25'>Roof Effect</c>" +
-  "<c i='71' l='400' p='2500' pp='25'>Hoods</c><c i='72' l='400' p='2500' pp='25'>Hood Center Effect</c>" +
-  "<c i='73' l='400' p='2500' pp='25'>Side Effect</c><c i='74' l='400' p='2500' pp='25'>Hood Front Effect</c>" +
-  "<c i='75' l='400' p='2500' pp='25'>Eyelids</c><c i='76' l='400' p='2500' pp='25'>Headlights</c>" +
-  "<c i='77' l='400' p='2500' pp='25'>Tail Lights</c><c i='128' l='400' p='2500' pp='25'>Front Bumper</c>" +
-  "<c i='129' l='400' p='2500' pp='25'>Side Skirts</c><c i='130' l='400' p='2500' pp='25'>Rear Bumper</c>" +
-  "<c i='140' l='400' p='2500' pp='25'>Grille</c><c i='141' l='400' p='2500' pp='25'>C-Pillar Effect</c>" +
-  "<c i='142' l='400' p='2500' pp='25'>Fender Effect</c><c i='143' l='400' p='2500' pp='25'>Door Effect</c>" +
-  "<c i='144' l='400' p='2500' pp='25'>Trunk</c><c i='174' l='400' p='2500' pp='25'>Top</c>" +
-  // Diamond Point (l=500)
-  "<c i='-2' l='500' p='5000' pp='50'/><c i='-1' l='500' p='5000' pp='50'/>" +
-  "<c i='65' l='500' p='5000' pp='50'>Spoilers</c><c i='68' l='500' p='5000' pp='50'>Roof Effect</c>" +
-  "<c i='71' l='500' p='5000' pp='50'>Hoods</c><c i='72' l='500' p='5000' pp='50'>Hood Center Effect</c>" +
-  "<c i='73' l='500' p='5000' pp='50'>Side Effect</c><c i='74' l='500' p='5000' pp='50'>Hood Front Effect</c>" +
-  "<c i='75' l='500' p='5000' pp='50'>Eyelids</c><c i='76' l='500' p='5000' pp='50'>Headlights</c>" +
-  "<c i='77' l='500' p='5000' pp='50'>Tail Lights</c><c i='128' l='500' p='5000' pp='50'>Front Bumper</c>" +
-  "<c i='129' l='500' p='5000' pp='50'>Side Skirts</c><c i='130' l='500' p='5000' pp='50'>Rear Bumper</c>" +
-  "<c i='140' l='500' p='5000' pp='50'>Grille</c><c i='141' l='500' p='5000' pp='50'>C-Pillar Effect</c>" +
-  "<c i='142' l='500' p='5000' pp='50'>Fender Effect</c><c i='143' l='500' p='5000' pp='50'>Door Effect</c>" +
-  "<c i='144' l='500' p='5000' pp='50'>Trunk</c><c i='174' l='500' p='5000' pp='50'>Top</c>" +
-  "</s></n>";
+const STATIC_BANNERS_XML = "<n id='banners'><w></w></n>";
 
-const STATIC_IMPOUND_XML =
-  "<n id='impound' p='500' pd='100'/>" +
-  "<n id='usedcar' p='0' mp='0' c='0' mc='0' t='0' mt='0'/>" +
-  "<n id='testdrivecar'/>" +
-  "<n id='userDecalBans'><b s='0'/></n>";
+const STATIC_DYNO_XML = "<n id='dyno' p='500'/>";
+
+const STATIC_GEARS_XML = "<n id='gears' p='0' pp='0'/>";
+
+const STATIC_BROADCAST_XML =
+  "<n id='broadcast'><w><b i='1' m='Welcome to Nitto Legends!'/></w></n>";
+
+const STATIC_CARS_XML =
+  "<n id='cars'>" +
+  "<c id='1' c='Acura Integra GSR' l='100'/><c id='6' c='Acura RSX Type-S' l='200'/>" +
+  "<c id='28' c='Acura NSX' l='400'/><c id='117' c='AMC Javelin' l='300'/>" +
+  "<c id='72' c='Buick Grand National' l='400'/><c id='7' c='Chevy Corvette C6' l='400'/>" +
+  "<c id='18' c='Chevy Camaro' l='300'/><c id='52' c='Chevy Cobalt SS' l='200'/>" +
+  "<c id='82' c='Chevy C-10' l='200'/><c id='100' c='Chevy Impala SS' l='300'/>" +
+  "<c id='46' c='Chevy Camaro SS' l='300'/><c id='48' c='Chevy Camaro SS' l='400'/>" +
+  "<c id='83' c='Chevy S-10' l='100'/><c id='10' c='Dodge Viper SRT-10' l='500'/>" +
+  "<c id='15' c='Dodge Neon SRT-4' l='200'/><c id='59' c='Dodge Challenger SRT-8' l='400'/>" +
+  "<c id='60' c='Dodge Charger SRT-8' l='300'/><c id='63' c='Dodge Challenger R/T' l='300'/>" +
+  "<c id='75' c='Dodge Charger R/T' l='300'/><c id='81' c='Dodge Ram SRT-10' l='300'/>" +
+  "<c id='97' c='Dodge Charger SRT-8' l='400'/><c id='109' c='Dodge Viper ACR-X' l='500'/>" +
+  "<c id='124' c='Dodge Viper' l='500'/><c id='3' c='Ford Mustang GT' l='300'/>" +
+  "<c id='5' c='Ford GT' l='500'/><c id='78' c='Ford F-150 SVT Lightning' l='300'/>" +
+  "<c id='45' c='Ford SVT Cobra R' l='300'/><c id='68' c='Ford Shelby GT500' l='500'/>" +
+  "<c id='127' c='Ford Focus RS' l='300'/><c id='141' c='Ford RS200' l='500'/>" +
+  "<c id='143' c='Ford Falcon GT' l='300'/><c id='144' c='Ford Deuce Coupe' l='200'/>" +
+  "<c id='149' c='Ford Taurus SHO' l='400'/><c id='138' c='Ford Fiesta ST' l='200'/>" +
+  "<c id='8' c='Honda Integra Type R' l='200'/><c id='9' c='Honda S2000' l='300'/>" +
+  "<c id='31' c='Honda Civic Si' l='100'/><c id='37' c='Honda Civic Si' l='100'/>" +
+  "<c id='44' c='Honda Prelude DOHC VTEC' l='200'/><c id='74' c='Honda CR-X Si' l='100'/>" +
+  "<c id='76' c='Honda Civic Si' l='200'/><c id='105' c='Honda Civic Type R' l='200'/>" +
+  "<c id='4' c='Infiniti G35 Coupe' l='300'/><c id='51' c='Infiniti G37S' l='400'/>" +
+  "<c id='57' c='Mazda Furai' l='200'/><c id='19' c='Mazdaspeed 6 Bergenholtz' l='200'/>" +
+  "<c id='23' c='Mazdaspeed 3' l='300'/><c id='142' c='Mazdaspeed 3' l='300'/>" +
+  "<c id='24' c='Mazda RX-8' l='300'/><c id='16' c='Mazda RX-7' l='300'/>" +
+  "<c id='73' c='Mazda RX-3' l='100'/><c id='107' c='Mazda MX-5 Miata' l='100'/>" +
+  "<c id='2' c='Mitsubishi Lancer Evo VIII' l='400'/><c id='87' c='Mitsubishi Lancer Evo X' l='400'/>" +
+  "<c id='88' c='Mitsubishi Eclipse GSX' l='200'/><c id='55' c='Nissan 370Z' l='400'/>" +
+  "<c id='38' c='Nissan Skyline GT-R' l='400'/><c id='35' c='Nissan 300ZX' l='300'/>" +
+  "<c id='47' c='Nissan Sentra SE-R' l='100'/><c id='41' c='Nissan 240SX' l='100'/>" +
+  "<c id='25' c='Nissan 350Z' l='300'/><c id='125' c='Nissan Skyline GT-R' l='400'/>" +
+  "<c id='106' c='Nissan Cube' l='100'/><c id='21' c='Nissan GT-R' l='400'/>" +
+  "<c id='79' c='Plymouth &apos;Cuda' l='300'/><c id='80' c='Plymouth Road Runner' l='400'/>" +
+  "<c id='33' c='Pontiac Solstice GXP' l='200'/><c id='43' c='Pontiac GTO' l='300'/>" +
+  "<c id='49' c='Pontiac Trans Am' l='300'/><c id='50' c='Pontiac GTO' l='400'/>" +
+  "<c id='56' c='Pontiac GTO Judge' l='300'/><c id='85' c='Pontiac Firebird Trans Am' l='300'/>" +
+  "<c id='13' c='Scion tC' l='100'/><c id='22' c='Scion xB' l='100'/><c id='95' c='Scion tC' l='100'/>" +
+  "<c id='113' c='Scion FR-S' l='300'/><c id='89' c='Subaru Impreza WRX STI' l='400'/>" +
+  "<c id='92' c='Subaru Impreza WRX STI' l='400'/><c id='91' c='Subaru Impreza WRX STI' l='400'/>" +
+  "<c id='14' c='Toyota Supra' l='400'/><c id='145' c='Toyota Celica GT 2000' l='100'/>" +
+  "<c id='61' c='Toyota MR2' l='200'/><c id='65' c='Toyota Celica GT-S' l='200'/>" +
+  "<c id='99' c='Toyota Corolla GT-S' l='100'/><c id='122' c='Toyota Starlet' l='100'/>" +
+  "<c id='114' c='Toyota MR2 Spyder Widebody' l='200'/><c id='115' c='Toyota MR2 Spyder' l='200'/>" +
+  "<c id='58' c='VW Golf R32' l='300'/><c id='62' c='VW Beetle' l='100'/><c id='67' c='VW Golf GTI' l='100'/>" +
+  "<c id='64' c='VW Golf GTI' l='200'/><c id='77' c='VW Corrado' l='200'/><c id='84' c='VW Jetta GLI' l='200'/>" +
+  "<c id='128' c='Hyundai Genesis Coupe' l='300'/><c id='137' c='Hyundai Veloster Turbo' l='200'/>" +
+  "<c id='136' c='Porsche 911 GT3 RS' l='500'/><c id='140' c='Porsche Panamera Turbo' l='500'/>" +
+  "<c id='90' c='McLaren MP4-12C' l='500'/></n>";
+
+function renderTestDriveCarNode(testDriveCar) {
+  if (!testDriveCar) {
+    return "<n id='testdrivecar'/>";
+  }
+
+  return `<n id='testdrivecar' acid='${escapeXml(testDriveCar.gameCarId)}' tid='${escapeXml(testDriveCar.invitationId)}' m='${escapeXml(testDriveCar.moneyPrice)}' p='${escapeXml(testDriveCar.pointPrice)}' rh='${escapeXml(testDriveCar.hoursRemaining)}' e='${escapeXml(testDriveCar.expired)}'/>`;
+}
+
+function renderImpoundNodes(testDriveCar) {
+  return (
+    "<n id='impound' p='500' pd='100'/>" +
+    "<n id='usedcar' p='0' mp='0' c='0' mc='0' t='0' mt='0'/>" +
+    renderTestDriveCarNode(testDriveCar) +
+    "<n id='userDecalBans'><b s='0'/></n>"
+  );
+}
 
 const STATIC_INTRO_XML =
   "<n id='intro'>" +
@@ -145,17 +162,23 @@ function buildLoginTail(player, sessionKey) {
 // Main export — fully self-contained, no fixture dependency
 // ---------------------------------------------------------------------------
 
-export function buildLoginBody(player, cars, _templateBody, sessionKey, logger) {
+export function buildLoginBody(player, cars, _templateBody, sessionKey, logger, options = {}) {
   const ini =
     "<ini>" +
     renderLoginNode(player) +
     STATIC_LOCATIONS_XML +
     STATIC_SCLEVELS_XML +
     STATIC_LICENSE_PLATES_XML +
-    STATIC_BADGES_XML +
-    renderOwnedCarsNode(cars) +
     STATIC_PAINT_CATS_XML +
-    STATIC_IMPOUND_XML +
+    STATIC_PAINTS_XML +
+    STATIC_BANNERS_XML +
+    renderOwnedCarsNode(cars) +
+    STATIC_DYNO_XML +
+    STATIC_BADGES_XML +
+    STATIC_GEARS_XML +
+    STATIC_BROADCAST_XML +
+    buildStaticCarsXml() +
+    renderImpoundNodes(options.testDriveCar || null) +
     STATIC_INTRO_XML +
     "</ini>";
 

@@ -1,5 +1,10 @@
 import { getClientRoleForPlayer } from "./player-role.js";
 import { renderVisibleBadgesXml } from "./profile-badges.js";
+import {
+  DEFAULT_COLOR_CODE,
+  DEFAULT_PAINT_INDEX,
+  normalizeOwnedWheelXmlValue,
+} from "./car-defaults.js";
 
 export function escapeXml(value) {
   return String(value ?? "")
@@ -59,28 +64,7 @@ export function renderUserSummaries(players, optionsByPlayerId = new Map()) {
 }
 
 function normalizeWheelXml(car) {
-  const wheelXml = String(car.wheel_xml || "").trim();
-  if (!wheelXml) {
-    // Return default wheels instead of empty string to prevent <Void> errors
-    return "<ws><w wid='1' id='1001' ws='17'/></ws>";
-  }
-
-  // Repair legacy/bad starter wheels that cause invisible cars or rimless renders.
-  // Known-good default from reference payloads: <ws><w wid='1' id='1001' ws='17'/></ws>
-  // We previously created: <w wid='1000' id='1' ws='17'/> (or wrapped)
-  if (/<w\b[^>]*\bwid='1000'[^>]*\bid='1'[^>]*\bws='17'[^>]*\/?>/i.test(wheelXml)) {
-    return "<ws><w wid='1' id='1001' ws='17'/></ws>";
-  }
-
-  if (/^<ws[\s>]/i.test(wheelXml)) {
-    return wheelXml;
-  }
-
-  if (/^<w\b/i.test(wheelXml)) {
-    return `<ws>${wheelXml}</ws>`;
-  }
-
-  return wheelXml;
+  return normalizeOwnedWheelXmlValue(car.wheel_xml);
 }
 
 function normalizePartsXml(car) {
@@ -105,8 +89,13 @@ function renderFallbackWheelPartXml(car, wheelXml, partsXml) {
   const normalizedWheelSize = String(wheelSize || "").replace(/[^0-9]/g, "") || "17";
   const normalizedWheelId = String(wid || "").replace(/[^0-9]/g, "") || "1";
   const normalizedPartId = String(wheelPartId || "").replace(/[^0-9]/g, "") || "1000";
+  const isStockWheel = normalizedPartId === "1000";
+  const partName = isStockWheel
+    ? "Stock 15&quot;"
+    : `Wheel ${normalizedWheelId} ${normalizedWheelSize}&quot;`;
+  const partDesignId = isStockWheel ? "1" : normalizedWheelId;
 
-  return `<p i='${normalizedPartId}' ci='14' n='Stock 15&quot;' in='1' cc='' pdi='1' di='${normalizedWheelId}' pt='c' ps='${normalizedWheelSize}'/>`;
+  return `<p i='${normalizedPartId}' ci='14' n='${partName}' in='1' cc='' pdi='${partDesignId}' di='${normalizedWheelId}' pt='c' ps='${normalizedWheelSize}'/>`;
 }
 
 function renderFallbackPaintStateXml(car, partsXml) {
@@ -114,8 +103,35 @@ function renderFallbackPaintStateXml(car, partsXml) {
     return "";
   }
 
-  const colorCode = String(car.color_code || "C0C0C0").replace(/[^0-9A-F]/gi, "").toUpperCase() || "C0C0C0";
-  return `<ps><p cd='${colorCode}'/></ps>`;
+  const colorCode = String(car.color_code || DEFAULT_COLOR_CODE).replace(/[^0-9A-F]/gi, "").toUpperCase() || DEFAULT_COLOR_CODE;
+  
+  // Map color codes to paint IDs from the paint catalog
+  const colorToPaintId = {
+    'FF0000': '1',   // Red
+    '0000FF': '2',   // Blue
+    '000000': '3',   // Black
+    'FFFFFF': '4',   // White
+    'C0C0C0': '5',   // Silver
+    'FFD700': '6',   // Yellow
+    '00AA00': '7',   // Green
+    'FF6600': '8',   // Orange
+    '6600CC': '9',   // Purple
+    'FF69B4': '10',  // Pink
+    '191970': '11',  // Midnight Blue
+    '800020': '12',  // Burgundy
+    '2C3539': '13',  // Gunmetal
+    '32CD32': '14',  // Lime Green
+    'CC0000': '15',  // Candy Red
+    '0033FF': '16',  // Electric Blue
+    '1A1A1A': '17',  // Matte Black
+    'CCCCCC': '18',  // Chrome
+    'F5F5F5': '19',  // Pearl White
+  };
+  
+  const paintId = colorToPaintId[colorCode] || '5'; // Default to Silver
+  
+  // Include both paint ID and color code for compatibility
+  return `<ps><p i='${paintId}' cd='${colorCode}'/></ps>`;
 }
 
 function renderCarBody(car) {
@@ -132,12 +148,19 @@ function renderCarNode(car, extraAttrs = {}) {
     i: car.game_car_id,
     ci: car.catalog_car_id,
     sel: car.selected ? 1 : 0,
-    pi: car.paint_index ?? 4,
+    pi: car.paint_index ?? DEFAULT_PAINT_INDEX,
     pn: car.plate_name ?? "",
     lk: car.locked ?? 0,
     ae: car.aero ?? 0,
-    cc: car.color_code ?? "C0C0C0",
+    cc: car.color_code ?? DEFAULT_COLOR_CODE,
     ii: car.image_index ?? 0,
+    td: car.test_drive_active,
+    tdex: car.test_drive_expired,
+    tid: car.test_drive_invitation_id,
+    n: car.test_drive_name,
+    p: car.test_drive_money_price,
+    pp: car.test_drive_point_price,
+    rh: car.test_drive_hours_remaining,
   });
 
   return `<c ${attrs}>${renderCarBody(car)}</c>`;

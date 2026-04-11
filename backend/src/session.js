@@ -47,21 +47,17 @@ export async function validateOrCreateSession({ supabase, playerId, sessionKey }
     supabase.from("game_sessions").select("session_key, player_id").eq("session_key", sessionKey),
   );
 
+  // If session exists but belongs to different player, reject
   if (existing && Number(existing.player_id) !== Number(playerId)) {
     return false;
   }
 
+  // If session doesn't exist, reject - sessions should only be created during login
   if (!existing) {
-    const { error } = await supabase.from("game_sessions").insert({
-      session_key: sessionKey,
-      player_id: Number(playerId),
-    });
-    if (error) {
-      throw error;
-    }
-    return true;
+    return false;
   }
 
+  // Update last seen timestamp for existing valid session
   const { error } = await supabase
     .from("game_sessions")
     .update({ last_seen_at: new Date().toISOString() })

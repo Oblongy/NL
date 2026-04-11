@@ -1,3 +1,12 @@
+import {
+  DEFAULT_COLOR_CODE,
+  DEFAULT_OWNED_STOCK_WHEEL_XML,
+  DEFAULT_PAINT_INDEX,
+  DEFAULT_STARTER_CATALOG_CAR_ID,
+  DEFAULT_STOCK_PARTS_XML,
+  normalizeOwnedWheelXmlValue,
+} from "./car-defaults.js";
+
 async function maybeSingle(query) {
   const { data, error } = await query.maybeSingle();
   if (error) {
@@ -14,10 +23,48 @@ async function singleResult(query) {
   return data;
 }
 
-const NORMALIZED_STOCK_CATALOG_CAR_ID = 1; // Acura Integra GSR
-const NORMALIZED_STOCK_WHEEL_XML = "<ws><w wid='1' id='1001' ws='17'/></ws>";
-// Empty parts XML - no OEM parts by default to avoid login hang
-const NORMALIZED_STOCK_PARTS_XML = "";
+function isMissingGameCarIdError(error) {
+  const message = String(error?.message || error || "");
+  return /game_car_id/i.test(message) && /not-null|null value|required/i.test(message);
+}
+
+async function getNextExplicitGameCarId(supabase) {
+  const { data, error } = await supabase
+    .from("game_cars")
+    .select("game_car_id");
+
+  if (error) {
+    throw error;
+  }
+
+  return (data || []).reduce((maxId, row) => Math.max(maxId, Number(row?.game_car_id || 0)), 0) + 1;
+}
+
+async function insertGameCarCompat(supabase, insert) {
+  try {
+    return await singleResult(supabase.from("game_cars").insert(insert).select("*"));
+  } catch (error) {
+    if (!isMissingGameCarIdError(error)) {
+      throw error;
+    }
+
+    const compatInsert = {
+      ...insert,
+      game_car_id: await getNextExplicitGameCarId(supabase),
+    };
+    return singleResult(supabase.from("game_cars").insert(compatInsert).select("*"));
+  }
+}
+
+const NORMALIZED_STOCK_CATALOG_CAR_ID = DEFAULT_STARTER_CATALOG_CAR_ID;
+const NORMALIZED_STOCK_WHEEL_XML = DEFAULT_OWNED_STOCK_WHEEL_XML;
+const NORMALIZED_STOCK_PARTS_XML = DEFAULT_STOCK_PARTS_XML;
+const TEST_DRIVE_HOUR_MS = 60 * 60 * 1000;
+
+function isMissingTestDriveColumnError(error) {
+  const message = String(error?.message || error || "");
+  return /test_drive_/i.test(message) && /does not exist|unknown column|column/i.test(message);
+}
 
 function normalizeCatalogCarIdValue(value) {
   const numericValue = Number(value) || 0;
@@ -28,20 +75,7 @@ function normalizeCatalogCarIdValue(value) {
 }
 
 function normalizeWheelXmlValue(value) {
-  const wheelXml = String(value || "").trim();
-  if (!wheelXml) {
-    return NORMALIZED_STOCK_WHEEL_XML;
-  }
-  if (/<w\b[^>]*\bwid='1000'[^>]*\bid='1'[^>]*\bws='17'[^>]*\/?>/i.test(wheelXml)) {
-    return NORMALIZED_STOCK_WHEEL_XML;
-  }
-  if (/^<ws[\s>]/i.test(wheelXml)) {
-    return wheelXml;
-  }
-  if (/^<w\b/i.test(wheelXml)) {
-    return `<ws>${wheelXml}</ws>`;
-  }
-  return wheelXml;
+  return normalizeOwnedWheelXmlValue(value);
 }
 
 function normalizePartsXmlValue(value) {
@@ -51,16 +85,48 @@ function normalizePartsXmlValue(value) {
   return partsXml;
 }
 
+function parseTimestamp(value) {
+  if (!value) {
+    return null;
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function deriveTestDriveState(car) {
+  const invitationId = Number(car?.test_drive_invitation_id || 0);
+  if (invitationId <= 0) {
+    return null;
+  }
+
+  const expiresAt = parseTimestamp(car.test_drive_expires_at);
+  const msRemaining = expiresAt ? expiresAt.getTime() - Date.now() : 0;
+  const expired = !expiresAt || msRemaining <= 0;
+  const hoursRemaining = expiresAt ? Math.max(0, Math.ceil(msRemaining / TEST_DRIVE_HOUR_MS)) : 0;
+
+  return {
+    active: 1,
+    expired: expired ? 1 : 0,
+    hoursRemaining,
+  };
+}
+
 export function normalizeOwnedCarRecord(car) {
   if (!car) {
     return car;
   }
+
+  const testDriveState = deriveTestDriveState(car);
 
   return {
     ...car,
     catalog_car_id: normalizeCatalogCarIdValue(car.catalog_car_id),
     wheel_xml: normalizeWheelXmlValue(car.wheel_xml),
     parts_xml: normalizePartsXmlValue(car.parts_xml),
+    test_drive_active: testDriveState?.active,
+    test_drive_expired: testDriveState?.expired,
+    test_drive_hours_remaining: testDriveState?.hoursRemaining,
   };
 }
 
@@ -192,12 +258,12 @@ export async function createStarterCar(
   supabase,
   {
     playerId,
-    catalogCarId = 1,
+    catalogCarId = DEFAULT_STARTER_CATALOG_CAR_ID,
     plateName = "",
-    colorCode = "C0C0C0",
-    paintIndex = 4,
-    wheelXml = "<ws><w wid='1' id='1001' ws='17'/></ws>",
-    partsXml = "", // Empty by default - no OEM parts to avoid login hang
+    colorCode = DEFAULT_COLOR_CODE,
+    paintIndex = DEFAULT_PAINT_INDEX,
+    wheelXml = DEFAULT_OWNED_STOCK_WHEEL_XML,
+    partsXml = DEFAULT_STOCK_PARTS_XML,
   } = {},
 ) {
   if (!supabase || !playerId) {
@@ -208,14 +274,14 @@ export async function createStarterCar(
     player_id: Number(playerId),
     catalog_car_id: Number(catalogCarId),
     selected: true,
-    paint_index: Number(paintIndex) || 4,
+    paint_index: Number(paintIndex) || DEFAULT_PAINT_INDEX,
     plate_name: String(plateName || ""),
-    color_code: String(colorCode || "C0C0C0"),
+    color_code: String(colorCode || DEFAULT_COLOR_CODE),
     parts_xml: String(partsXml || ""),
-    wheel_xml: String(wheelXml || ""),
+    wheel_xml: normalizeWheelXmlValue(wheelXml),
   };
 
-  const car = await singleResult(supabase.from("game_cars").insert(insert).select("*"));
+  const car = await insertGameCarCompat(supabase, insert);
 
   // Keep the player's default car in sync with the selected starter car.
   await supabase
@@ -233,10 +299,15 @@ export async function createOwnedCar(
     catalogCarId,
     selected = false,
     plateName = "",
-    colorCode = "C0C0C0",
-    paintIndex = 4,
-    wheelXml = "<ws><w wid='1' id='1001' ws='17'/></ws>",
-    partsXml = "",
+    colorCode = DEFAULT_COLOR_CODE,
+    paintIndex = DEFAULT_PAINT_INDEX,
+    wheelXml = DEFAULT_OWNED_STOCK_WHEEL_XML,
+    partsXml = DEFAULT_STOCK_PARTS_XML,
+    testDriveInvitationId = null,
+    testDriveName = "",
+    testDriveMoneyPrice = null,
+    testDrivePointPrice = null,
+    testDriveExpiresAt = null,
   } = {},
 ) {
   if (!supabase || !playerId || !catalogCarId) {
@@ -247,12 +318,20 @@ export async function createOwnedCar(
     player_id: Number(playerId),
     catalog_car_id: Number(catalogCarId),
     selected: Boolean(selected),
-    paint_index: Number(paintIndex) || 4,
+    paint_index: Number(paintIndex) || DEFAULT_PAINT_INDEX,
     plate_name: String(plateName || ""),
-    color_code: String(colorCode || "C0C0C0"),
+    color_code: String(colorCode || DEFAULT_COLOR_CODE),
     parts_xml: String(partsXml || ""),
-    wheel_xml: String(wheelXml || ""),
+    wheel_xml: normalizeWheelXmlValue(wheelXml),
   };
+
+  if (testDriveInvitationId != null) {
+    insert.test_drive_invitation_id = Number(testDriveInvitationId) || null;
+    insert.test_drive_name = String(testDriveName || "");
+    insert.test_drive_money_price = Number(testDriveMoneyPrice) || 0;
+    insert.test_drive_point_price = Number(testDrivePointPrice) || 0;
+    insert.test_drive_expires_at = testDriveExpiresAt;
+  }
 
   if (selected) {
     await supabase
@@ -261,7 +340,21 @@ export async function createOwnedCar(
       .eq("player_id", Number(playerId));
   }
 
-  const car = await singleResult(supabase.from("game_cars").insert(insert).select("*"));
+  let car;
+  try {
+    car = await insertGameCarCompat(supabase, insert);
+  } catch (error) {
+    if (!isMissingTestDriveColumnError(error)) {
+      throw error;
+    }
+
+    delete insert.test_drive_invitation_id;
+    delete insert.test_drive_name;
+    delete insert.test_drive_money_price;
+    delete insert.test_drive_point_price;
+    delete insert.test_drive_expires_at;
+    car = await insertGameCarCompat(supabase, insert);
+  }
 
   if (selected) {
     await supabase
@@ -270,7 +363,7 @@ export async function createOwnedCar(
       .eq("id", Number(playerId));
   }
 
-  return car;
+  return normalizeOwnedCarRecord(car);
 }
 
 export async function listCarsForPlayer(supabase, playerId, requestedCarIds = []) {
@@ -324,11 +417,11 @@ export async function ensurePlayerHasGarageCar(
 
   await createStarterCar(supabase, {
     playerId,
-    catalogCarId: Number(options.catalogCarId) || 1,
-    paintIndex: Number(options.paintIndex) || 4,
+    catalogCarId: Number(options.catalogCarId) || DEFAULT_STARTER_CATALOG_CAR_ID,
+    paintIndex: Number(options.paintIndex) || DEFAULT_PAINT_INDEX,
     plateName: String(options.plateName || ""),
-    colorCode: String(options.colorCode || "C0C0C0"),
-    partsXml: String(options.partsXml || ""), // Empty by default
+    colorCode: String(options.colorCode || DEFAULT_COLOR_CODE),
+    partsXml: String(options.partsXml || DEFAULT_STOCK_PARTS_XML),
     wheelXml: String(options.wheelXml || NORMALIZED_STOCK_WHEEL_XML),
   });
 
@@ -379,6 +472,54 @@ export async function listCarsByIds(supabase, gameCarIds = []) {
   return repairLegacyCars(supabase, sortedCars);
 }
 
+export async function deleteCar(supabase, gameCarId) {
+  if (!supabase || !gameCarId) {
+    return false;
+  }
+
+  const { error } = await supabase
+    .from("game_cars")
+    .delete()
+    .eq("game_car_id", Number(gameCarId));
+
+  if (error) {
+    throw error;
+  }
+
+  return true;
+}
+
+export async function clearCarTestDriveState(supabase, gameCarId) {
+  if (!supabase || !gameCarId) {
+    return false;
+  }
+
+  const patch = {
+    test_drive_invitation_id: null,
+    test_drive_name: null,
+    test_drive_money_price: null,
+    test_drive_point_price: null,
+    test_drive_expires_at: null,
+  };
+
+  try {
+    const { error } = await supabase
+      .from("game_cars")
+      .update(patch)
+      .eq("game_car_id", Number(gameCarId));
+
+    if (error) {
+      throw error;
+    }
+  } catch (error) {
+    if (!isMissingTestDriveColumnError(error)) {
+      throw error;
+    }
+  }
+
+  return true;
+}
+
 export async function updatePlayerMoney(supabase, playerId, newBalance) {
   if (!supabase || !playerId) {
     return false;
@@ -423,6 +564,23 @@ export async function updatePlayerDefaultCar(supabase, playerId, gameCarId) {
     .from("game_players")
     .update({ default_car_game_id: Number(gameCarId) })
     .eq("id", Number(playerId));
+
+  return true;
+}
+
+export async function updatePlayerLocation(supabase, playerId, locationId) {
+  if (!supabase || !playerId || !locationId) {
+    return false;
+  }
+
+  const { error } = await supabase
+    .from("game_players")
+    .update({ location_id: Number(locationId) })
+    .eq("id", Number(playerId));
+
+  if (error) {
+    throw error;
+  }
 
   return true;
 }

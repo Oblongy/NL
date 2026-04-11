@@ -1,0 +1,111 @@
+<p i="200" pi="96" t="e" n="Cold Air Intake" p="500" pp="5" g="C" di="1" pdi="1" b="generic" bn="Generic" mn="Intake" l="100" mo="0" hp="15" tq="8" wt="0" cc="0"/>
+ <p i="201" pi="96" t="e" n="Short Ram Intake" p="350" pp="4" g="C" di="2" pdi="2" b="generic" bn="Generic" mn="Intake" l="200" mo="0" hp="10" tq="5" wt="0" cc="0"/>
+ <p i="255" pi="47" t="e" n="Intake Manifold" p="1200" pp="12" g="C" di="3" pdi="3" b="generic" bn="Generic" mn="Intake" l="200" mo="0" hp="25" tq="18" wt="0" cc="0"/>
+ <p i="263" pi="48" t="e" n="Individual Throttle Bodies" p="5000" pp="50" g="B" di="5" pdi="5" b="generic" bn="Generic" mn="Intake" l="100" mo="0" hp="45" tq="30" wt="0" cc="0"/>
+ <p i="202" pi="59" t="e" n="Performance Headers" p="800" pp="8" g="C" di="1" pdi="1" b="generic" bn="Generic" mn="Exhaust" l="500" mo="0" hp="20" tq="15" wt="0" cc="0"/>
+ <p i="250" pi="57" t="e" n="Cat-Back Exhaust" p="600" pp="6" g="C" di="2" pdi="2" b="generic" bn="Generic" mn="Exhaust" l="300" mo="0" hp="12" tq="10" wt="-3" cc="0"/>
+ <p i="260" pi="16" t="e" n="Titanium Exhaust" p="3000" pp="30" g="B" di="4" pdi="4" b="generic" bn="Generic" mn="Exhaust" l="200" mo="0" hp="35" tq="25" wt="-15" cc="0"/>
+ <p i="272" pi="16" t="e" n="Full Race Exhaust" p="6000" pp="60" g="B" di="5" pdi="5" b="generic" bn="Generic" mn="Exhaust" l="300" mo="0" hp="45" tq="35" wt="-20" cc="0"/>
+ <p i="204" pi="181" t="e" n="Performance Camshaft" p="2000" pp="20" g="C" di="1" pdi="1" b="generic" bn="Generic" mn="Camshaft" l="500" mo="0" hp="35" tq="25" wt="0" cc="0"/>
+ <p i="205" pi="181" t="e" n="Race Camshaft" p="4000" pp="40" g="B" di="3" pdi="3" b="generic" bn="Generic" mn="Camshaft" l="100" mo="0" hp="50" tq="35" wt="0" cc="0"/>
+ <p i="264" pi="181" t="e" n="Stage 3 Camshaft" p="6000" pp="60" g="B" di="4" pdi="4" b="generic" bn="Generic" mn="Camshaft" l="200" mo="0" hp="65" tq="45" wt="0" cc="0"/>
+ <p i="206" pi="87" t="e" n="Small Turbo Kit" p="5000" pp="50" g="B" di="1" pdi="1" b="generic" bn="Generic" mn="Forced Induction" l="500" mo="0" hp="100" tq="75" wt="22" cc="0"/>
+ <p i="208" pi="81" t="e" n="Supercharger" p="10000" pp="100" g="A" di="3" pdi="3" b="generic" bn="Generic" mn="Forced Induction" l="300" mo="0" hp="120" tq="100" wt="25" cc="0"/>
+ <p i="269" pi="87" t="e" n="Twin Turbo Kit" p="25000" pp="250" g="A" di="4" pdi="4" b="generic" bn="Generic" mn="Forced Induction" l="100" mo="0" hp="250" tq="200" wt="40" cc="0"/>
+ <p i="209" pi="174" t="e" n="ECU Tune Stage 1" p="1000" pp="10" g="C" di="1" pdi="1" b="generic" bn="Generic" mn="ECU" l="100" mo="0" hp="20" tq="15" wt="0" cc="0"/>
+ <p i="210" pi="174" t="e" n="ECU Tune Stage 2" p="2500" pp="25" g="B" di="2" pdi="2" b="generic" bn="Generic" mn="ECU" l="200" mo="0" hp="40" tq="30" wt="0" cc="0"/>
+ <p i="270" pi="174" t="e" n="Race ECU" p="10000" pp="100" g="A" di="4" pdi="4" b="generic" bn="Generic" mn="ECU" l="300" mo="0" hp="80" tq="60" wt="0" cc="0"/>
+ <p i="252" pi="202" t="e" n="Fuel Filter Upgrade" p="300" pp="3" g="C" di="1" pdi="1" b="generic" bn="Generic" mn="Fuel" l="500" mo="0" hp="5" tq="3" wt="0" cc="0"/>
+ <p i="212" pi="49" t="e" n="High Flow Fuel Pump" p="600" pp="6" g="C" di="2" pdi="2" b="generic" bn="Generic" mn="Fuel" l="200" mo="0" hp="10" tq="8" wt="0" cc="0"/>
+ <p i="268" pi="52" t="e" n="Fuel Injectors 1000cc" p="2500" pp="25" g="B" di="5" pdi="5" b="generic" bn="Generic" mn="Fuel" l="300" mo="0" hp="20" tq="18" wt="0" cc="0"/>
+ <p i="214" pi="21" t="e" n="Nitrous 50 Shot" p="3000" pp="30" g="B" di="1" pdi="1" b="nitrous" bn="Nitrous" mn="Shot" l="500" mo="0" hp="50" tq="50" wt="20" cc="0"/>
+ <p i="215" pi="21" t="e" n="Nitrous 100 Shot" p="5000" pp="50" g="B" di="2" pdi="2" b="nitrous" bn="Nitrous" mn="Shot" l="100" mo="0" hp="100" tq="100" wt="25" cc="0"/>
+ <p i="274" pi="21" t="e" n="Nitrous 200 Shot" p="12000" pp="120" g="A" di="4" pdi="4" b="nitrous" bn="Nitrous" mn="Shot" l="200" mo="0" hp="200" tq="200" wt="35" cc="0"/>
+ <p i="251" pi="24" t="e" n="Street Clutch" p="600" pp="6" g="C" di="1" pdi="1" b="generic" bn="Generic" mn="Clutch" l="300" mo="0" hp="0" tq="3" wt="-3" cc="0"/>
+ <p i="219" pi="24" t="e" n="Performance Clutch" p="1200" pp="12" g="C" di="2" pdi="2" b="generic" bn="Generic" mn="Clutch" l="100" mo="0" hp="0" tq="5" wt="-5" cc="0"/>
+ <p i="266" pi="24" t="e" n="Twin Disc Clutch" p="4000" pp="40" g="B" di="4" pdi="4" b="generic" bn="Generic" mn="Clutch" l="200" mo="0" hp="0" tq="15" wt="-8" cc="0"/>
+ <p i="217" pi="22" t="e" n="Lightweight Flywheel" p="800" pp="8" g="C" di="1" pdi="1" b="generic" bn="Generic" mn="Drivetrain" l="100" mo="0" hp="5" tq="10" wt="-15" cc="0"/>
+ <p i="256" pi="22" t="e" n="Limited Slip Differential" p="1800" pp="18" g="C" di="3" pdi="3" b="generic" bn="Generic" mn="Drivetrain" l="200" mo="0" hp="0" tq="15" wt="5" cc="0"/>
+ <p i="275" pi="22" t="e" n="Sequential Gearbox" p="15000" pp="150" g="A" di="5" pdi="5" b="generic" bn="Generic" mn="Drivetrain" l="500" mo="0" hp="0" tq="25" wt="-25" cc="0"/>
+ <p i="253" pi="114" t="c" n="Lowering Springs" p="500" pp="5" g="C" di="1" pdi="1" b="generic" bn="Generic" mn="Suspension" l="500" mo="0" hp="0" tq="0" wt="-5" cc="0" ps="6"/>
+ <p i="257" pi="114" t="c" n="Coilover Kit" p="1500" pp="15" g="C" di="3" pdi="3" b="generic" bn="Generic" mn="Suspension" l="300" mo="0" hp="0" tq="0" wt="-8" cc="0" ps="4"/>
+ <p i="278" pi="114" t="c" n="Oblong's Pro Drag Suspension" p="8000" pp="80" g="A" di="6" pdi="6" b="oblong" bn="Oblong" mn="Pro Drag Suspension" l="400" mo="0" hp="0" tq="0" wt="-15" cc="0" ps="2"/>
+ <p i="6000" pi="160" t="c" n="Custom Hood Graphic" p="0" pp="110" g="A" di="1" pdi="1" b="graphics" bn="Graphics" mn="Custom" l="100" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="6001" pi="161" t="c" n="Custom Side Graphic" p="0" pp="190" g="A" di="1" pdi="1" b="graphics" bn="Graphics" mn="Custom" l="100" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="6002" pi="162" t="c" n="Custom Front Graphic" p="0" pp="130" g="A" di="1" pdi="1" b="graphics" bn="Graphics" mn="Custom" l="200" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="6003" pi="163" t="c" n="Custom Back Graphic" p="0" pp="135" g="A" di="1" pdi="1" b="graphics" bn="Graphics" mn="Custom" l="300" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7100" pi="65" t="c" n="Spoiler-(1)" p="500" pp="5" g="C" di="2" pdi="2" b="exterior" bn="Exterior" mn="Spoiler-(1)" l="300" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7101" pi="65" t="c" n="Spoiler-(2)" p="1000" pp="10" g="C" di="3" pdi="3" b="exterior" bn="Exterior" mn="Spoiler-(2)" l="400" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7102" pi="65" t="c" n="Spoiler-(3)" p="1500" pp="15" g="C" di="4" pdi="4" b="exterior" bn="Exterior" mn="Spoiler-(3)" l="500" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7110" pi="71" t="c" n="Hood-(1)" p="500" pp="5" g="C" di="2" pdi="2" b="exterior" bn="Exterior" mn="Hood-(1)" l="400" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7111" pi="71" t="c" n="Hood-(2)" p="1000" pp="10" g="C" di="3" pdi="3" b="exterior" bn="Exterior" mn="Hood-(2)" l="500" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7112" pi="71" t="c" n="Hood-(3)" p="1500" pp="15" g="C" di="4" pdi="4" b="exterior" bn="Exterior" mn="Hood-(3)" l="100" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7113" pi="71" t="c" n="Hood-(4)" p="2000" pp="20" g="C" di="5" pdi="5" b="exterior" bn="Exterior" mn="Hood-(4)" l="200" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7114" pi="71" t="c" n="Hood-(5)" p="2500" pp="25" g="B" di="6" pdi="6" b="exterior" bn="Exterior" mn="Hood-(5)" l="300" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7115" pi="71" t="c" n="Hood-(6)" p="3000" pp="30" g="B" di="7" pdi="7" b="exterior" bn="Exterior" mn="Hood-(6)" l="400" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7120" pi="74" t="c" n="HoodFrontEffect-(1)" p="500" pp="5" g="C" di="2" pdi="2" b="exterior" bn="Exterior" mn="HoodFrontEffect-(1)" l="300" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7121" pi="74" t="c" n="HoodFrontEffect-(2)" p="1000" pp="10" g="C" di="3" pdi="3" b="exterior" bn="Exterior" mn="HoodFrontEffect-(2)" l="400" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7122" pi="74" t="c" n="HoodFrontEffect-(3)" p="1500" pp="15" g="C" di="4" pdi="4" b="exterior" bn="Exterior" mn="HoodFrontEffect-(3)" l="500" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7130" pi="75" t="c" n="Eyelids-(1)" p="500" pp="5" g="C" di="2" pdi="2" b="exterior" bn="Exterior" mn="Eyelids-(1)" l="400" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7140" pi="76" t="c" n="Headlights-(1)" p="500" pp="5" g="C" di="2" pdi="2" b="exterior" bn="Exterior" mn="Headlights-(1)" l="100" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7141" pi="76" t="c" n="Headlights-(2)" p="1000" pp="10" g="C" di="3" pdi="3" b="exterior" bn="Exterior" mn="Headlights-(2)" l="200" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7142" pi="76" t="c" n="Headlights-(3)" p="1500" pp="15" g="C" di="4" pdi="4" b="exterior" bn="Exterior" mn="Headlights-(3)" l="400" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7150" pi="77" t="c" n="TailLights-(1)" p="500" pp="5" g="C" di="2" pdi="2" b="exterior" bn="Exterior" mn="TailLights-(1)" l="100" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7151" pi="77" t="c" n="TailLights-(2)" p="1000" pp="10" g="C" di="3" pdi="3" b="exterior" bn="Exterior" mn="TailLights-(2)" l="200" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7160" pi="128" t="c" n="FrontBumper-(1)" p="500" pp="5" g="C" di="2" pdi="2" b="exterior" bn="Exterior" mn="FrontBumper-(1)" l="100" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7161" pi="128" t="c" n="FrontBumper-(2)" p="1000" pp="10" g="C" di="3" pdi="3" b="exterior" bn="Exterior" mn="FrontBumper-(2)" l="200" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7162" pi="128" t="c" n="FrontBumper-(3)" p="1500" pp="15" g="C" di="4" pdi="4" b="exterior" bn="Exterior" mn="FrontBumper-(3)" l="300" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7163" pi="128" t="c" n="FrontBumper-(4)" p="2000" pp="20" g="C" di="5" pdi="5" b="exterior" bn="Exterior" mn="FrontBumper-(4)" l="400" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7170" pi="129" t="c" n="SideSkirts-(1)" p="500" pp="5" g="C" di="2" pdi="2" b="exterior" bn="Exterior" mn="SideSkirts-(1)" l="500" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7171" pi="129" t="c" n="SideSkirts-(2)" p="1000" pp="10" g="C" di="3" pdi="3" b="exterior" bn="Exterior" mn="SideSkirts-(2)" l="200" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7172" pi="129" t="c" n="SideSkirts-(3)" p="1500" pp="15" g="C" di="4" pdi="4" b="exterior" bn="Exterior" mn="SideSkirts-(3)" l="300" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7173" pi="129" t="c" n="SideSkirts-(4)" p="2000" pp="20" g="C" di="5" pdi="5" b="exterior" bn="Exterior" mn="SideSkirts-(4)" l="400" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7180" pi="130" t="c" n="RearBumper-(1)" p="500" pp="5" g="C" di="2" pdi="2" b="exterior" bn="Exterior" mn="RearBumper-(1)" l="500" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7181" pi="130" t="c" n="RearBumper-(2)" p="1000" pp="10" g="C" di="3" pdi="3" b="exterior" bn="Exterior" mn="RearBumper-(2)" l="100" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7182" pi="130" t="c" n="RearBumper-(3)" p="1500" pp="15" g="C" di="4" pdi="4" b="exterior" bn="Exterior" mn="RearBumper-(3)" l="300" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7183" pi="130" t="c" n="RearBumper-(4)" p="2000" pp="20" g="C" di="5" pdi="5" b="exterior" bn="Exterior" mn="RearBumper-(4)" l="400" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7190" pi="140" t="c" n="Grille-(1)" p="500" pp="5" g="C" di="2" pdi="2" b="exterior" bn="Exterior" mn="Grille-(1)" l="500" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7200" pi="144" t="c" n="Trunk-(1)" p="500" pp="5" g="C" di="2" pdi="2" b="exterior" bn="Exterior" mn="Trunk-(1)" l="500" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="7201" pi="144" t="c" n="Trunk-(2)" p="1000" pp="10" g="C" di="3" pdi="3" b="exterior" bn="Exterior" mn="Trunk-(2)" l="100" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="10000" pi="17" t="e" n="Autorock Extreme Race Camshafts" p="0" pp="0" g="C" di="1" pdi="1" b="autorock" bn="Autorock" mn="Extreme Race Camshafts" l="400" mo="0" hp="7" tq="0" wt="0" cc="0"/>
+ <p i="10001" pi="22" t="e" n="Autorock Super Lightweight Axle Set" p="0" pp="0" g="C" di="1" pdi="1" b="autorock" bn="Autorock" mn="Super Lightweight Axle Set" l="300" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="10002" pi="181" t="e" n="Axe Racing AR Extreme Cam" p="0" pp="0" g="C" di="1" pdi="1" b="axeracing" bn="Axe Racing" mn="AR Extreme Cam" l="300" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="10003" pi="184" t="e" n="BigBoss +0.4L Block" p="0" pp="0" g="C" di="1" pdi="1" b="bigboss" bn="BigBoss" mn="+0.4L Block" l="400" mo="0" hp="2" tq="0" wt="0" cc="0"/>
+ <p i="10004" pi="51" t="e" n="BigBoss Max Flo Fuel Rail" p="0" pp="0" g="C" di="1" pdi="1" b="bigboss" bn="BigBoss" mn="Max Flo Fuel Rail" l="300" mo="0" hp="1" tq="0" wt="0" cc="0"/>
+ <p i="10005" pi="87" t="e" n="Blowfish Beast 40 PSI Turbo" p="0" pp="0" g="C" di="1" pdi="1" b="blowfish" bn="Blowfish" mn="Beast 40 PSI Turbo" l="200" mo="0" hp="6" tq="0" wt="0" cc="0"/>
+ <p i="10006" pi="137" t="e" n="Blowfish FI Series Turbo Piping" p="0" pp="0" g="C" di="1" pdi="1" b="blowfish" bn="Blowfish" mn="FI Series Turbo Piping" l="500" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="10007" pi="178" t="e" n="DaBest Iridium Plugs" p="0" pp="0" g="C" di="1" pdi="1" b="dabest" bn="DaBest" mn="Iridium Plugs" l="200" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="10008" pi="183" t="e" n="Enjin Sport Crankshaft" p="0" pp="0" g="C" di="1" pdi="1" b="enjin" bn="Enjin" mn="Sport Crankshaft" l="200" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="10009" pi="48" t="e" n="Enjin VX10 Throttle Body" p="0" pp="0" g="C" di="1" pdi="1" b="enjin" bn="Enjin" mn="VX10 Throttle Body" l="300" mo="0" hp="12" tq="0" wt="0" cc="0"/>
+ <p i="10010" pi="193" t="e" n="FastFlow Oversized Valves" p="0" pp="0" g="C" di="1" pdi="1" b="fastflow" bn="FastFlow" mn="Oversized Valves" l="200" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="10011" pi="86" t="e" n="Flospeed Spec R Intercooler" p="0" pp="0" g="C" di="1" pdi="1" b="flospeed" bn="Flospeed" mn="Spec R Intercooler" l="500" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="10012" pi="19" t="e" n="FlowForce FI-1 Head" p="0" pp="0" g="C" di="1" pdi="1" b="flowforce" bn="FlowForce" mn="FI-1 Head" l="400" mo="0" hp="2" tq="0" wt="0" cc="0"/>
+ <p i="10013" pi="203" t="e" n="Formuline 2 Bottle Kit 15lb Carbon Fiber Bottles" p="0" pp="0" g="C" di="1" pdi="1" b="formuline" bn="Formuline" mn="2 Bottle Kit 15lb Carbon Fiber Bottles" l="200" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="10014" pi="134" t="e" n="Formuline Air/Fuel Meter" p="0" pp="0" g="C" di="1" pdi="1" b="formuline" bn="Formuline" mn="Air/Fuel Meter" l="100" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="10015" pi="205" t="e" n="Gasman 200 Shot Fogger" p="0" pp="0" g="C" di="1" pdi="1" b="gasman" bn="Gasman" mn="200 Shot Fogger" l="500" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="10016" pi="201" t="e" n="Gugem Competition Fuel Cooler" p="0" pp="0" g="C" di="1" pdi="1" b="gugem" bn="Gugem" mn="Competition Fuel Cooler" l="500" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="10017" pi="187" t="e" n="Gugem Competition Oil Cooler Kit FireShield Ultimate Thermo Wrap" p="0" pp="0" g="C" di="1" pdi="1" b="gugem" bn="Gugem" mn="Competition Oil Cooler Kit FireShield Ultimate Thermo Wrap" l="500" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="10018" pi="54" t="e" n="J-Tech Fuel Pressure Regulator" p="0" pp="0" g="C" di="1" pdi="1" b="jtech" bn="J-Tech" mn="Fuel Pressure Regulator" l="100" mo="0" hp="7" tq="0" wt="0" cc="0"/>
+ <p i="10019" pi="189" t="e" n="J-Tech Race Oil Pump" p="0" pp="0" g="C" di="1" pdi="1" b="jtech" bn="J-Tech" mn="Race Oil Pump" l="200" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="10020" pi="114" t="c" n="M Tune Billet Motor Mounts" p="0" pp="0" g="C" di="1" pdi="1" b="mtune" bn="M Tune" mn="Billet Motor Mounts" l="100" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="10021" pi="20" t="e" n="Mishimoto Liquid Chill Coolant Additive" p="0" pp="0" g="C" di="1" pdi="1" b="mishimoto" bn="Mishimoto" mn="Liquid Chill Coolant Additive" l="200" mo="0" hp="36" tq="0" wt="0" cc="0"/>
+ <p i="10022" pi="20" t="e" n="Mishimoto Performance Aluminum Radiator" p="0" pp="0" g="C" di="2" pdi="2" b="mishimotoperformance" bn="Mishimoto Performance" mn="Aluminum Radiator" l="300" mo="0" hp="49" tq="0" wt="0" cc="0"/>
+ <p i="10023" pi="20" t="e" n="Mishimoto Performance Low Temperature Thermostat" p="0" pp="0" g="C" di="3" pdi="3" b="mishimotoperformance" bn="Mishimoto Performance" mn="Low Temperature Thermostat" l="400" mo="0" hp="54" tq="0" wt="0" cc="0"/>
+ <p i="10024" pi="177" t="e" n="MNK Racing Spark Plug Cables" p="0" pp="0" g="C" di="1" pdi="1" b="mnkracing" bn="MNK Racing" mn="Spark Plug Cables" l="300" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="10025" pi="22" t="e" n="Motiv Ultra-Light Flywheel" p="0" pp="0" g="C" di="2" pdi="2" b="motiv" bn="Motiv" mn="Ultra-Light Flywheel" l="400" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="10026" pi="15" t="e" n="MZR-L3T (Engine)" p="0" pp="0" g="C" di="1" pdi="1" b="setup" bn="Setup" mn="MZR-L3T (Engine)" l="500" mo="0" hp="2" tq="0" wt="0" cc="0"/>
+ <p i="10028" pi="114" t="c" n="OEM Anti-Sway Bars" p="0" pp="0" g="C" di="2" pdi="2" b="oem" bn="OEM" mn="Anti-Sway Bars" l="200" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="10029" pi="114" t="c" n="OEM Control Arms" p="0" pp="0" g="C" di="3" pdi="3" b="oem" bn="OEM" mn="Control Arms" l="500" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="10030" pi="174" t="e" n="OEM ECU" p="0" pp="0" g="C" di="1" pdi="1" b="oem" bn="OEM" mn="ECU" l="400" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="10031" pi="114" t="c" n="OEM Springs and Shocks" p="0" pp="0" g="C" di="4" pdi="4" b="oem" bn="OEM" mn="Springs and Shocks" l="300" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="10032" pi="2" t="c" n="OEM Tail Lights" p="0" pp="0" g="C" di="1" pdi="1" b="oem" bn="OEM" mn="Tail Lights" l="100" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="10033" pi="114" t="c" n="OEM Torsion Bar" p="0" pp="0" g="C" di="5" pdi="5" b="oem" bn="OEM" mn="Torsion Bar" l="400" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="10034" pi="182" t="e" n="Power Works Nagoya H-Beam Connecting Rods" p="0" pp="0" g="C" di="1" pdi="1" b="powerworksnagoya" bn="Power Works Nagoya" mn="H-Beam Connecting Rods" l="200" mo="0" hp="2" tq="0" wt="0" cc="0"/>
+ <p i="10035" pi="188" t="e" n="Royal Purple Oil Filter" p="0" pp="0" g="C" di="1" pdi="1" b="royalpurple" bn="Royal Purple" mn="Oil Filter" l="200" mo="0" hp="17" tq="0" wt="0" cc="0"/>
+ <p i="10036" pi="20" t="e" n="Royal Purple Synthetic Lubricant Package" p="0" pp="0" g="C" di="4" pdi="4" b="royalpurple" bn="Royal Purple" mn="Synthetic Lubricant Package" l="500" mo="0" hp="31" tq="0" wt="0" cc="0"/>
+ <p i="10037" pi="2" t="c" n="Sparco S Light CF Seat" p="0" pp="0" g="C" di="2" pdi="2" b="sparco" bn="Sparco" mn="S Light CF Seat" l="200" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="10038" pi="190" t="e" n="Suprec 10:1 Compression XR Pistons" p="0" pp="0" g="C" di="1" pdi="1" b="suprec" bn="Suprec" mn="10:1 Compression XR Pistons" l="100" mo="0" hp="2" tq="0" wt="0" cc="0"/>
+ <p i="10039" pi="16" t="e" n="Takayami 95mm Open Race Pipe" p="0" pp="0" g="C" di="1" pdi="1" b="takayami" bn="Takayami" mn="95mm Open Race Pipe" l="500" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="10040" pi="17" t="e" n="Takayami HG5 Gasket" p="0" pp="0" g="C" di="2" pdi="2" b="takayami" bn="Takayami" mn="HG5 Gasket" l="500" mo="0" hp="16" tq="0" wt="0" cc="0"/>
+ <p i="10041" pi="114" t="c" n="Takayami R Pro Springs" p="0" pp="0" g="C" di="6" pdi="6" b="takayami" bn="Takayami" mn="R Pro Springs" l="100" mo="0" hp="0" tq="0" wt="0" cc="0"/>
+ <p i="10042" pi="47" t="e" n="Takayami Super-Flo Intake Manifold" p="0" pp="0" g="C" di="1" pdi="1" b="takayami" bn="Takayami" mn="Super-Flo Intake Manifold" l="100" mo="0" hp="27" tq="0" wt="0" cc="0"/>

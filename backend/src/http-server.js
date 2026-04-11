@@ -1,11 +1,22 @@
 import { createServer } from "node:http";
-import { readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { createHash } from "node:crypto";
 import { decodeGameCodeQuery, encryptPayload } from "./nitto-cipher.js";
 import { handleGameAction } from "./game-actions.js";
 import { getSessionPlayerId } from "./session.js";
 import { getCarById, getPlayerById, listCarsForPlayer } from "./user-service.js";
+import { PARTS_CATALOG_XML } from "./parts-catalog.js";
 
 const LOCAL_STATIC_ROUTES = new Map([
+  [
+    "/",
+    {
+      body: readFileSync(new URL("./oneclient.html", import.meta.url), "latin1"),
+      contentType: "text/html; charset=latin1",
+      source: "local:oneclient.html",
+    },
+  ],
   [
     "/oneclient.html",
     {
@@ -31,6 +42,14 @@ const LOCAL_STATIC_ROUTES = new Map([
     },
   ],
   [
+    "/parts-catalog.xml",
+    {
+      body: PARTS_CATALOG_XML,
+      contentType: "application/xml; charset=utf-8",
+      source: "generated:parts-catalog.xml",
+    },
+  ],
+  [
     "/gameStyles.css",
     {
       body: readFileSync(new URL("./gameStyles.css", import.meta.url), "latin1"),
@@ -47,6 +66,26 @@ const LOCAL_STATIC_ROUTES = new Map([
     },
   ],
 ]);
+
+const pendingUploadsByRemote = new Map();
+
+// Cleanup stale uploads every 10 minutes
+setInterval(() => {
+  const now = Date.now();
+  const staleThreshold = 10 * 60 * 1000; // 10 minutes
+  let cleaned = 0;
+  
+  for (const [remote, upload] of pendingUploadsByRemote.entries()) {
+    if (upload.timestamp && now - upload.timestamp > staleThreshold) {
+      pendingUploadsByRemote.delete(remote);
+      cleaned++;
+    }
+  }
+  
+  if (cleaned > 0) {
+    console.log(`[${new Date().toISOString()}] [info] Cleaned up stale uploads: ${cleaned}`);
+  }
+}, 10 * 60 * 1000);
 
 function sendText(res, statusCode, body, headers = {}) {
   res.writeHead(statusCode, {
@@ -69,6 +108,89 @@ function sendJson(res, statusCode, payload, headers = {}) {
 
 function notFound(res, path) {
   sendText(res, 404, `not found: ${path}\n`);
+}
+
+function sendBinary(res, statusCode, body, headers = {}) {
+  const buffer = Buffer.isBuffer(body) ? body : Buffer.from(body);
+  res.writeHead(statusCode, {
+    "Content-Type": "application/octet-stream",
+    "Content-Length": buffer.length,
+    ...headers,
+  });
+  res.end(buffer);
+}
+
+function ensureParentDir(filePath) {
+  mkdirSync(dirname(filePath), { recursive: true });
+}
+
+const TOURNAMENT_KEY_JPEG = Buffer.from(
+  "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",
+  "base64"
+);
+
+function createTournamentKeyCode(aid, rid, tournamentType = "") {
+  const digest = createHash("sha1")
+    .update(`${aid}:${rid}:${tournamentType}`, "utf8")
+    .digest("hex");
+  const numeric = parseInt(digest.slice(0, 8), 16);
+  return String((numeric % 9000) + 1000);
+}
+
+function renderTournamentKeyJpeg(code) {
+  void code;
+  return TOURNAMENT_KEY_JPEG;
+}
+
+function avatarPathForPlayerId(playerId) {
+  return resolve(process.cwd(), "../cache/avatars/0/0/0", `${playerId}.jpg`);
+}
+
+function teamAvatarPathForTeamId(teamId) {
+  return resolve(process.cwd(), "../cache/teamavatars/0/0/0", `${teamId}.jpg`);
+}
+
+function userDecalPath(filename) {
+  // Sanitize filename to prevent path traversal
+  const sanitized = String(filename).replace(/[^a-zA-Z0-9._-]/g, '');
+  if (!sanitized || sanitized !== filename) {
+    throw new Error('Invalid filename');
+  }
+  return resolve(process.cwd(), "../cache/car/userDecals", sanitized);
+}
+
+function serveCompatAsset(res, pathname) {
+  let filePath = null;
+  let contentType = "application/octet-stream";
+
+  const avatarMatch = pathname.match(/^\/avatars\/0\/0\/0\/(\d+)\.jpg$/i);
+  if (avatarMatch) {
+    filePath = avatarPathForPlayerId(avatarMatch[1]);
+    contentType = "image/jpeg";
+  }
+
+  const teamAvatarMatch = pathname.match(/^\/teamavatars\/0\/0\/0\/(\d+)\.jpg$/i);
+  if (!filePath && teamAvatarMatch) {
+    filePath = teamAvatarPathForTeamId(teamAvatarMatch[1]);
+    contentType = "image/jpeg";
+  }
+
+  const userDecalMatch = pathname.match(/^\/cache\/car\/userDecals\/([^/]+)$/i);
+  if (!filePath && userDecalMatch) {
+    filePath = userDecalPath(userDecalMatch[1]);
+    contentType = userDecalMatch[1].toLowerCase().endsWith(".swf")
+      ? "application/x-shockwave-flash"
+      : "application/octet-stream";
+  }
+
+  if (!filePath || !existsSync(filePath)) {
+    return false;
+  }
+
+  sendBinary(res, 200, readFileSync(filePath), {
+    "Content-Type": contentType,
+  });
+  return true;
 }
 
 function readBody(req) {
@@ -118,6 +240,7 @@ export function createHttpServer({ config, logger, fixtureStore, supabase, servi
     try {
       const requestUrl = new URL(req.url, `http://${req.headers.host || `${config.host}:${config.port}`}`);
       const bodyBytes = await readBody(req);
+      const remoteAddress = req.socket.remoteAddress || "";
 
       logger.info("HTTP request", {
         method: req.method,
@@ -127,6 +250,28 @@ export function createHttpServer({ config, logger, fixtureStore, supabase, servi
 
       if (requestUrl.pathname.toLowerCase().endsWith("status.aspx")) {
         sendText(res, 200, "1");
+        return;
+      }
+
+      if (requestUrl.pathname.toLowerCase().endsWith("generatetournamentkey.aspx")) {
+        const aid = String(requestUrl.searchParams.get("aid") || "0");
+        const rid = String(requestUrl.searchParams.get("rid") || "0");
+        const tournamentType = String(requestUrl.searchParams.get("t") || "");
+        const code = createTournamentKeyCode(aid, rid, tournamentType);
+        const jpeg = renderTournamentKeyJpeg(code);
+
+        logger.info("Serving tournament key image", {
+          aid,
+          rid,
+          tournamentType: tournamentType || "cpu",
+          code,
+        });
+
+        sendBinary(res, 200, jpeg, {
+          "Content-Type": "image/jpeg",
+          "Cache-Control": "no-store",
+          "X-Nitto-Source": "generated:generateTournamentKey.aspx",
+        });
         return;
       }
 
@@ -148,23 +293,54 @@ export function createHttpServer({ config, logger, fixtureStore, supabase, servi
             if (!nameMatch || !filenameMatch) continue;
             
             const fieldName = nameMatch[1];
-            const fileData = part.substring(headerEnd + 4, part.length - 2);
-            const decalId = Date.now() % 100000;
-            const filename = `${decalId}.jpg`;
+            const fileData = Buffer.from(part.substring(headerEnd + 4, part.length - 2), "binary");
+            const pendingUpload = pendingUploadsByRemote.get(remoteAddress);
             
-            const { writeFileSync, mkdirSync } = await import("node:fs");
-            const { resolve } = await import("node:path");
-            const decalDir = resolve(process.cwd(), "../cache/car/userDecals");
-            try {
-              mkdirSync(decalDir, { recursive: true });
-              writeFileSync(resolve(decalDir, filename), Buffer.from(fileData, "binary"));
-              logger.info("Saved decal file", { decalId, fieldName, bytes: fileData.length });
-            } catch (err) {
-              logger.error("Failed to save decal", { error: err.message });
+            // Sanitize decalId to prevent path traversal
+            const rawDecalId = Date.now() % 100000;
+            const decalId = String(rawDecalId).replace(/[^0-9]/g, '');
+            
+            let targetPath = userDecalPath(`${decalId}.jpg`);
+            let responseBody = `<r s='1' i='${decalId}'/>`;
+
+            if (pendingUpload?.type === "avatars" && pendingUpload.targetId) {
+              // Validate targetId is numeric
+              const sanitizedId = Number(pendingUpload.targetId);
+              if (!Number.isFinite(sanitizedId) || sanitizedId <= 0) {
+                logger.error("Invalid avatar target ID", { targetId: pendingUpload.targetId });
+                sendText(res, 400, `<r s='0'/>`);
+                return;
+              }
+              targetPath = avatarPathForPlayerId(sanitizedId);
+              responseBody = `<r s='1' i='${sanitizedId}'/>`;
+            } else if (pendingUpload?.type === "teamavatars" && pendingUpload.targetId) {
+              // Validate targetId is numeric
+              const sanitizedId = Number(pendingUpload.targetId);
+              if (!Number.isFinite(sanitizedId) || sanitizedId <= 0) {
+                logger.error("Invalid team avatar target ID", { targetId: pendingUpload.targetId });
+                sendText(res, 400, `<r s='0'/>`);
+                return;
+              }
+              targetPath = teamAvatarPathForTeamId(sanitizedId);
+              responseBody = `<r s='1' i='${sanitizedId}'/>`;
             }
+
+            try {
+              ensureParentDir(targetPath);
+              writeFileSync(targetPath, fileData);
+              logger.info("Saved upload file", {
+                fieldName,
+                bytes: fileData.length,
+                type: pendingUpload?.type || "userDecals",
+                targetPath,
+              });
+            } catch (err) {
+              logger.error("Failed to save upload", { error: err.message, targetPath });
+            }
+
+            pendingUploadsByRemote.delete(remoteAddress);
             
-            // Return XML with decal ID - client reads 'i' attribute
-            sendText(res, 200, `<r s='1' i='${decalId}'/>`);
+            sendText(res, 200, responseBody);
             return;
           }
         }
@@ -198,6 +374,10 @@ export function createHttpServer({ config, logger, fixtureStore, supabase, servi
       }
 
       if (requestUrl.pathname !== "/gameCode1_00.aspx") {
+        if (serveCompatAsset(res, requestUrl.pathname)) {
+          return;
+        }
+
         const localStaticRoute = LOCAL_STATIC_ROUTES.get(requestUrl.pathname);
         if (localStaticRoute) {
           logger.info("Serving static route from local asset", {
@@ -272,6 +452,8 @@ export function createHttpServer({ config, logger, fixtureStore, supabase, servi
         return;
       }
 
+      logger.info("Decoded action", { action: decoded.action, decodedQuery: decoded.decoded });
+
       const { body, source } = await handleGameAction({
         action: decoded.action,
         params: decoded.params,
@@ -282,6 +464,24 @@ export function createHttpServer({ config, logger, fixtureStore, supabase, servi
         logger,
         services,
       });
+
+      if (decoded.action === "uploadrequest") {
+        pendingUploadsByRemote.set(remoteAddress, {
+          type: String(decoded.params.get("t") || "").toLowerCase(),
+          targetId: Number(decoded.params.get("id") || 0),
+          filename: String(decoded.params.get("fn") || ""),
+          sessionKey: String(decoded.params.get("sk") || ""),
+          timestamp: Date.now(),
+        });
+      }
+
+      if (decoded.action === "buydyno") {
+        logger.info("Dyno buy response body", {
+          source,
+          decodedQuery: decoded.decoded,
+          body,
+        });
+      }
 
       logger.info("Game action served", {
         action: decoded.action || "<unknown>",

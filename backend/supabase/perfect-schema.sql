@@ -75,18 +75,8 @@ create table if not exists public.game_sessions (
 );
 
 -- Add expires_at column if it doesn't exist
-do $$
-begin
-  if not exists (
-    select 1 from information_schema.columns 
-    where table_schema = 'public' 
-    and table_name = 'game_sessions' 
-    and column_name = 'expires_at'
-  ) then
-    alter table public.game_sessions 
-      add column expires_at timestamptz not null default timezone('utc', now()) + interval '7 days';
-  end if;
-end $$;
+alter table public.game_sessions 
+  add column if not exists expires_at timestamptz not null default timezone('utc', now()) + interval '7 days';
 
 -- Cars table - stores player-owned vehicles
 create table if not exists public.game_cars (
@@ -110,11 +100,24 @@ create table if not exists public.game_cars (
   -- Parts and wheels (stored as XML)
   wheel_xml text not null default '<ws><w wid=''1'' id=''1001'' ws=''17''/></ws>',
   parts_xml text not null default '',
+
+  -- Test-drive state
+  test_drive_invitation_id bigint,
+  test_drive_name text,
+  test_drive_money_price bigint,
+  test_drive_point_price bigint,
+  test_drive_expires_at timestamptz,
   
   -- Timestamps
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now())
 );
+
+alter table public.game_cars add column if not exists test_drive_invitation_id bigint;
+alter table public.game_cars add column if not exists test_drive_name text;
+alter table public.game_cars add column if not exists test_drive_money_price bigint;
+alter table public.game_cars add column if not exists test_drive_point_price bigint;
+alter table public.game_cars add column if not exists test_drive_expires_at timestamptz;
 
 -- Add unique partial index for one selected car per player
 create unique index if not exists idx_game_cars_one_selected_per_player 
@@ -261,33 +264,13 @@ create table if not exists public.game_transactions (
 -- ============================================================================
 
 -- Add team_id column if it doesn't exist, then add foreign key
-do $$ 
-begin
-  -- Add column if it doesn't exist
-  if not exists (
-    select 1 from information_schema.columns 
-    where table_schema = 'public' 
-    and table_name = 'game_players' 
-    and column_name = 'team_id'
-  ) then
-    alter table public.game_players add column team_id bigint;
-  end if;
-  
-  -- Drop existing constraint if it exists
-  if exists (
-    select 1 from information_schema.table_constraints 
-    where constraint_schema = 'public'
-    and table_name = 'game_players'
-    and constraint_name = 'game_players_team_id_fkey'
-  ) then
-    alter table public.game_players drop constraint game_players_team_id_fkey;
-  end if;
-  
-  -- Add foreign key constraint
-  alter table public.game_players
-    add constraint game_players_team_id_fkey
-    foreign key (team_id) references public.game_teams(id) on delete set null;
-end $$;
+alter table public.game_players add column if not exists team_id bigint;
+
+-- Drop existing constraint if it exists, then add it
+alter table public.game_players drop constraint if exists game_players_team_id_fkey;
+alter table public.game_players
+  add constraint game_players_team_id_fkey
+  foreign key (team_id) references public.game_teams(id) on delete set null;
 
 -- ============================================================================
 -- INDEXES FOR PERFORMANCE
@@ -301,17 +284,7 @@ create index if not exists idx_game_players_team_id on public.game_players(team_
 create index if not exists idx_game_sessions_player_id on public.game_sessions(player_id);
 
 -- Only create expires_at index if column exists
-do $$
-begin
-  if exists (
-    select 1 from information_schema.columns 
-    where table_schema = 'public' 
-    and table_name = 'game_sessions' 
-    and column_name = 'expires_at'
-  ) then
-    create index if not exists idx_game_sessions_expires_at on public.game_sessions(expires_at);
-  end if;
-end $$;
+create index if not exists idx_game_sessions_expires_at on public.game_sessions(expires_at);
 
 -- Cars indexes
 create index if not exists idx_game_cars_player_id on public.game_cars(player_id);
@@ -429,36 +402,43 @@ alter table public.game_team_members enable row level security;
 alter table public.game_mail enable row level security;
 
 -- Service role bypass (for backend server)
+-- Drop existing policies if they exist, then recreate
+drop policy if exists "Service role has full access to players" on public.game_players;
 create policy "Service role has full access to players"
   on public.game_players
   for all
   using (true)
   with check (true);
 
+drop policy if exists "Service role has full access to sessions" on public.game_sessions;
 create policy "Service role has full access to sessions"
   on public.game_sessions
   for all
   using (true)
   with check (true);
 
+drop policy if exists "Service role has full access to cars" on public.game_cars;
 create policy "Service role has full access to cars"
   on public.game_cars
   for all
   using (true)
   with check (true);
 
+drop policy if exists "Service role has full access to teams" on public.game_teams;
 create policy "Service role has full access to teams"
   on public.game_teams
   for all
   using (true)
   with check (true);
 
+drop policy if exists "Service role has full access to team members" on public.game_team_members;
 create policy "Service role has full access to team members"
   on public.game_team_members
   for all
   using (true)
   with check (true);
 
+drop policy if exists "Service role has full access to mail" on public.game_mail;
 create policy "Service role has full access to mail"
   on public.game_mail
   for all

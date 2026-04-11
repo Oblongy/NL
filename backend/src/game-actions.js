@@ -1,9 +1,11 @@
+import { RaceManager } from "./race-manager.js";
 import { buildLoginBody } from "./login-payload.js";
 import { PARTS_CATALOG_XML } from "./parts-catalog.js";
 import { randomUUID } from "node:crypto";
 import {
   escapeXml,
   failureBody,
+  renderOwnedGarageCar,
   renderOwnedGarageCarsWrapper,
   renderRacerCars,
   renderTeams,
@@ -29,12 +31,103 @@ import {
   listTeamsByIds,
   updatePlayerDefaultCar,
   updatePlayerMoney,
+  updatePlayerLocation,
   getCarById,
+  deleteCar,
+  clearCarTestDriveState,
 } from "./user-service.js";
 
 const DEFAULT_STARTER_CATALOG_CAR_ID = 1; // Acura Integra GSR
 const DEFAULT_STOCK_WHEEL_XML = "<ws><w wid='1' id='1001' ws='17'/></ws>";
 const DEFAULT_STOCK_PARTS_XML = "";
+const TEST_DRIVE_DURATION_HOURS = 72;
+const DEFAULT_DYNO_PURCHASE_STATE = Object.freeze({
+  boostSetting: 5,
+  maxPsi: 10,
+  chipSetting: 0,
+  shiftLightRpm: 7200,
+  redLine: 7800,
+});
+const PART_XML_ENTRY_REGEX = /<p\b[^>]*\/>/g;
+const PART_XML_ATTR_REGEX = /(\w+)='([^']*)'/g;
+
+let partsCatalogById = null;
+const pendingTestDriveInvitationsById = new Map();
+const pendingTestDriveInvitationsByPlayerId = new Map();
+const activeTestDriveCarsByPlayerId = new Map();
+
+function parsePartXmlAttributes(rawEntry) {
+  const attrs = {};
+  let match;
+  while ((match = PART_XML_ATTR_REGEX.exec(rawEntry)) !== null) {
+    attrs[match[1]] = match[2];
+  }
+  PART_XML_ATTR_REGEX.lastIndex = 0;
+  return attrs;
+}
+
+function getPartsCatalogById() {
+  if (partsCatalogById) {
+    return partsCatalogById;
+  }
+
+  partsCatalogById = new Map();
+  let match;
+  while ((match = PART_XML_ENTRY_REGEX.exec(PARTS_CATALOG_XML)) !== null) {
+    const attrs = parsePartXmlAttributes(match[0]);
+    const id = Number(attrs.i || 0);
+    if (id > 0) {
+      partsCatalogById.set(id, attrs);
+    }
+  }
+  PART_XML_ENTRY_REGEX.lastIndex = 0;
+  return partsCatalogById;
+}
+
+function createInstalledPartId() {
+  return `${Date.now()}${Math.floor(Math.random() * 1000).toString().padStart(3, "0")}`;
+}
+
+function upsertInstalledPartXml(partsXml, slotId, partXml, slotAttr = "pi") {
+  const source = String(partsXml || "");
+  const escapedSlotId = String(slotId || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`<p[^>]*\\b(?:${slotAttr}|ci)='${escapedSlotId}'[^>]*/>`, "g");
+  const cleaned = source.replace(pattern, "");
+  return `${cleaned}${partXml}`;
+}
+
+function buildInstalledCatalogPartXml(catalogPart, installId, overrides = {}) {
+  const attrs = {
+    ai: installId,
+    i: overrides.i ?? catalogPart.i ?? "",
+    pi: overrides.pi ?? catalogPart.pi ?? "",
+    t: overrides.t ?? catalogPart.t ?? "",
+    n: overrides.n ?? catalogPart.n ?? "",
+    p: overrides.p ?? catalogPart.p ?? "0",
+    pp: overrides.pp ?? catalogPart.pp ?? "0",
+    g: overrides.g ?? catalogPart.g ?? "",
+    di: overrides.di ?? catalogPart.di ?? "",
+    pdi: overrides.pdi ?? catalogPart.pdi ?? catalogPart.di ?? "",
+    b: overrides.b ?? catalogPart.b ?? "",
+    bn: overrides.bn ?? catalogPart.bn ?? "",
+    mn: overrides.mn ?? catalogPart.mn ?? "",
+    l: overrides.l ?? catalogPart.l ?? "100",
+    in: overrides.in ?? "1",
+    mo: overrides.mo ?? catalogPart.mo ?? "0",
+    hp: overrides.hp ?? catalogPart.hp ?? "0",
+    tq: overrides.tq ?? catalogPart.tq ?? "0",
+    wt: overrides.wt ?? catalogPart.wt ?? "0",
+    cc: overrides.cc ?? catalogPart.cc ?? "",
+    ps: overrides.ps ?? catalogPart.ps ?? "",
+  };
+
+  const orderedKeys = ["ai", "i", "pi", "t", "n", "p", "pp", "g", "di", "pdi", "b", "bn", "mn", "l", "in", "mo", "hp", "tq", "wt", "cc", "ps"];
+  const serialized = orderedKeys
+    .filter((key) => attrs[key] !== "" && attrs[key] !== undefined)
+    .map((key) => `${key}='${escapeXml(String(attrs[key]))}'`)
+    .join(" ");
+  return `<p ${serialized}/>`;
+}
 
 function parseShowroomPurchaseCatalogCarId(params) {
   return Number(
@@ -54,6 +147,11 @@ function parseShowroomPurchasePrice(params) {
       || params.get("cp")
       || 0,
   );
+}
+
+function getCatalogCarPrice(catalogCarId) {
+  const car = FULL_CAR_CATALOG.find(([cid]) => cid === catalogCarId);
+  return car ? car[2] : 0;
 }
 
 async function resolveInternalPlayerIdByPublicId(supabase, publicId) {
@@ -141,29 +239,37 @@ async function handleLogin(context) {
     return { body: failureBody(), source: "supabase:login:missing-credentials" };
   }
 
-  const player = await getPlayerByUsername(supabase, username);
+  try {
+    const player = await getPlayerByUsername(supabase, username);
 
-  if (!player || !verifyGamePassword(password, player.password_hash)) {
-    logger.warn("Login failed: invalid credentials", { 
-      username, 
-      playerExists: !!player,
-      passwordMatch: player ? verifyGamePassword(password, player.password_hash) : false
+    if (!player || !verifyGamePassword(password, player.password_hash)) {
+      logger.warn("Login failed: invalid credentials", { 
+        username, 
+        playerExists: !!player,
+        passwordMatch: player ? verifyGamePassword(password, player.password_hash) : false
+      });
+      return { body: failureBody(), source: "supabase:login:invalid" };
+    }
+
+    logger.info("Login successful", { username, playerId: player.id, publicId: player.public_id });
+
+    const cars = await ensurePlayerHasGarageCar(supabase, player.id, {
+      catalogCarId: DEFAULT_STARTER_CATALOG_CAR_ID,
+      wheelXml: DEFAULT_STOCK_WHEEL_XML,
+      partsXml: DEFAULT_STOCK_PARTS_XML,
     });
-    return { body: failureBody(), source: "supabase:login:invalid" };
+    const garageCars = decorateCarsWithTestDriveState(player.id, cars);
+    const sessionKey = await createLoginSession({ supabase, playerId: player.id });
+    return {
+      body: buildLoginBody(player, garageCars, null, sessionKey, logger, {
+        testDriveCar: buildTestDriveLoginState(player.id, garageCars),
+      }),
+      source: "supabase:login",
+    };
+  } catch (error) {
+    logger.error("Login error", { error: error.message, stack: error.stack });
+    return { body: failureBody(), source: "supabase:login:error" };
   }
-
-  logger.info("Login successful", { username, playerId: player.id, publicId: player.public_id });
-
-  const cars = await ensurePlayerHasGarageCar(supabase, player.id, {
-    catalogCarId: DEFAULT_STARTER_CATALOG_CAR_ID,
-    wheelXml: DEFAULT_STOCK_WHEEL_XML,
-    partsXml: DEFAULT_STOCK_PARTS_XML,
-  });
-  const sessionKey = await createLoginSession({ supabase, playerId: player.id });
-  return {
-    body: buildLoginBody(player, cars, null, sessionKey, logger),
-    source: "supabase:login",
-  };
 }
 
 async function handleCreateAccount(context) {
@@ -397,7 +503,7 @@ async function handleGetTwoRacersCars(context) {
 }
 
 async function handleGetAllCars(context) {
-  const { supabase } = context;
+  const { supabase, logger } = context;
   if (!supabase) {
     return null;
   }
@@ -412,9 +518,16 @@ async function handleGetAllCars(context) {
     wheelXml: DEFAULT_STOCK_WHEEL_XML,
     partsXml: DEFAULT_STOCK_PARTS_XML,
   });
+  const garageCars = decorateCarsWithTestDriveState(caller.playerId, cars);
+
+  logger?.info("GetAllCars returning cars", { 
+    count: garageCars.length, 
+    carIds: garageCars.map(c => c.game_car_id),
+    partsXmlLengths: garageCars.map(c => c.parts_xml?.length || 0)
+  });
 
   return {
-    body: wrapSuccessData(renderOwnedGarageCarsWrapper(cars, { ownerPublicId: caller.publicId })),
+    body: wrapSuccessData(renderOwnedGarageCarsWrapper(garageCars, { ownerPublicId: caller.publicId })),
     source: "supabase:getallcars",
   };
 }
@@ -449,10 +562,19 @@ async function handleGetOneCarEngine(context) {
     }
   }
 
-  // Return basic engine data - engine specs should come from a proper database table
-  // For now, return empty engine data which the client can handle
+  const timing = [273,273,273,273,273,273,273,273,273,375,387,398,410,421,432,444,455,467,478,490,501,513,524,536,547,559,570,582,593,605,614,617,619,622,624,626,629,631,634,636,639,641,644,646,648,651,653,656,658,661,663,665,668,670,673,675,678,680,680,672,665,657,649,641,633,625,617,609,601,593,585,577,569,561,554,546,537,529,520,512,503,494,486,477,469,460,452,443,435,426,418,409,401,392,384,375,367,358,350,341];
+
+  const engineXml =
+    `<n2 es='1' sl='7200' sg='0' rc='0' tmp='0' r='3257' v='2.2398523985239853' ` +
+    `a='6800' n='7600' o='7800' s='1.208' b='0' p='0.15' c='11' e='0' d='T' ` +
+    `f='3.587' g='2.022' h='1.384' i='1' j='0.861' k='0' l='4.058' q='300' ` +
+    `m='100' t='100' u='28' w='0.4607' x='63.98' y='506.71' z='92.13' ` +
+    `aa='4' ab='${accountCarId}' ac='9' ad='0' ae='100' af='100' ag='100' ah='100' ai='100' ` +
+    `aj='0' ak='0' al='0' am='0' an='0' ao='100' ap='0' aq='0' ar='1' as='0' ` +
+    `at='100' au='100' av='0' aw='100' ax='0'/>`;
+
   return {
-    body: wrapSuccessData("<e/>"),
+    body: `"s", 1, "d", "${engineXml}", "t", [${timing.join(', ')}]`,
     source: "generated:getonecarengine",
   };
 }
@@ -478,24 +600,27 @@ async function handleBuyDyno(context) {
   const newBalance = Number(player.money) - dynoPrice;
 
   if (newBalance < 0) {
-    return { body: failureBody(), source: "supabase:buydyno:insufficient-funds" };
+    return { body: `"s", -2`, source: "supabase:buydyno:insufficient-funds" };
   }
 
   await updatePlayerMoney(supabase, caller.playerId, newBalance);
 
-  // Response format: "s", 1, "d1", "ESCAPED_XML", "d", "ESCAPED_XML"
-  // The XML must be escaped because it's being embedded as a string value in the response
-  const gearRatios = "<g p='2500' pp='25'><r g1='3.587' g2='2.022' g3='1.384' g4='1' g5='0.861' g6='0' fg='4.058'/></g>";
-  const transactionInfo = `<r s='2' b='${newBalance}' ai='0'/>`;
-  
+  // 10.0.03 garageDynoBuyCB expects positional scalar args:
+  // (s, b, bs, mp, cs, sl, rl)
   return {
-    body: `"s", 1, "d1", "${escapeXml(transactionInfo)}", "d", "${escapeXml(gearRatios)}"`,
+    body:
+      `"s", 1, "b", ${newBalance}, ` +
+      `"bs", ${DEFAULT_DYNO_PURCHASE_STATE.boostSetting}, ` +
+      `"mp", ${DEFAULT_DYNO_PURCHASE_STATE.maxPsi}, ` +
+      `"cs", ${DEFAULT_DYNO_PURCHASE_STATE.chipSetting}, ` +
+      `"sl", ${DEFAULT_DYNO_PURCHASE_STATE.shiftLightRpm}, ` +
+      `"rl", ${DEFAULT_DYNO_PURCHASE_STATE.redLine}`,
     source: "supabase:buydyno",
   };
 }
 
 async function handleBuyPart(context) {
-  const { supabase, params } = context;
+  const { supabase, params, logger } = context;
   const accountCarId = params.get("acid") || "";
   const partId = Number(params.get("pid") || 0);
   const decalId = params.get("did") || "";
@@ -520,11 +645,32 @@ async function handleBuyPart(context) {
     return { body: failureBody(), source: "supabase:buypart:no-player" };
   }
 
-  // For custom panel graphics (pt=p), price from catalog if not provided
+  const car = await getCarById(supabase, accountCarId);
+  if (!car || Number(car.player_id) !== Number(caller.playerId)) {
+    return { body: failureBody(), source: "supabase:buypart:no-car" };
+  }
+
+  const catalogPart = partId ? getPartsCatalogById().get(partId) : null;
+  let partName = "Part";
+  let partSlotId = "";
+  let partPs = "";
   let price = partPrice;
+
+  if (catalogPart) {
+    partName = catalogPart.n || "Part";
+    partSlotId = String(catalogPart.pi || "");
+    partPs = catalogPart.ps || "";
+    if (price === 0) price = Number(catalogPart.p || 0);
+  }
+
+  // For custom panel graphics (pt=p), price from catalog if not provided
   if (price === 0 && partType === "p" && partId) {
     const panelPrices = { 6001: 190, 6002: 135, 6003: 130, 6004: 110 };
     price = panelPrices[partId] || 0;
+  }
+
+  if (!catalogPart && !(partType === "p" && decalId)) {
+    return { body: failureBody(), source: "supabase:buypart:no-part" };
   }
 
   const newBalance = Number(player.money) - price;
@@ -534,49 +680,60 @@ async function handleBuyPart(context) {
 
   await updatePlayerMoney(supabase, caller.playerId, newBalance);
 
-  // Custom panel graphic: rename uploaded file and save to parts_xml
-  if (partType === "p" && decalId && accountCarId) {
-    const { data: car } = await supabase
-      .from("game_cars")
-      .select("parts_xml, game_car_id")
-      .eq("game_car_id", accountCarId)
-      .maybeSingle();
+  let installId = createInstalledPartId();
 
-    if (car) {
-      // ci from fixture: 6001=side(161), 6002=back(163), 6003=front(162), 6004=hood(160)
-      const partCiMap = { 6001: 161, 6002: 163, 6003: 162, 6004: 160 };
-      const ci = partCiMap[partId] || 161;
+  // Save part to the owned car's parts_xml
+  if (accountCarId && partId) {
+    if (partType === "p" && decalId) {
+      const partSlotMap = { 6001: "161", 6002: "163", 6003: "162", 6004: "160" };
+      const slotId = partSlotMap[partId] || "161";
 
-      // Rename uploaded jpg to the path Flash expects: cache/car/userDecals/{ci}_{di}.swf
       try {
         const { readdirSync, renameSync, mkdirSync } = await import("node:fs");
         const { resolve } = await import("node:path");
         const decalDir = resolve(process.cwd(), "../cache/car/userDecals");
         mkdirSync(decalDir, { recursive: true });
-        const files = readdirSync(decalDir).filter(f => f.endsWith(".jpg")).sort().reverse();
+        const files = readdirSync(decalDir).filter((file) => file.endsWith(".jpg")).sort().reverse();
         if (files.length > 0) {
-          renameSync(resolve(decalDir, files[0]), resolve(decalDir, `${ci}_${decalId}.swf`));
+          renameSync(resolve(decalDir, files[0]), resolve(decalDir, `${slotId}_${decalId}.swf`));
         }
       } catch (err) {
-        context.logger?.error("Failed to rename decal", { error: err.message });
+        logger?.error("Failed to rename decal", { error: err.message });
       }
 
-      let partsXml = car.parts_xml || "";
-      partsXml = partsXml.replace(new RegExp(`<p[^>]*\\bci='${ci}'[^>]*/>`,"g"), "");
-      partsXml += `<p i='${partId}' ci='${ci}' n='Custom Graphic' in='1' cc='0' pdi='${decalId}' di='${decalId}' pt='c' ps=''/>`;
-      await supabase.from("game_cars").update({ parts_xml: partsXml }).eq("game_car_id", accountCarId);
+      const installedPartXml = `<p ai='${installId}' i='${partId}' pi='${slotId}' t='c' n='Custom Graphic' in='1' cc='0' pdi='${decalId}' di='${decalId}' ps=''/>`;
+      const partsXml = upsertInstalledPartXml(car.parts_xml || "", slotId, installedPartXml);
+      const { error: updateError1 } = await supabase.from("game_cars").update({ parts_xml: partsXml }).eq("game_car_id", accountCarId);
+      if (updateError1) {
+        logger?.error("Failed to save custom graphic", { error: updateError1, accountCarId, partId });
+      } else {
+        logger?.info("Saved custom graphic to car", { accountCarId, partId, slotId, partsXmlLength: partsXml.length });
+      }
+    } else if (catalogPart && partSlotId) {
+      const installedPartXml = buildInstalledCatalogPartXml(catalogPart, installId, {
+        t: catalogPart.t || partType || "",
+        ps: partPs,
+      });
+      const partsXml = upsertInstalledPartXml(car.parts_xml || "", partSlotId, installedPartXml);
+      const { error: updateError2 } = await supabase.from("game_cars").update({ parts_xml: partsXml }).eq("game_car_id", accountCarId);
+      if (updateError2) {
+        logger?.error("Failed to save part", { error: updateError2, accountCarId, partId, partSlotId });
+      } else {
+        logger?.info("Saved part to car", { accountCarId, partId, partSlotId, partName, installId, partsXmlLength: partsXml.length });
+      }
     }
   }
 
   return {
-    body: `"s", 1, "d1", "<r s='2' b='${newBalance}' ai='${accountCarId}'/>", "d", "<r s='1' b='0'></r>"`,
+    body: `"s", 1, "d1", "<r s='2' b='${newBalance}' ai='${installId}'/>", "d", "<r s='1' b='0'></r>"`,
     source: "supabase:buypart",
   };
 }
 
 async function handleBuyEnginePart(context) {
-  const { supabase, params } = context;
+  const { supabase, params, logger } = context;
   const accountCarId = params.get("acid") || "";
+  const partId = Number(params.get("epid") || 0);
   const partPrice = Number(params.get("pr") || 0);
 
   if (!accountCarId) {
@@ -600,15 +757,37 @@ async function handleBuyEnginePart(context) {
     return { body: failureBody(), source: "supabase:buyenginepart:no-player" };
   }
 
-  const newBalance = Number(player.money) - partPrice;
+  const car = await getCarById(supabase, accountCarId);
+  if (!car || Number(car.player_id) !== Number(caller.playerId)) {
+    return { body: failureBody(), source: "supabase:buyenginepart:no-car" };
+  }
+
+  const catalogPart = partId ? getPartsCatalogById().get(partId) : null;
+  if (!catalogPart) {
+    return { body: failureBody(), source: "supabase:buyenginepart:no-part" };
+  }
+
+  const price = partPrice || Number(catalogPart.p || 0);
+  const newBalance = Number(player.money) - price;
   if (newBalance < 0) {
     return { body: failureBody(), source: "supabase:buyenginepart:insufficient-funds" };
   }
 
   await updatePlayerMoney(supabase, caller.playerId, newBalance);
 
+  const installId = createInstalledPartId();
+  const slotId = String(catalogPart.pi || "");
+  const installedPartXml = buildInstalledCatalogPartXml(catalogPart, installId);
+  const partsXml = upsertInstalledPartXml(car.parts_xml || "", slotId, installedPartXml);
+  const { error: updateError } = await supabase.from("game_cars").update({ parts_xml: partsXml }).eq("game_car_id", accountCarId);
+  if (updateError) {
+    logger?.error("Failed to save engine part", { error: updateError, accountCarId, partId, slotId });
+  } else {
+    logger?.info("Saved engine part to car", { accountCarId, partId, slotId, installId, partsXmlLength: partsXml.length });
+  }
+
   return {
-    body: `"s", 1, "d1", "<r s='2' b='${newBalance}' ai='${accountCarId}'/>", "d", "<r s='1' b='0'></r>"`,
+    body: `"s", 1, "d1", "<r s='2' b='${newBalance}' ai='${installId}'/>", "d", "<r s='1' b='0'></r>"`,
     source: "supabase:buyenginepart",
   };
 }
@@ -634,20 +813,27 @@ async function handleBuyCar(context) {
     return { body: failureBody(), source: "supabase:buycar:no-player" };
   }
 
-  const purchasePrice = parseShowroomPurchasePrice(params);
+  const purchasePrice = parseShowroomPurchasePrice(params) || getCatalogCarPrice(catalogCarId);
   const newBalance = Number(player.money) - purchasePrice;
   if (newBalance < 0) {
     return { body: failureBody(), source: "supabase:buycar:insufficient-funds" };
   }
 
   const existingCars = await listCarsForPlayer(supabase, caller.playerId);
+  
+  // Allow color selection via 'cc' or 'c' parameter, default to silver
+  const selectedColor = String(params.get("cc") || params.get("c") || "C0C0C0")
+    .replace(/[^0-9A-F]/gi, "")
+    .toUpperCase()
+    .slice(0, 6) || "C0C0C0";
+  
   const createdCar = await createOwnedCar(supabase, {
     playerId: caller.playerId,
     catalogCarId,
     selected: existingCars.length === 0,
     paintIndex: 4,
     plateName: "",
-    colorCode: "C0C0C0",
+    colorCode: selectedColor,
     partsXml: DEFAULT_STOCK_PARTS_XML,
     wheelXml: DEFAULT_STOCK_WHEEL_XML,
   });
@@ -734,6 +920,100 @@ async function handleGetRemarks(context) {
   };
 }
 
+async function handleGetCarPrice(context) {
+  const { supabase, params } = context;
+  const accountCarId = params.get("acid") || "";
+
+  if (!supabase) {
+    return null;
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:getcarprice");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:getcarprice:bad-session" };
+  }
+
+  if (!accountCarId) {
+    return { body: failureBody(), source: "supabase:getcarprice:missing-car" };
+  }
+
+  // Get the car from database
+  const car = await getCarById(supabase, accountCarId);
+  if (!car || Number(car.player_id) !== Number(caller.playerId)) {
+    return { body: failureBody(), source: "supabase:getcarprice:invalid-car" };
+  }
+
+  // Calculate sell price (50% of catalog price)
+  const catalogPrice = getCatalogCarPrice(car.catalog_car_id);
+  const sellPrice = Math.floor(catalogPrice * 0.5);
+
+  // Response format: "s", 1, "p", <price>
+  return {
+    body: `"s", 1, "p", ${sellPrice}`,
+    source: "supabase:getcarprice",
+  };
+}
+
+async function handleGetEmailList(context) {
+  const { supabase, params } = context;
+
+  if (!supabase) {
+    return null;
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:getemaillist");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:getemaillist:bad-session" };
+  }
+
+  const folder = params.get("f") || "inbox";
+  const page = Number(params.get("p") || 0);
+  const pageSize = 20;
+
+  try {
+    // Get emails from database
+    const { data: emails, error } = await supabase
+      .from("game_mail")
+      .select(`
+        id,
+        sender_player_id,
+        subject,
+        body,
+        is_read,
+        created_at,
+        attachment_money,
+        attachment_points
+      `)
+      .eq("recipient_player_id", caller.playerId)
+      .eq("folder", folder)
+      .eq("is_deleted", false)
+      .order("created_at", { ascending: false })
+      .range(page * pageSize, (page + 1) * pageSize - 1);
+
+    if (error) throw error;
+
+    // Build email XML
+    const emailsXml = (emails || []).map(email => {
+      const readStatus = email.is_read ? "1" : "0";
+      const hasAttachment = (email.attachment_money > 0 || email.attachment_points > 0) ? "1" : "0";
+      return (
+        `<m i='${email.id}' si='${email.sender_player_id || 0}' ` +
+        `s='${escapeXml(email.subject)}' r='${readStatus}' a='${hasAttachment}' ` +
+        `d='${Math.floor(new Date(email.created_at).getTime() / 1000)}'/>`
+      );
+    }).join("");
+
+    // Response format: "s", 1, "d", "<emails>...</emails>", "t", <total>, "p", <page>
+    return {
+      body: `"s", 1, "d", "${escapeXml(`<emails>${emailsXml}</emails>`)}", "t", ${emails?.length || 0}, "p", ${page}`,
+      source: "supabase:getemaillist",
+    };
+  } catch (error) {
+    context.logger?.error("Get email list error", { error: error.message });
+    return { body: failureBody(), source: "supabase:getemaillist:error" };
+  }
+}
+
 async function handleGetBlackCardProgress(context) {
   const { supabase } = context;
 
@@ -755,10 +1035,11 @@ async function handleGetBlackCardProgress(context) {
 }
 
 async function handleCheckTestDrive(context) {
-  const { supabase } = context;
+  const { supabase, params } = context;
+  let caller = null;
 
   if (supabase) {
-    const caller = await resolveCallerSession(context, "supabase:checktestdrive");
+    caller = await resolveCallerSession(context, "supabase:checktestdrive");
     if (!caller?.ok) {
       return {
         body: caller?.body || failureBody(),
@@ -767,10 +1048,208 @@ async function handleCheckTestDrive(context) {
     }
   }
 
-  // Response format: "s", -2 (no test drive available)
+  const player = caller?.player || null;
+  const offer = player ? createTestDriveInvitation(player) : {
+    invitationId: Date.now(),
+    catalogCarId: DEFAULT_STARTER_CATALOG_CAR_ID,
+    colorCode: "C0C0C0",
+    locationId: 100,
+  };
+  const xml = `<t ci='${offer.catalogCarId}' c='${offer.colorCode}' tid='${offer.invitationId}' lod='${offer.locationId}'/>`;
+
   return {
-    body: `"s", -2`,
-    source: "checktestdrive:none",
+    body: wrapSuccessData(xml),
+    source: "checktestdrive:available",
+  };
+}
+
+async function handleAcceptTestDrive(context) {
+  const { supabase, params } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:accepttestdrive");
+  if (!caller?.ok) {
+    return {
+      body: caller?.body || failureBody(),
+      source: caller?.source || "supabase:accepttestdrive:bad-session",
+    };
+  }
+
+  const invitationId = Number(params.get("tid") || 0);
+  const pendingInvitation = getPendingTestDriveInvitation(invitationId);
+  if (!pendingInvitation || Number(pendingInvitation.playerId) !== Number(caller.playerId)) {
+    return { body: `"s", -1`, source: "accepttestdrive:invalid-invitation" };
+  }
+
+  const createdCar = await createOwnedCar(supabase, {
+    playerId: caller.playerId,
+    catalogCarId: pendingInvitation.catalogCarId,
+    selected: true,
+    paintIndex: 4,
+    plateName: "",
+    colorCode: String(params.get("c") || pendingInvitation.colorCode || "C0C0C0"),
+    partsXml: DEFAULT_STOCK_PARTS_XML,
+    wheelXml: DEFAULT_STOCK_WHEEL_XML,
+    testDriveInvitationId: invitationId,
+    testDriveName: getCatalogCarName(pendingInvitation.catalogCarId),
+    testDriveMoneyPrice: pendingInvitation.moneyPrice,
+    testDrivePointPrice: pendingInvitation.pointPrice,
+    testDriveExpiresAt: new Date(Date.now() + pendingInvitation.hoursRemaining * 60 * 60 * 1000).toISOString(),
+  });
+
+  clearPendingTestDriveInvitation(invitationId);
+  setActiveTestDriveCar({
+    playerId: caller.playerId,
+    gameCarId: createdCar.game_car_id,
+    catalogCarId: pendingInvitation.catalogCarId,
+    invitationId,
+    moneyPrice: pendingInvitation.moneyPrice,
+    pointPrice: pendingInvitation.pointPrice,
+    hoursRemaining: pendingInvitation.hoursRemaining,
+    expired: false,
+  });
+
+  return {
+    body: `"s", 1, "h", "${pendingInvitation.hoursRemaining}", "m", "${pendingInvitation.moneyPrice}", "p", "${pendingInvitation.pointPrice}", "d", "${renderOwnedGarageCar(createdCar)}"`,
+    source: "accepttestdrive:created",
+  };
+}
+
+async function handleBuyTestDriveCar(context) {
+  const { supabase, params } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:buytestdrivecar");
+  if (!caller?.ok) {
+    return {
+      body: caller?.body || failureBody(),
+      source: caller?.source || "supabase:buytestdrivecar:bad-session",
+    };
+  }
+
+  const activeTestDrive = await loadActiveTestDriveCar(supabase, caller.playerId);
+  const invitationId = Number(params.get("tid") || 0);
+  if (!activeTestDrive || Number(activeTestDrive.invitationId) !== invitationId) {
+    return { body: `"s", 0`, source: "buytestdrivecar:missing-test-drive" };
+  }
+
+  const player = await getPlayerById(supabase, caller.playerId);
+  if (!player) {
+    return { body: `"s", -3`, source: "buytestdrivecar:no-player" };
+  }
+
+  const paymentType = String(params.get("pt") || "m").toLowerCase();
+  if (paymentType === "p") {
+    const newPointsBalance = Number(player.points) - Number(activeTestDrive.pointPrice);
+    if (newPointsBalance < 0) {
+      return { body: `"s", -4`, source: "buytestdrivecar:insufficient-points" };
+    }
+
+    const { error } = await supabase
+      .from("game_players")
+      .update({ points: newPointsBalance })
+      .eq("id", Number(caller.playerId));
+    if (error) {
+      throw error;
+    }
+
+    clearActiveTestDriveCar(caller.playerId);
+    await clearCarTestDriveState(supabase, activeTestDrive.gameCarId);
+    return {
+      body: `"s", 1, "m", "${newPointsBalance}"`,
+      source: "buytestdrivecar:points",
+    };
+  }
+
+  const newMoneyBalance = Number(player.money) - Number(activeTestDrive.moneyPrice);
+  if (newMoneyBalance < 0) {
+    return { body: `"s", -4`, source: "buytestdrivecar:insufficient-money" };
+  }
+
+  await updatePlayerMoney(supabase, caller.playerId, newMoneyBalance);
+  clearActiveTestDriveCar(caller.playerId);
+  await clearCarTestDriveState(supabase, activeTestDrive.gameCarId);
+  return {
+    body: `"s", 2, "m", "${newMoneyBalance}"`,
+    source: "buytestdrivecar:money",
+  };
+}
+
+async function handleRemoveTestDriveCar(context) {
+  const { supabase, params } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:removetestdrivecar");
+  if (!caller?.ok) {
+    return {
+      body: caller?.body || failureBody(),
+      source: caller?.source || "supabase:removetestdrivecar:bad-session",
+    };
+  }
+
+  const activeTestDrive = await loadActiveTestDriveCar(supabase, caller.playerId);
+  const invitationId = Number(params.get("tid") || 0);
+  if (!activeTestDrive || Number(activeTestDrive.invitationId) !== invitationId) {
+    return { body: `"s", -1`, source: "removetestdrivecar:missing-test-drive" };
+  }
+
+  const car = await getCarById(supabase, activeTestDrive.gameCarId);
+  if (!car || Number(car.player_id) !== Number(caller.playerId)) {
+    clearActiveTestDriveCar(caller.playerId);
+    return { body: `"s", -2`, source: "removetestdrivecar:missing-car" };
+  }
+
+  await deleteCar(supabase, activeTestDrive.gameCarId);
+  clearActiveTestDriveCar(caller.playerId);
+
+  const remainingCars = await listCarsForPlayer(supabase, caller.playerId);
+  if (remainingCars.length > 0) {
+    await updatePlayerDefaultCar(supabase, caller.playerId, remainingCars[0].game_car_id);
+  } else {
+    const { error } = await supabase
+      .from("game_players")
+      .update({ default_car_game_id: null })
+      .eq("id", Number(caller.playerId));
+    if (error) {
+      throw error;
+    }
+  }
+
+  return {
+    body: `"s", 1`,
+    source: "removetestdrivecar:deleted",
+  };
+}
+
+async function handleRejectTestDrive(context) {
+  const { supabase, params } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:rejecttestdrive");
+  if (!caller?.ok) {
+    return {
+      body: caller?.body || failureBody(),
+      source: caller?.source || "supabase:rejecttestdrive:bad-session",
+    };
+  }
+
+  const invitationId = Number(params.get("tid") || 0);
+  const invitation = getPendingTestDriveInvitation(invitationId);
+  if (invitation && Number(invitation.playerId) === Number(caller.playerId)) {
+    clearPendingTestDriveInvitation(invitationId);
+  }
+
+  return {
+    body: `"s", 1`,
+    source: "rejecttestdrive:ok",
   };
 }
 
@@ -834,6 +1313,22 @@ const FULL_CAR_CATALOG = [
   ["94","Honda Fit Sport",15000],
 ];
 
+function getCatalogCarRecord(catalogCarId) {
+  return FULL_CAR_CATALOG.find(([cid]) => Number(cid) === Number(catalogCarId)) || null;
+}
+
+function getCatalogCarName(catalogCarId) {
+  return getCatalogCarRecord(catalogCarId)?.[1] || "Unknown";
+}
+
+function getCatalogCarPointPrice(catalogCarId) {
+  const moneyPrice = getCatalogCarPrice(catalogCarId);
+  if (moneyPrice <= 0) {
+    return -1;
+  }
+  return Math.max(1, Math.round(moneyPrice / 1000));
+}
+
 // Location-based tier for showroom filtering (from scripts/data/cars.py)
 const LOCATION_MAX_PRICE = {
   100: 30000,   // Toreno
@@ -852,45 +1347,364 @@ const DEALER_CATEGORIES = [
   { i: "1005", pi: "0", n: "Diamond Point Showroom",cl: "CC55CC", l: "500" },
 ];
 
-function buildShowroomXml(locationId, starterOnly = false) {
-  const maxPrice = LOCATION_MAX_PRICE[locationId] ?? 30000;
-  const eligible = starterOnly
-    ? FULL_CAR_CATALOG.filter(([, , price]) => Number(price) <= 30000)
-    : FULL_CAR_CATALOG.filter(([, , price]) => Number(price) <= maxPrice);
+const DEFAULT_SHOWROOM_CAR_SPEC = {
+  eo: "2.0L I4",
+  dt: "FWD",
+  np: "4",
+  ct: "Coupe",
+  et: "15.00 sec 1/4",
+  tt: "140 mph top speed",
+  sw: "2800",
+  st: "7.0",
+  y: "2005",
+};
 
-  // Determine the minimum location tier for each car based on price
+const SHOWROOM_CAR_SPEC_OVERRIDES = new Map([
+  ["5", { eo: "5.4L V8 SC", dt: "RWD", np: "2", ct: "Coupe", et: "11.6 sec 1/4", tt: "205 mph top speed", sw: "3480", st: "3.6", y: "2005" }],
+  ["7", { eo: "6.0L V8", dt: "RWD", np: "2", ct: "Coupe", et: "12.5 sec 1/4", tt: "186 mph top speed", sw: "3210", st: "4.2", y: "2005" }],
+  ["10", { eo: "8.3L V10", dt: "RWD", np: "2", ct: "Roadster", et: "11.9 sec 1/4", tt: "190 mph top speed", sw: "3410", st: "3.9", y: "2005" }],
+  ["11", { eo: "3.2L I6", dt: "RWD", np: "2", ct: "Coupe", et: "13.1 sec 1/4", tt: "155 mph top speed", sw: "3415", st: "4.9", y: "2005" }],
+  ["14", { eo: "3.0L I6 TT", dt: "RWD", np: "2", ct: "Coupe", et: "12.9 sec 1/4", tt: "177 mph top speed", sw: "3460", st: "4.6", y: "1998" }],
+  ["21", { eo: "3.8L V6 TT", dt: "AWD", np: "2", ct: "Coupe", et: "11.8 sec 1/4", tt: "193 mph top speed", sw: "3830", st: "3.5", y: "2009" }],
+  ["25", { eo: "3.5L V6", dt: "RWD", np: "2", ct: "Coupe", et: "13.5 sec 1/4", tt: "155 mph top speed", sw: "3350", st: "5.1", y: "2003" }],
+  ["28", { eo: "3.2L V6", dt: "RWD", np: "2", ct: "Coupe", et: "12.9 sec 1/4", tt: "175 mph top speed", sw: "3150", st: "4.8", y: "2005" }],
+  ["34", { eo: "7.0L V8", dt: "RWD", np: "2", ct: "Coupe", et: "11.7 sec 1/4", tt: "198 mph top speed", sw: "3130", st: "3.6", y: "2006" }],
+  ["38", { eo: "2.6L I6 TT", dt: "AWD", np: "2", ct: "Coupe", et: "13.1 sec 1/4", tt: "156 mph top speed", sw: "3420", st: "4.9", y: "1999" }],
+  ["48", { eo: "6.2L V8", dt: "RWD", np: "2", ct: "Coupe", et: "13.0 sec 1/4", tt: "155 mph top speed", sw: "3860", st: "4.6", y: "2010" }],
+  ["51", { eo: "3.7L V6", dt: "RWD", np: "2", ct: "Coupe", et: "13.5 sec 1/4", tt: "155 mph top speed", sw: "3740", st: "5.0", y: "2009" }],
+  ["55", { eo: "3.7L V6", dt: "RWD", np: "2", ct: "Coupe", et: "13.3 sec 1/4", tt: "155 mph top speed", sw: "3330", st: "4.7", y: "2009" }],
+  ["57", { eo: "2.0L 4-Rotor", dt: "RWD", np: "1", ct: "Prototype", et: "9.8 sec 1/4", tt: "220 mph top speed", sw: "2200", st: "2.8", y: "2008" }],
+  ["59", { eo: "6.1L V8", dt: "RWD", np: "2", ct: "Coupe", et: "13.1 sec 1/4", tt: "173 mph top speed", sw: "4140", st: "4.9", y: "2008" }],
+  ["68", { eo: "5.4L V8 SC", dt: "RWD", np: "2", ct: "Coupe", et: "12.4 sec 1/4", tt: "180 mph top speed", sw: "3920", st: "4.3", y: "2011" }],
+  ["72", { eo: "3.8L V6 T", dt: "RWD", np: "2", ct: "Coupe", et: "13.6 sec 1/4", tt: "124 mph top speed", sw: "3550", st: "5.0", y: "1987" }],
+  ["86", { eo: "1.3L Twin-Rotor TT", dt: "RWD", np: "2", ct: "Coupe", et: "12.6 sec 1/4", tt: "165 mph top speed", sw: "2800", st: "4.7", y: "2002" }],
+  ["87", { eo: "2.0L I4 T", dt: "AWD", np: "4", ct: "Sedan", et: "13.3 sec 1/4", tt: "152 mph top speed", sw: "3510", st: "5.0", y: "2008" }],
+  ["89", { eo: "2.5L H4 T", dt: "AWD", np: "4", ct: "Sedan", et: "13.3 sec 1/4", tt: "155 mph top speed", sw: "3380", st: "4.8", y: "2008" }],
+  ["90", { eo: "3.8L V8 TT", dt: "RWD", np: "2", ct: "Coupe", et: "11.0 sec 1/4", tt: "205 mph top speed", sw: "3190", st: "3.1", y: "2012" }],
+  ["91", { eo: "2.5L H4 T", dt: "AWD", np: "4", ct: "Sedan", et: "13.2 sec 1/4", tt: "155 mph top speed", sw: "3380", st: "4.7", y: "2011" }],
+  ["92", { eo: "2.5L H4 T", dt: "AWD", np: "4", ct: "Sedan", et: "13.1 sec 1/4", tt: "158 mph top speed", sw: "3390", st: "4.6", y: "2015" }],
+  ["98", { eo: "2.6L I6 TT", dt: "AWD", np: "2", ct: "Coupe", et: "12.6 sec 1/4", tt: "156 mph top speed", sw: "3150", st: "4.6", y: "1994" }],
+  ["101", { eo: "3.8L V6 TT", dt: "AWD", np: "2", ct: "Coupe", et: "11.6 sec 1/4", tt: "193 mph top speed", sw: "3840", st: "3.4", y: "2012" }],
+  ["109", { eo: "8.4L V10", dt: "RWD", np: "2", ct: "Coupe", et: "11.1 sec 1/4", tt: "184 mph top speed", sw: "3350", st: "3.2", y: "2010" }],
+]);
+
+function getShowroomLocationForCarPrice(price) {
+  const locationTiers = Object.entries(LOCATION_MAX_PRICE).sort((a, b) => Number(a[0]) - Number(b[0]));
+  for (const [locationId, maxPrice] of locationTiers) {
+    if (Number(price) <= Number(maxPrice)) {
+      return Number(locationId);
+    }
+  }
+  return 500;
+}
+
+function listShowroomCatalogCarsForLocation(locationId) {
+  const targetLocationId = Number(locationId) || 100;
+  return FULL_CAR_CATALOG.filter(([, , price]) => getShowroomLocationForCarPrice(price) === targetLocationId);
+}
+
+function createTestDriveInvitation(player) {
+  const existingInvitation = pendingTestDriveInvitationsByPlayerId.get(Number(player?.id || 0));
+  if (existingInvitation) {
+    pendingTestDriveInvitationsById.delete(Number(existingInvitation.invitationId));
+  }
+  const showroomCars = listShowroomCatalogCarsForLocation(player?.location_id || 100);
+  const [catalogCarId = DEFAULT_STARTER_CATALOG_CAR_ID] = showroomCars[0] || [];
+  const invitationId = Date.now() + Math.floor(Math.random() * 1000);
+  const offer = {
+    invitationId,
+    playerId: Number(player?.id || 0),
+    catalogCarId: Number(catalogCarId) || DEFAULT_STARTER_CATALOG_CAR_ID,
+    colorCode: "C0C0C0",
+    locationId: Number(player?.location_id || 100) || 100,
+    moneyPrice: getCatalogCarPrice(catalogCarId),
+    pointPrice: getCatalogCarPointPrice(catalogCarId),
+    hoursRemaining: TEST_DRIVE_DURATION_HOURS,
+    expired: false,
+  };
+  pendingTestDriveInvitationsById.set(offer.invitationId, offer);
+  pendingTestDriveInvitationsByPlayerId.set(offer.playerId, offer);
+  return offer;
+}
+
+function clearPendingTestDriveInvitation(invitationId) {
+  const existing = pendingTestDriveInvitationsById.get(Number(invitationId));
+  if (!existing) {
+    return null;
+  }
+  pendingTestDriveInvitationsById.delete(Number(invitationId));
+  pendingTestDriveInvitationsByPlayerId.delete(Number(existing.playerId));
+  return existing;
+}
+
+function getPendingTestDriveInvitation(invitationId) {
+  return pendingTestDriveInvitationsById.get(Number(invitationId)) || null;
+}
+
+function setActiveTestDriveCar(state) {
+  activeTestDriveCarsByPlayerId.set(Number(state.playerId), {
+    ...state,
+    playerId: Number(state.playerId),
+    gameCarId: Number(state.gameCarId),
+    catalogCarId: Number(state.catalogCarId),
+    invitationId: Number(state.invitationId),
+    moneyPrice: Number(state.moneyPrice),
+    pointPrice: Number(state.pointPrice),
+    hoursRemaining: Number(state.hoursRemaining),
+    expired: Boolean(state.expired),
+  });
+}
+
+function getActiveTestDriveCar(playerId) {
+  return activeTestDriveCarsByPlayerId.get(Number(playerId)) || null;
+}
+
+function clearActiveTestDriveCar(playerId) {
+  const existing = activeTestDriveCarsByPlayerId.get(Number(playerId)) || null;
+  if (existing) {
+    activeTestDriveCarsByPlayerId.delete(Number(playerId));
+  }
+  return existing;
+}
+
+function decorateCarsWithTestDriveState(playerId, cars) {
+  const persistedTestDriveCar = findTestDriveCarInGarage(cars);
+  if (persistedTestDriveCar) {
+    return cars;
+  }
+
+  const activeTestDrive = getActiveTestDriveCar(playerId);
+  if (!activeTestDrive) {
+    return cars;
+  }
+
+  return cars.map((car) => {
+    if (Number(car?.game_car_id || 0) !== Number(activeTestDrive.gameCarId)) {
+      return car;
+    }
+
+    return {
+      ...car,
+      test_drive_active: 1,
+      test_drive_expired: activeTestDrive.expired ? 1 : 0,
+      test_drive_invitation_id: activeTestDrive.invitationId,
+      test_drive_name: getCatalogCarName(activeTestDrive.catalogCarId),
+      test_drive_money_price: activeTestDrive.moneyPrice,
+      test_drive_point_price: activeTestDrive.pointPrice,
+      test_drive_hours_remaining: activeTestDrive.hoursRemaining,
+    };
+  });
+}
+
+function findTestDriveCarInGarage(cars) {
+  return cars.find((car) => Number(car?.test_drive_active || 0) === 1) || null;
+}
+
+async function loadActiveTestDriveCar(supabase, playerId) {
+  const cars = await listCarsForPlayer(supabase, playerId);
+  const persistedCar = findTestDriveCarInGarage(cars);
+  if (persistedCar) {
+    return {
+      playerId: Number(playerId),
+      gameCarId: Number(persistedCar.game_car_id),
+      catalogCarId: Number(persistedCar.catalog_car_id),
+      invitationId: Number(persistedCar.test_drive_invitation_id),
+      moneyPrice: Number(persistedCar.test_drive_money_price),
+      pointPrice: Number(persistedCar.test_drive_point_price),
+      hoursRemaining: Number(persistedCar.test_drive_hours_remaining),
+      expired: Number(persistedCar.test_drive_expired || 0) === 1,
+    };
+  }
+
+  return getActiveTestDriveCar(playerId);
+}
+
+function buildTestDriveLoginState(playerId, cars = []) {
+  const persistedCar = findTestDriveCarInGarage(cars);
+  if (persistedCar) {
+    return {
+      gameCarId: Number(persistedCar.game_car_id),
+      invitationId: Number(persistedCar.test_drive_invitation_id),
+      moneyPrice: Number(persistedCar.test_drive_money_price),
+      pointPrice: Number(persistedCar.test_drive_point_price),
+      hoursRemaining: Number(persistedCar.test_drive_hours_remaining),
+      expired: Number(persistedCar.test_drive_expired || 0),
+    };
+  }
+
+  const activeTestDrive = getActiveTestDriveCar(playerId);
+  if (!activeTestDrive) {
+    return null;
+  }
+
+  return {
+    gameCarId: activeTestDrive.gameCarId,
+    invitationId: activeTestDrive.invitationId,
+    moneyPrice: activeTestDrive.moneyPrice,
+    pointPrice: activeTestDrive.pointPrice,
+    hoursRemaining: activeTestDrive.hoursRemaining,
+    expired: activeTestDrive.expired ? 1 : 0,
+  };
+}
+
+function getShowroomCarSpec(carId) {
+  return SHOWROOM_CAR_SPEC_OVERRIDES.get(String(carId || "")) || DEFAULT_SHOWROOM_CAR_SPEC;
+}
+
+function buildShowroomXml(locationId, starterOnly = false) {
+  const targetLocationId = Number(locationId) || 100;
+
+  // Filter to only cars that belong to this exact location tier
   const locationTiers = Object.entries(LOCATION_MAX_PRICE).sort((a, b) => Number(a[0]) - Number(b[0]));
   const getCarLocation = (price) => {
     for (const [lid, maxP] of locationTiers) {
-      if (Number(price) <= maxP) return lid;
+      if (Number(price) <= maxP) return Number(lid);
     }
-    return "500";
+    return 500;
   };
 
-  // Map location ID to dealer category ID (matches getcarcategories i attribute)
+  const eligible = FULL_CAR_CATALOG.filter(([, , price]) => {
+    const numPrice = Number(price);
+    if (numPrice <= 0) return false;
+    if (starterOnly) return getCarLocation(numPrice) === 100;
+    return getCarLocation(numPrice) === targetLocationId;
+  });
+
   const locationToCatId = { 100: 1001, 200: 1002, 300: 1003, 400: 1004, 500: 1005 };
+  const catId = locationToCatId[targetLocationId] || 1001;
+
+  const selectedCarId = eligible.length > 0 ? eligible[0][0] : "0";
 
   const carNodes = eligible
-    .map(([cid, name, price]) => {
+    .map(([cid, name, price], index) => {
       const escapedName = escapeXml(name);
-      const carLid = getCarLocation(price);
-      const catId = locationToCatId[Number(carLid)] || 1001;
+      const colorCode = ["C0C0C0","CC0000","000000","FFFFFF","0033FF","FFD700","00AA00","FF6600"][index % 8];
+      const paintIds = ["5","15","3","4","16","6","7","8"]; // Corresponding paint IDs
+      const paintId = paintIds[index % 8];
+      const spec = getShowroomCarSpec(cid);
       return (
-        `<c id='${cid}' c='${escapedName}' p='${price}' l='${carLid}' cid='${catId}' ` +
-        `eo='2.0L I4' dt='FWD' np='4' ct='Coupe' ` +
-        `et='15.00 sec 1/4' tt='140 mph top speed' sw='2800' st='7.0' y='2005' ` +
-        `wid='1001' ws='17'/>`
+        `<c ai='0' id='${cid}' i='${cid}' ci='${cid}' ` +
+        `sel='${index === 0 ? "1" : "0"}' pi='${catId}' pn='' ` +
+        `l='${targetLocationId}' lid='${targetLocationId}' cid='${targetLocationId}' ` +
+        `b='0' n='${escapedName}' c='${escapedName}' p='${price}' pr='${price}' pp='0' cp='${price}' ` +
+        `lk='0' ae='0' cc='${colorCode}' g='' ` +
+        `le='0' lea='999' les='0' lec='999' let='0' ` +
+        `eo='${escapeXml(spec.eo)}' dt='${escapeXml(spec.dt)}' np='${escapeXml(spec.np)}' ct='${escapeXml(spec.ct)}' ` +
+        `et='${escapeXml(spec.et)}' tt='${escapeXml(spec.tt)}' sw='${escapeXml(spec.sw)}' st='${escapeXml(spec.st)}' y='${escapeXml(spec.y)}' ` +
+        `wid='1' ws='17'>` +
+        `<ws><w wid='1' id='1001' ws='17'/></ws>` +
+        `<p i='1001' ci='14' n='Factory 17&quot;' in='1' cc='' pdi='1' di='1' pt='c' ps='17'/>` +
+        `<ps><p i='${paintId}' cd='${colorCode}'/></ps>` +
+        `</c>`
       );
     })
     .join("");
 
-  return `<n2>${carNodes}</n2>`;
+  return `<cars i='0' dc='${selectedCarId}' l='${targetLocationId}'>${carNodes}</cars>`;
 }
 
 async function handleMoveLocation(context) {
-  // Location change is fire-and-forget from the client's perspective.
-  // Just acknowledge success — no DB mutation needed in compat mode.
-  return { body: `"s", 1`, source: "stub:movelocation" };
+  const { supabase, params } = context;
+  const locationId = Number(params.get("lid") || params.get("l") || params.get("id") || 0);
+
+  if (supabase && locationId) {
+    const caller = await resolveCallerSession(context, "supabase:movelocation");
+    if (caller?.ok) {
+      await updatePlayerLocation(supabase, caller.playerId, locationId);
+      
+      // Fetch updated player data to return to client
+      const updatedPlayer = await getPlayerById(supabase, caller.playerId);
+      if (updatedPlayer) {
+        return {
+          body: wrapSuccessData(renderUserSummary(updatedPlayer, { publicId: getPublicIdForPlayer(updatedPlayer) })),
+          source: "supabase:movelocation",
+        };
+      }
+    }
+  }
+
+  return { body: `"s", 1`, source: `stub:movelocation:${locationId}` };
+}
+
+function generateCarStats(carId) {
+  const spec = getShowroomCarSpec(carId);
+  const car = FULL_CAR_CATALOG.find(([cid]) => cid === carId);
+  const price = car ? car[2] : 0;
+
+  const stats = {
+    es: 1,
+    sl: 7200,
+    sg: 0,
+    rc: 0,
+    tmp: 0,
+    r: 2600,
+    v: 1.65,
+    a: 6800,
+    n: 7600,
+    o: 7800,
+    s: 0.815,
+    b: 0,
+    p: 0.15,
+    c: 11,
+    e: 0,
+    d: 'T',
+    f: 3.23,
+    g: 1.9,
+    h: 1.269,
+    i: 0.967,
+    j: 0.738,
+    k: 0,
+    l: 4.4,
+    q: spec.hp || 100,
+    m: spec.tq || 100,
+    t: 100,
+    u: 28,
+    w: 0.144,
+    x: 41.2,
+    y: spec.tq || 128,
+    z: spec.hp || 170,
+    aa: 4,
+    ab: carId,
+    ac: 9,
+    ad: 0,
+    ae: 100,
+    af: 100,
+    ag: 100,
+    ah: 100,
+    ai: 100,
+    aj: 0,
+    ak: 0,
+    al: 0,
+    am: 0,
+    an: 0,
+    ao: 100,
+    ap: 0,
+    aq: 0,
+    ar: 1,
+    as: 0,
+    at: 100,
+    au: 100,
+    av: 0,
+    aw: 100,
+    ax: 0,
+  };
+
+  return `<n2 ${Object.entries(stats).map(([key, value]) => `${key}='${value}'`).join(' ')}><r g1='${stats.f}' g2='${stats.g}' g3='${stats.h}' g4='${stats.i}' g5='${stats.j}' g6='0'/></n2>`;
+}
+
+function generateTimingArray(carId) {
+  const spec = getShowroomCarSpec(carId);
+  const power = Number(spec.hp) || 170;
+  const weight = Number(spec.sw) || 2800;
+  const pwr = power / weight;
+
+  const baseTime = 15.5;
+  const time = baseTime - (pwr - 0.06) * 20;
+
+  const baseTiming = [91,91,91,91,91,91,91,91,91,93,95,98,102,106,109,112,115,117,119,121,122,123,124,125,126,126,127,127,128,128,128,128,128,127,127,127,126,126,125,125,124,123,122,121,120,119,118,117,116,115,113,112,110,108,106,104,101,98,98,96,95,93,91,89,87,85,83,81,79,77,75,73,71,69,67,65,63,61,59,57,55,53,51,49,47,45,43,41,39,37,35,33,31,29,27,25,23,21,19,17,15,13];
+  const scale = time / baseTime;
+
+  return baseTiming.map(t => Math.round(t * scale));
 }
 
 async function handleListClassified(context) {
@@ -958,8 +1772,9 @@ async function handleSellCar(context) {
       const player = await getPlayerById(supabase, caller.playerId);
       const newBalance = Number(player?.money ?? 0) + salePrice;
       await updatePlayerMoney(supabase, caller.playerId, newBalance);
+      await deleteCar(supabase, gameCarId);
       return {
-        body: `"s", 1, "d1", "<r s='2' b='${newBalance}' ai='0'/>", "d", "<r s='1' b='0"></r>"`,
+        body: `"s", 1, "d1", "<r s='2' b='${newBalance}' ai='0'/>", "d", "<r s='1' b='0'/>"`,
         source: "supabase:sellcar",
       };
     }
@@ -1003,41 +1818,10 @@ async function handlePractice(context) {
   
   // Get the car ID from the request
   const carId = params.get("acid");
-  
-  // Practice / time trial response with car performance data
-  // CRITICAL FIX: Flash expects n2.firstChild to be an <r> element with attributes
-  // The self-closing <n2 .../> causes "TypeError: r has no properties" in Flash
-  // because n2.firstChild returns null when there are no child elements.
-  // 
-  // Structure: <n2 ...><r g1='...' g2='...' .../></n2>
-  // - n2 attributes: race/track metadata
-  // - r child element: gear ratios and additional race data
-  //
-  // TODO: IMPLEMENT REAL PERFORMANCE CALCULATIONS
-  // Currently using hardcoded placeholder values from fixture.
-  // Need to:
-  // 1. Query car's parts from database (engine, transmission, weight reduction, etc.)
-  // 2. Calculate actual performance stats (HP, torque, weight, drag coefficient)
-  // 3. Simulate realistic quarter-mile physics (acceleration, gear shifts, speed)
-  // 4. Generate proper timing array based on actual performance
-  // Current values show stock Integra running 5.3s @ 254mph which is obviously wrong.
-  const carStats = 
-    "<n2 es='1' sl='7200' sg='0' rc='0' tmp='0' r='3257' v='2.3136531365313653' " +
-    "a='6800' n='7600' o='7800' s='1.208' b='0' p='0.15' c='11' e='0' d='T' " +
-    "f='3.587' g='2.022' h='1.384' i='1' j='0.861' k='0' l='4.058' q='300' " +
-    "m='72.25' t='100' u='28' w='0.4711' x='65.43' y='518.21' z='94.22' " +
-    `aa='4' ab='${carId}' ac='9' ad='0' ae='100' af='100' ag='100' ah='100' ai='100' ` +
-    "aj='0' ak='0' al='0' am='0' an='0' ao='100' ap='0' aq='0' ar='1' as='0' " +
-    "at='100' au='100' av='0' aw='100' ax='0'>" +
-    "<r g1='2.5' g2='1.8' g3='1.3' g4='1.0' g5='0.8' g6='0.7'/>" +
-    "</n2>";
-  
-  // Timing array for practice run (100 data points)
-  const timing = [266,266,266,266,266,266,266,266,266,365,376,388,399,410,421,432,443,455,466,477,488,499,510,522,533,544,555,566,577,589,598,600,603,605,608,610,612,615,617,619,622,624,627,629,631,634,636,638,641,643,646,648,650,653,655,657,660,662,662,655,647,639,632,624,616,608,601,593,585,578,570,562,554,547,539,531,523,515,506,498,490,481,473,465,457,448,440,432,423,415,407,398,390,382,374,365,357,349,340,332];
+  const carStats = generateCarStats(carId);
+  const timing = generateTimingArray(carId);
   
   // Format: "s", 1, "d", "<xml/>", "t", [array]
-  // XML is embedded directly with single quotes - no escaping needed since it's wrapped in double quotes
-  // Array MUST have spaces after commas to match fixture format
   const body = `"s", 1, "d", "${carStats}", "t", [${timing.join(', ')}]`;
   
   if (logger) {
@@ -1052,6 +1836,80 @@ async function handlePractice(context) {
   return { 
     body,
     source: "generated:practice" 
+  };
+}
+
+const COMPUTER_TOURNAMENTS = [
+  { id: 1, type: "tourneyA", name: "Amateur Computer Tournament", minEt: 15.2, maxEt: 16.9, minRt: 0.085, maxRt: 0.225, minHp: 155, maxHp: 225, minWeight: 2550, maxWeight: 3200, minTrap: 84, maxTrap: 101, purse: 250 },
+  { id: 2, type: "tourneyS", name: "Sport Computer Tournament", minEt: 13.1, maxEt: 14.7, minRt: 0.07, maxRt: 0.18, minHp: 240, maxHp: 360, minWeight: 2450, maxWeight: 3150, minTrap: 101, maxTrap: 121, purse: 750 },
+  { id: 3, type: "tourneyP", name: "Pro Computer Tournament", minEt: 10.4, maxEt: 12.3, minRt: 0.045, maxRt: 0.14, minHp: 420, maxHp: 680, minWeight: 2250, maxWeight: 3050, minTrap: 122, maxTrap: 151, purse: 2000 },
+];
+
+const computerTournamentSessions = new Map();
+
+function getComputerTournamentDefinition(tournamentId) {
+  return COMPUTER_TOURNAMENTS.find((entry) => Number(entry.id) === Number(tournamentId)) || COMPUTER_TOURNAMENTS[0];
+}
+
+function seededFraction(seed) {
+  const value = Math.sin(seed * 12.9898) * 43758.5453;
+  return value - Math.floor(value);
+}
+
+function interpolate(min, max, fraction) {
+  return min + (max - min) * fraction;
+}
+
+function formatMetric(value, decimals = 3) {
+  return Number(value || 0).toFixed(decimals);
+}
+
+function buildComputerTournamentCompetitorNode(tournament, index) {
+  const seedBase = Number(tournament.id) * 100 + index * 17;
+  const horsepower = Math.round(interpolate(tournament.minHp, tournament.maxHp, seededFraction(seedBase + 1)));
+  const weight = Math.round(interpolate(tournament.minWeight, tournament.maxWeight, seededFraction(seedBase + 2)));
+  const reactionTime = interpolate(tournament.minRt, tournament.maxRt, seededFraction(seedBase + 3));
+  const elapsedTime = interpolate(tournament.minEt, tournament.maxEt, seededFraction(seedBase + 4));
+  const trapSpeed = interpolate(tournament.minTrap, tournament.maxTrap, seededFraction(seedBase + 5));
+  const totalTime = reactionTime + elapsedTime;
+  const competitorId = 1000 + Number(tournament.id) * 100 + index;
+  const accountCarId = 2000 + Number(tournament.id) * 100 + index;
+  const racerNumber = 100 + index;
+  const username = `${tournament.type} ${String(index + 1).padStart(2, "0")}`;
+
+  return (
+    `<r id='${competitorId}' i='${accountCarId}' n='${escapeXml(username)}' u='${escapeXml(username)}' ` +
+    `bt='0' rt='${formatMetric(reactionTime)}' et='${formatMetric(elapsedTime)}' ts='${formatMetric(trapSpeed, 2)}' ` +
+    `racerNum='${racerNumber}' type='C' hp='${horsepower}' w='${weight}'/>`
+  );
+}
+
+function buildComputerTournamentFieldXml(tournamentId) {
+  const tournament = getComputerTournamentDefinition(tournamentId);
+  const competitorsXml = Array.from({ length: 31 }, (_, index) =>
+    buildComputerTournamentCompetitorNode(tournament, index)
+  ).join("");
+  return `<n2>${competitorsXml}</n2>`;
+}
+
+function buildComputerTournamentOpponentXml(session) {
+  const tournament = getComputerTournamentDefinition(session?.tournamentId);
+  const opponentIndex = Number(session?.wins || 0) % 31;
+  const purse = Number(tournament.purse || 0) * (Number(session?.wins || 0) + 1);
+  const seedBase = Number(tournament.id) * 300 + opponentIndex * 19;
+  const reactionTime = interpolate(tournament.minRt, tournament.maxRt, seededFraction(seedBase + 1));
+  const elapsedTime = interpolate(tournament.minEt, tournament.maxEt, seededFraction(seedBase + 2));
+  const trapSpeed = interpolate(tournament.minTrap, tournament.maxTrap, seededFraction(seedBase + 3));
+  const opponentId = 5000 + Number(tournament.id) * 100 + opponentIndex;
+  const opponentCarId = 6000 + Number(tournament.id) * 100 + opponentIndex;
+  const opponentName = `${tournament.name} Opponent ${String(opponentIndex + 1).padStart(2, "0")}`;
+
+  return {
+    purse,
+    xml:
+      `<n2><r id='${opponentId}' i='${opponentCarId}' n='${escapeXml(opponentName)}' u='${escapeXml(opponentName)}' ` +
+      `bt='0' rt='${formatMetric(reactionTime)}' et='${formatMetric(elapsedTime)}' ts='${formatMetric(trapSpeed, 2)}' ` +
+      `total='${formatMetric(reactionTime + elapsedTime)}' racerNum='${200 + opponentIndex}' type='C'/></n2>`,
   };
 }
 
@@ -1224,28 +2082,37 @@ const handlers = {
   getallcars: handleGetAllCars,
   getonecar: handleGetAllCars, // same shape as getallcars, returns the player's car(s)
   getallcats: async (context) => {
-    // Get all categories/parts catalog - this is a large response
-    // For now, return from fixture if available
-    const fixture = context.fixtureStore?.find("getallcats");
-    if (fixture) {
-      return { body: fixture.body, source: `fixture:${fixture.key}` };
-    }
-    // Fallback: return empty catalog
-    return { body: `"s", 1, "d", "<n2 />"`, source: "stub:getallcats" };
+    // For now, return a placeholder list of categories.
+    // In a full implementation, these would come from a database or a more detailed catalog.
+    const categoriesXml = `
+      <cats>
+        <c id='1' n='Engine'/>
+        <c id='2' n='Body'/>
+        <c id='3' n='Interior'/>
+        <c id='4' n='Wheels & Tires'/>
+        <c id='5' n='Performance'/>
+        <c id='6' n='Special'/>
+      </cats>
+    `;
+    return { body: `"s", 1, "d", "${categoriesXml}"`, source: "generated:getallcats" };
   },
   updatedefaultcar: handleUpdateDefaultCar,
+  getcarprice: handleGetCarPrice,
   sellcar: handleSellCar,
   // --- Parts & Engine ---
   getallparts: handleGetAllParts,
   getallwheelstires: async (context) => {
-    // Get all wheels and tires catalog - this is a large response
-    // For now, return from fixture if available
-    const fixture = context.fixtureStore?.find("getallwheelstires");
-    if (fixture) {
-      return { body: fixture.body, source: `fixture:${fixture.key}` };
-    }
-    // Fallback: return empty catalog
-    return { body: `"s", 1, "d", "<p />"`, source: "stub:getallwheelstires" };
+    // For now, return a placeholder list of wheels and tires.
+    // In a full implementation, these would come from a database or a more detailed catalog.
+    const wheelsTiresXml = `
+      <wt>
+        <w id='1' n='Street Wheels'/>
+        <w id='2' n='Racing Slicks'/>
+        <t id='1' n='All-Season Tires'/>
+        <t id='2' n='Performance Tires'/>
+      </wt>
+    `;
+    return { body: `"s", 1, "d", "${wheelsTiresXml}"`, source: "generated:getallwheelstires" };
   },
   getonecarengine: handleGetOneCarEngine,
   getgearinfo: handleGetGearInfo,
@@ -1257,7 +2124,7 @@ const handlers = {
   buyshowroomcar: handleBuyCar,
   buystartercar: handleBuyCar,
   buydealercar: handleBuyCar,
-  buytestdrivecar: handleBuyCar,
+  buytestdrivecar: handleBuyTestDriveCar,
   buyshowroom: handleBuyCar,
   purchasecar: handleBuyCar,
   viewshowroom: handleViewShowroom,
@@ -1269,9 +2136,13 @@ const handlers = {
   movelocation: handleMoveLocation,
   // --- Social / Mail / Badges ---
   gettotalnewmail: handleGetTotalNewMail,
+  getemaillist: handleGetEmailList,
   getremarks: handleGetRemarks,
   getblackcardprogress: handleGetBlackCardProgress,
   checktestdrive: handleCheckTestDrive,
+  accepttestdrive: handleAcceptTestDrive,
+  removetestdrivecar: handleRemoveTestDriveCar,
+  rejecttestdrive: handleRejectTestDrive,
   teaminfo: handleTeamInfo,
   getteaminfo: handleTeamInfo,
   getleaderboardmenu: handleGetLeaderboardMenu,
@@ -1290,122 +2161,117 @@ const handlers = {
   uploadrequest: handleUploadRequest,
   // --- Race ---
   practice: handlePractice,
-  // --- Race Rooms / Rivals ---
+  // --- Computer Tournaments (10.0.03 source of truth) ---
   ctgr: async (context) => {
-    // Get categories/race rooms list
-    const { services, logger } = context;
-    const raceRoomRegistry = services?.raceRoomRegistry;
-    
-    logger.info("ctgr called - getting race room list");
-    
-    // Get all active rooms
-    const rooms = raceRoomRegistry ? raceRoomRegistry.list() : [];
-    
-    // If no rooms exist, create default rooms for each strip type
-    if (rooms.length === 0 && raceRoomRegistry) {
-      logger.info("Creating default race rooms");
-      // Create default rooms for each strip
-      const defaultRooms = [
-        { id: 1, name: "Team Rivals Strip", type: "team", maxPlayers: 8 },
-        { id: 2, name: "Tournament Strip", type: "tournament", maxPlayers: 32 },
-        { id: 3, name: "Bracket King of the Hill Strip", type: "bracket_koth", maxPlayers: 16 },
-        { id: 4, name: "H2H King of the Hill Strip", type: "h2h_koth", maxPlayers: 8 },
-      ];
-      
-      for (const room of defaultRooms) {
-        raceRoomRegistry.upsert(room.id, {
-          name: room.name,
-          type: room.type,
-          maxPlayers: room.maxPlayers,
-          players: [],
-          status: "waiting",
-        });
-      }
-    }
-    
-    // Build room XML
-    const roomList = raceRoomRegistry ? raceRoomRegistry.list() : [];
-    const roomsXml = roomList.map(room => {
-      const playerCount = room.players?.length || 0;
-      return `<room id='${room.roomId}' name='${escapeXml(room.name)}' type='${room.type}' players='${playerCount}' max='${room.maxPlayers}' status='${room.status}'/>`;
-    }).join('');
-    
-    logger.info("ctgr response", { roomCount: roomList.length, roomsXml });
-    
+    const { params, logger } = context;
+    const tournamentId = Number(params.get("ctid") || params.get("tid") || 1);
+    const xml = buildComputerTournamentFieldXml(tournamentId);
+
+    logger.info("ctgr called - returning computer tournament racers", {
+      tournamentId,
+      racerCount: 31,
+    });
+
     return {
-      body: wrapSuccessData(`<rooms>${roomsXml}</rooms>`),
-      source: "generated:ctgr",
+      body: wrapSuccessData(xml),
+      source: `generated:ctgr:tournament=${tournamentId}`,
     };
   },
   ctjt: async (context) => {
-    // Join category/tournament room
-    const { params, services, supabase } = context;
-    const categoryId = params.get("ctid") || "1";
-    const raceRoomRegistry = services?.raceRoomRegistry;
-    const tcpNotify = services?.tcpNotify;
-    
-    if (!raceRoomRegistry) {
-      return {
-        body: wrapSuccessData(`<room ctid='${categoryId}' error='no_registry'/>`),
-        source: "stub:ctjt:no-registry",
-      };
-    }
-    
-    // Get the room
-    const room = raceRoomRegistry.get(categoryId);
-    
-    if (!room) {
-      return {
-        body: wrapSuccessData(`<room ctid='${categoryId}' error='not_found'/>`),
-        source: "stub:ctjt:not-found",
-      };
-    }
-    
-    // Get player info from session
-    const caller = await resolveCallerSession(context, "ctjt");
-    if (!caller?.ok) {
-      return {
-        body: wrapSuccessData(`<room ctid='${categoryId}' error='invalid_session'/>`),
-        source: "ctjt:bad-session",
-      };
-    }
-    
-    const player = await getPlayerById(supabase, caller.playerId);
-    if (!player) {
-      return {
-        body: wrapSuccessData(`<room ctid='${categoryId}' error='player_not_found'/>`),
-        source: "ctjt:no-player",
-      };
-    }
-    
-    // Add player to room
-    const result = raceRoomRegistry.addPlayer(categoryId, {
-      id: player.id,
-      publicId: player.public_id,
-      name: player.username,
+    const { params, logger } = context;
+    const tournamentId = Number(params.get("ctid") || 1);
+    const tournamentKey = randomUUID();
+    const session = {
+      tournamentId,
+      createdAt: Date.now(),
+      bracketTime: null,
+      qualifyingComplete: false,
+      wins: 0,
+    };
+    computerTournamentSessions.set(tournamentKey, session);
+
+    logger.info("ctjt called - joined computer tournament", {
+      tournamentId,
+      tournamentKey,
     });
-    
-    if (!result.success) {
-      return {
-        body: wrapSuccessData(`<room ctid='${categoryId}' error='${result.error}'/>`),
-        source: `ctjt:${result.error}`,
-      };
-    }
-    
-    // NOTE: Do NOT send RU broadcasts - the Flash client doesn't understand that message type
-    
-    // Return room details with all players
-    const updatedRoom = result.room;
-    const playerCount = updatedRoom.players?.length || 0;
-    const playersXml = (updatedRoom.players || []).map(p => 
-      `<player id='${p.publicId}' name='${escapeXml(p.name)}' ready='${p.ready ? 1 : 0}'/>`
-    ).join('');
-    
+
     return {
-      body: wrapSuccessData(
-        `<room id='${updatedRoom.roomId}' name='${escapeXml(updatedRoom.name)}' type='${updatedRoom.type}' players='${playerCount}' max='${updatedRoom.maxPlayers}' status='${updatedRoom.status}'>${playersXml}</room>`
-      ),
-      source: "generated:ctjt",
+      body: `"s", 1, "k", "${tournamentKey}"`,
+      source: `generated:ctjt:tournament=${tournamentId}`,
+    };
+  },
+  ctct: async (context) => {
+    const { params, logger } = context;
+    const tournamentKey = params.get("k") || "";
+    const bracketTime = Number(params.get("bt") || 0);
+    const session = computerTournamentSessions.get(tournamentKey) || {
+      tournamentId: 1,
+      createdAt: Date.now(),
+      wins: 0,
+    };
+
+    session.bracketTime = bracketTime;
+    session.qualifyingComplete = true;
+    computerTournamentSessions.set(tournamentKey, session);
+
+    logger.info("ctct called - saved computer tournament qualifying pass", {
+      tournamentKey,
+      bracketTime,
+    });
+
+    return {
+      body: `"s", 1`,
+      source: "generated:ctct",
+    };
+  },
+  ctrt: async (context) => {
+    const { params, logger } = context;
+    const tournamentKey = params.get("k") || "";
+    const session = computerTournamentSessions.get(tournamentKey) || {
+      tournamentId: 1,
+      createdAt: Date.now(),
+      wins: 0,
+    };
+    const opponent = buildComputerTournamentOpponentXml(session);
+
+    logger.info("ctrt called - returning computer tournament opponent", {
+      tournamentKey,
+      tournamentId: session.tournamentId,
+      wins: session.wins,
+      purse: opponent.purse,
+    });
+
+    return {
+      body: `"s", 1, "d", "${opponent.xml}", "b", ${opponent.purse}`,
+      source: "generated:ctrt",
+    };
+  },
+  ctst: async (context) => {
+    const { params, logger } = context;
+    const tournamentKey = params.get("k") || "";
+    const session = computerTournamentSessions.get(tournamentKey) || {
+      tournamentId: 1,
+      createdAt: Date.now(),
+      wins: 0,
+    };
+    const winState = Number(params.get("w") || 1) ? 1 : 0;
+    const payout = Number(params.get("b") || getComputerTournamentDefinition(session.tournamentId).purse || 0);
+
+    if (winState) {
+      session.wins = Number(session.wins || 0) + 1;
+    }
+    computerTournamentSessions.set(tournamentKey, session);
+
+    logger.info("ctst called - saved computer tournament race result", {
+      tournamentKey,
+      winState,
+      payout,
+      wins: session.wins,
+    });
+
+    return {
+      body: `"s", 1, "d", "<n2 w='${winState}' b='${payout}'/>"`,
+      source: "generated:ctst",
     };
   },
   leaveroom: async (context) => {
@@ -1443,6 +2309,7 @@ const handlers = {
   setready: async (context) => {
     // Set player ready status in race room
     const { params, services, supabase } = context;
+      const raceManager = services?.raceManager;
     const ready = params.get("ready") === "1" || params.get("ready") === "true";
     const raceRoomRegistry = services?.raceRoomRegistry;
     const tcpNotify = services?.tcpNotify;
@@ -1475,21 +2342,40 @@ const handlers = {
     const canStart = allReady && result.room.players.length >= minPlayers;
     
     if (canStart) {
-      // TODO: Start race matching and create race instance
-      // For now, just log that race could start
-      context.logger.info("Race ready to start", { 
-        roomId: room.roomId, 
-        playerCount: result.room.players.length 
-      });
-      
-      // Update room status to "starting"
-      result.room.status = "starting";
-      raceRoomRegistry.upsert(room.roomId, result.room);
-      
-      // Notify players that race is starting
-      if (tcpNotify) {
-        tcpNotify.broadcastToRoom(room.roomId, result.room, "race_starting");
-      }
+        const raceManager = services?.raceManager;
+        if (!raceManager) {
+          context.logger.warn("RaceManager not available, cannot start race.", { roomId: room.roomId });
+          return { body: wrapSuccessData("<ready s='0' error='no_race_manager'/>"), source: "setready:no-race-manager" };
+        }
+
+        // Create a new race instance
+        // For simplicity, let's assume a default trackId for now.
+        // In a real scenario, the trackId would likely come from the room configuration or player input.
+        const trackId = "default_track_01"; // Placeholder
+        const newRace = raceManager.createRace(
+          room.roomId,
+          room.type,
+          result.room.players,
+          trackId
+        );
+        newRace.startRace(); // Set the race status to running
+
+        context.logger.info("Race instance created and started", {
+          raceId: newRace.id,
+          roomId: room.roomId,
+          playerCount: result.room.players.length,
+        });
+
+        // Update room status to "racing" and associate with the new race instance
+        result.room.status = "racing";
+        result.room.currentRaceId = newRace.id; // Store the race instance ID in the room
+        raceRoomRegistry.upsert(room.roomId, result.room);
+
+        // Notify players that race is starting, including the raceId
+        if (tcpNotify) {
+          // Assuming broadcastToRoom can handle additional data
+          tcpNotify.broadcastToRoom(room.roomId, { ...result.room, raceId: newRace.id }, "race_starting");
+        }
     }
     
     return {
