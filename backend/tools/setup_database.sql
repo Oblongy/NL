@@ -1,0 +1,148 @@
+-- ============================================================================
+-- Nitto Legends Database Setup & Maintenance Script
+-- Run this in your Supabase SQL Editor
+-- ============================================================================
+
+-- 1. Clear all team assignments (remove players from teams)
+-- ============================================================================
+UPDATE game_players 
+SET 
+  team_id = NULL,
+  team_name = ''
+WHERE id > 0;
+
+-- 2. Ensure team_id column exists and has proper foreign key
+-- ============================================================================
+DO $$ 
+BEGIN
+  -- Add team_id column if it doesn't exist
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'game_players' 
+    AND column_name = 'team_id'
+  ) THEN
+    ALTER TABLE public.game_players ADD COLUMN team_id bigint;
+  END IF;
+  
+  -- Drop existing constraint if it exists
+  IF EXISTS (
+    SELECT 1 FROM information_schema.table_constraints 
+    WHERE constraint_schema = 'public'
+    AND table_name = 'game_players'
+    AND constraint_name = 'game_players_team_id_fkey'
+  ) THEN
+    ALTER TABLE public.game_players DROP CONSTRAINT game_players_team_id_fkey;
+  END IF;
+  
+  -- Add foreign key constraint
+  ALTER TABLE public.game_players
+    ADD CONSTRAINT game_players_team_id_fkey
+    FOREIGN KEY (team_id) REFERENCES public.game_teams(id) ON DELETE SET NULL;
+END $$;
+
+-- 3. Ensure client_role column exists (for admin/moderator roles)
+-- ============================================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'game_players' 
+    AND column_name = 'client_role'
+  ) THEN
+    ALTER TABLE public.game_players ADD COLUMN client_role integer NOT NULL DEFAULT 5;
+  END IF;
+END $$;
+
+-- 4. Create indexes for better performance
+-- ============================================================================
+CREATE INDEX IF NOT EXISTS idx_game_players_username ON public.game_players(username);
+CREATE INDEX IF NOT EXISTS idx_game_players_team_id ON public.game_players(team_id);
+CREATE INDEX IF NOT EXISTS idx_game_sessions_player_id ON public.game_sessions(player_id);
+CREATE INDEX IF NOT EXISTS idx_game_cars_player_id ON public.game_cars(player_id);
+CREATE INDEX IF NOT EXISTS idx_game_cars_selected ON public.game_cars(player_id, selected);
+CREATE INDEX IF NOT EXISTS idx_game_team_members_team_id ON public.game_team_members(team_id);
+CREATE INDEX IF NOT EXISTS idx_game_team_members_player_id ON public.game_team_members(player_id);
+CREATE INDEX IF NOT EXISTS idx_game_mail_recipient ON public.game_mail(recipient_player_id);
+
+-- 5. Ensure game_car_id is unique (important for car lookups)
+-- ============================================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint 
+    WHERE conname = 'game_cars_game_car_id_key'
+  ) THEN
+    ALTER TABLE public.game_cars ADD CONSTRAINT game_cars_game_car_id_key UNIQUE (game_car_id);
+  END IF;
+END $$;
+
+-- 6. Clean up any orphaned data
+-- ============================================================================
+-- Remove team members for players that don't exist
+DELETE FROM game_team_members 
+WHERE player_id NOT IN (SELECT id FROM game_players);
+
+-- Remove team members for teams that don't exist
+DELETE FROM game_team_members 
+WHERE team_id NOT IN (SELECT id FROM game_teams);
+
+-- Remove cars for players that don't exist
+DELETE FROM game_cars 
+WHERE player_id NOT IN (SELECT id FROM game_players);
+
+-- Remove sessions for players that don't exist
+DELETE FROM game_sessions 
+WHERE player_id NOT IN (SELECT id FROM game_players);
+
+-- 7. Show summary of database state
+-- ============================================================================
+SELECT 
+  'Players' as table_name,
+  COUNT(*) as total_rows,
+  COUNT(CASE WHEN team_id IS NOT NULL THEN 1 END) as with_team,
+  COUNT(CASE WHEN team_id IS NULL THEN 1 END) as without_team
+FROM game_players
+
+UNION ALL
+
+SELECT 
+  'Cars' as table_name,
+  COUNT(*) as total_rows,
+  COUNT(CASE WHEN selected = true THEN 1 END) as selected,
+  COUNT(CASE WHEN selected = false THEN 1 END) as not_selected
+FROM game_cars
+
+UNION ALL
+
+SELECT 
+  'Teams' as table_name,
+  COUNT(*) as total_rows,
+  NULL as with_team,
+  NULL as without_team
+FROM game_teams
+
+UNION ALL
+
+SELECT 
+  'Team Members' as table_name,
+  COUNT(*) as total_rows,
+  NULL as with_team,
+  NULL as without_team
+FROM game_team_members
+
+UNION ALL
+
+SELECT 
+  'Sessions' as table_name,
+  COUNT(*) as total_rows,
+  NULL as with_team,
+  NULL as without_team
+FROM game_sessions
+
+ORDER BY table_name;
+
+-- ============================================================================
+-- Setup Complete!
+-- ============================================================================

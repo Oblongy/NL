@@ -108,6 +108,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_game_cars_one_selected
   ON game_cars(player_id) 
   WHERE selected = TRUE;
 
+CREATE TABLE IF NOT EXISTS game_parts_inventory (
+  id BIGSERIAL PRIMARY KEY,
+  player_id BIGINT NOT NULL REFERENCES game_players(id) ON DELETE CASCADE,
+  part_catalog_id INTEGER NOT NULL,
+  quantity INTEGER NOT NULL DEFAULT 1,
+  acquired_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE (player_id, part_catalog_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_game_parts_inventory_player ON game_parts_inventory(player_id);
+
 -- ============================================================================
 -- GAME SESSIONS TABLE
 -- ============================================================================
@@ -212,6 +223,37 @@ CREATE TRIGGER update_game_team_members_updated_at
   BEFORE UPDATE ON game_team_members
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================================================
+-- ATOMIC CAR SELECTION
+-- Unselect all cars, mark one as selected, and update the player's default
+-- in a single transaction so a mid-flight crash can never leave orphan state.
+-- ============================================================================
+CREATE OR REPLACE FUNCTION select_player_car(
+  p_player_id BIGINT,
+  p_game_car_id BIGINT
+) RETURNS BOOLEAN AS $$
+BEGIN
+  -- Unselect every car for this player
+  UPDATE game_cars SET selected = FALSE
+  WHERE player_id = p_player_id;
+
+  -- Select the requested car (must belong to this player)
+  UPDATE game_cars SET selected = TRUE
+  WHERE game_car_id = p_game_car_id
+    AND player_id = p_player_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'car_not_found: % does not own car %', p_player_id, p_game_car_id;
+  END IF;
+
+  -- Sync the player's default pointer
+  UPDATE game_players SET default_car_game_id = p_game_car_id
+  WHERE id = p_player_id;
+
+  RETURN TRUE;
+END;
+$$ LANGUAGE plpgsql;
 
 -- ============================================================================
 -- SAMPLE DATA (OPTIONAL - FOR TESTING)

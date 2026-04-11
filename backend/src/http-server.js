@@ -235,7 +235,7 @@ async function resolveCompatSessionInfo(supabase, sessionKey) {
   };
 }
 
-export function createHttpServer({ config, logger, fixtureStore, supabase, services = {} }) {
+export function createHttpServer({ config, logger, supabase, services = {} }) {
   return createServer(async (req, res) => {
     try {
       const requestUrl = new URL(req.url, `http://${req.headers.host || `${config.host}:${config.port}`}`);
@@ -247,6 +247,19 @@ export function createHttpServer({ config, logger, fixtureStore, supabase, servi
         path: requestUrl.pathname,
         bytes: bodyBytes.length,
       });
+
+      httpRequestsTotal.inc({ method: req.method, path: requestUrl.pathname.split("?")[0] });
+
+      // Prometheus-compatible metrics endpoint
+      if (requestUrl.pathname === "/metrics") {
+        const body = collectMetrics();
+        res.writeHead(200, {
+          "Content-Type": "text/plain; version=0.0.4; charset=utf-8",
+          "Content-Length": Buffer.byteLength(body, "utf8"),
+        });
+        res.end(body, "utf8");
+        return;
+      }
 
       if (requestUrl.pathname.toLowerCase().endsWith("status.aspx")) {
         sendText(res, 200, "1");
@@ -276,6 +289,14 @@ export function createHttpServer({ config, logger, fixtureStore, supabase, servi
       }
 
       if (requestUrl.pathname.toLowerCase().endsWith("upload.aspx")) {
+        // --- File size limit ---
+        if (bodyBytes.length > MAX_UPLOAD_BYTES) {
+          logger.warn("Upload rejected (too large)", { bytes: bodyBytes.length, max: MAX_UPLOAD_BYTES });
+          uploadsTotal.inc({ type: "unknown", result: "rejected_size" });
+          sendText(res, 413, `<r s='0'/>`);
+          return;
+        }
+
         const contentType = req.headers["content-type"] || "";
         const boundaryMatch = contentType.match(/boundary=(.+)$/);
         
@@ -429,7 +450,6 @@ export function createHttpServer({ config, logger, fixtureStore, supabase, servi
             params: plainParams,
             rawQuery,
             decodedQuery: rawQuery,
-            fixtureStore,
             supabase,
             logger,
             services,
@@ -459,7 +479,6 @@ export function createHttpServer({ config, logger, fixtureStore, supabase, servi
         params: decoded.params,
         rawQuery,
         decodedQuery: decoded.decoded,
-        fixtureStore,
         supabase,
         logger,
         services,

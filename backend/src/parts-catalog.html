@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nitto 1320 Legends - Parts Catalog</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            padding: 30px 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 15px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            color: #00d4ff;
+            text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #a0a0a0;
+            font-size: 1.1em;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 15px;
+        }
+
+        .search-box {
+            flex: 1;
+            min-width: 300px;
+            max-width: 500px;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 12px 20px;
+            font-size: 16px;
+            border: 2px solid #00d4ff;
+            border-radius: 25px;
+            background: rgba(0, 0, 0, 0.5);
+            color: #fff;
+            outline: none;
+            transition: all 0.3s;
+        }
+
+        .search-box input:focus {
+            box-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+            border-color: #00ffff;
+        }
+
+        .filter-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .filter-btn {
+            padding: 10px 20px;
+            border: 2px solid #444;
+            border-radius: 20px;
+            background: rgba(0, 0, 0, 0.5);
+            color: #e0e0e0;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 14px;
+        }
+
+        .filter-btn:hover {
+            border-color: #00d4ff;
+            background: rgba(0, 212, 255, 0.1);
+        }
+
+        .filter-btn.active {
+            background: #00d4ff;
+            color: #000;
+            border-color: #00d4ff;
+        }
+
+        select {
+            padding: 10px 20px;
+            border: 2px solid #444;
+            border-radius: 20px;
+            background: rgba(0, 0, 0, 0.5);
+            color: #e0e0e0;
+            cursor: pointer;
+            font-size: 14px;
+            outline: none;
+        }
+
+        select:hover {
+            border-color: #00d4ff;
+        }
+
+        .stats-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            border: 2px solid #333;
+        }
+
+        .stat-card .number {
+            font-size: 2em;
+            color: #00d4ff;
+            font-weight: bold;
+        }
+
+        .stat-card .label {
+            color: #a0a0a0;
+            margin-top: 5px;
+        }
+
+        .parts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .part-card {
+            background: rgba(0, 0, 0, 0.4);
+            border: 2px solid #333;
+            border-radius: 15px;
+            padding: 20px;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .part-card:hover {
+            transform: translateY(-5px);
+            border-color: #00d4ff;
+            box-shadow: 0 10px 30px rgba(0, 212, 255, 0.3);
+        }
+
+        .part-card.grade-A {
+            border-left: 4px solid #ffd700;
+        }
+
+        .part-card.grade-B {
+            border-left: 4px solid #c0c0c0;
+        }
+
+        .part-card.grade-C {
+            border-left: 4px solid #cd7f32;
+        }
+
+        .part-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 15px;
+        }
+
+        .part-name {
+            font-size: 1.2em;
+            color: #00d4ff;
+            font-weight: bold;
+            flex: 1;
+        }
+
+        .part-grade {
+            background: #ffd700;
+            color: #000;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+
+        .part-grade.grade-B {
+            background: #c0c0c0;
+        }
+
+        .part-grade.grade-C {
+            background: #cd7f32;
+        }
+
+        .part-brand {
+            color: #a0a0a0;
+            font-size: 0.9em;
+            margin-bottom: 10px;
+        }
+
+        .part-type {
+            display: inline-block;
+            padding: 4px 10px;
+            background: rgba(0, 212, 255, 0.2);
+            border-radius: 10px;
+            font-size: 0.85em;
+            color: #00d4ff;
+            margin-bottom: 15px;
+        }
+
+        .part-stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin: 15px 0;
+        }
+
+        .stat {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+        }
+
+        .stat-label {
+            color: #a0a0a0;
+            font-size: 0.9em;
+        }
+
+        .stat-value {
+            font-weight: bold;
+        }
+
+        .stat-value.positive {
+            color: #00ff88;
+        }
+
+        .stat-value.negative {
+            color: #ff4444;
+        }
+
+        .stat-value.neutral {
+            color: #e0e0e0;
+        }
+
+        .part-price {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #333;
+        }
+
+        .price-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .price-label {
+            color: #a0a0a0;
+            font-size: 0.9em;
+        }
+
+        .price-value {
+            color: #00ff88;
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+
+        .location-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            font-size: 0.85em;
+            margin-top: 10px;
+        }
+
+        .no-results {
+            text-align: center;
+            padding: 60px 20px;
+            color: #a0a0a0;
+            font-size: 1.2em;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.8em;
+            }
+
+            .parts-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .controls {
+                flex-direction: column;
+            }
+
+            .search-box {
+                max-width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🏁 Nitto 1320 Legends Parts Catalog</h1>
+        <p>Browse all available performance and cosmetic parts</p>
+        <p style="margin-top: 10px;">
+            <a href="http://nitto.oblong.gg" target="_blank" style="color: #00d4ff; text-decoration: none; font-size: 1.1em;">
+                🎮 Play Now: nitto.oblong.gg
+            </a>
+        </p>
+    </div>
+
+    <div class="controls">
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="🔍 Search parts by name, brand, or category...">
+        </div>
+        
+        <div class="filter-group">
+            <button class="filter-btn active" data-type="all">All Parts</button>
+            <button class="filter-btn" data-type="e">Performance</button>
+            <button class="filter-btn" data-type="c">Cosmetic</button>
+        </div>
+
+        <select id="gradeFilter">
+            <option value="all">All Grades</option>
+            <option value="A">Grade A</option>
+            <option value="B">Grade B</option>
+            <option value="C">Grade C</option>
+        </select>
+
+        <select id="sortBy">
+            <option value="name">Sort by Name</option>
+            <option value="price-low">Price: Low to High</option>
+            <option value="price-high">Price: High to Low</option>
+            <option value="hp">Horsepower</option>
+            <option value="grade">Grade</option>
+        </select>
+    </div>
+
+    <div class="stats-summary" id="statsSummary">
+        <div class="stat-card">
+            <div class="number" id="totalParts">0</div>
+            <div class="label">Total Parts</div>
+        </div>
+        <div class="stat-card">
+            <div class="number" id="performanceParts">0</div>
+            <div class="label">Performance</div>
+        </div>
+        <div class="stat-card">
+            <div class="number" id="cosmeticParts">0</div>
+            <div class="label">Cosmetic</div>
+        </div>
+        <div class="stat-card">
+            <div class="number" id="visibleParts">0</div>
+            <div class="label">Showing</div>
+        </div>
+    </div>
+
+    <div class="parts-grid" id="partsGrid"></div>
+    <div class="no-results" id="noResults" style="display: none;">
+        No parts found matching your criteria
+    </div>
+
+    <script>
+        let allParts = [];
+        let filteredParts = [];
+
+        // Parse XML and extract parts
+        async function loadParts() {
+            try {
+                const response = await fetch('/parts-catalog.xml');
+                const xmlText = await response.text();
+                
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+                const partElements = xmlDoc.querySelectorAll('p');
+                
+                allParts = Array.from(partElements).map(part => ({
+                    id: part.getAttribute('i'),
+                    name: part.getAttribute('n'),
+                    partIndex: part.getAttribute('pi'),
+                    type: part.getAttribute('t'),
+                    price: parseInt(part.getAttribute('p')) || 0,
+                    points: parseInt(part.getAttribute('pp')) || 0,
+                    grade: part.getAttribute('g'),
+                    brand: part.getAttribute('bn'),
+                    brandCode: part.getAttribute('b'),
+                    model: part.getAttribute('mn'),
+                    hp: parseInt(part.getAttribute('hp')) || 0,
+                    tq: parseInt(part.getAttribute('tq')) || 0,
+                    weight: parseInt(part.getAttribute('wt')) || 0,
+                    location: part.getAttribute('l'),
+                    displayIndex: part.getAttribute('di'),
+                    ps: part.getAttribute('ps')
+                }));
+
+                updateStats();
+                filteredParts = [...allParts];
+                renderParts();
+            } catch (error) {
+                console.error('Error loading parts:', error);
+                document.getElementById('noResults').style.display = 'block';
+                document.getElementById('noResults').textContent = 'Error loading parts catalog';
+            }
+        }
+
+        function updateStats() {
+            document.getElementById('totalParts').textContent = allParts.length;
+            document.getElementById('performanceParts').textContent = allParts.filter(p => p.type === 'e').length;
+            document.getElementById('cosmeticParts').textContent = allParts.filter(p => p.type === 'c').length;
+        }
+
+        function getPartCategory(partIndex) {
+            const categories = {
+                '96': 'Air Filter', '47': 'Intake Manifold', '48': 'Throttle Body',
+                '59': 'Headers', '57': 'Cat-Back', '16': 'Exhaust', '181': 'Camshaft',
+                '87': 'Turbo', '81': 'Supercharger', '174': 'ECU', '49': 'Fuel Pump',
+                '52': 'Injectors', '21': 'Nitrous', '24': 'Clutch', '22': 'Drivetrain',
+                '114': 'Suspension', '65': 'Spoiler', '71': 'Hood', '74': 'Hood Effect',
+                '75': 'Eyelids', '76': 'Headlights', '77': 'Tail Lights', '128': 'Front Bumper',
+                '129': 'Side Skirts', '130': 'Rear Bumper', '140': 'Grille', '144': 'Trunk',
+                '160': 'Hood Graphic', '161': 'Side Graphic', '162': 'Front Graphic', '163': 'Back Graphic',
+                '14': 'Wheels', '2': 'Body/Interior'
+            };
+            return categories[partIndex] || 'Other';
+        }
+
+        function getLocationName(locationId) {
+            const locations = {
+                '100': 'Toreno',
+                '200': 'Newburge',
+                '300': 'Creek Side',
+                '400': 'Vista Heights',
+                '500': 'Diamond Point'
+            };
+            return locations[locationId] || 'Unknown';
+        }
+
+        function renderParts() {
+            const grid = document.getElementById('partsGrid');
+            const noResults = document.getElementById('noResults');
+            
+            if (filteredParts.length === 0) {
+                grid.innerHTML = '';
+                noResults.style.display = 'block';
+                document.getElementById('visibleParts').textContent = '0';
+                return;
+            }
+
+            noResults.style.display = 'none';
+            document.getElementById('visibleParts').textContent = filteredParts.length;
+
+            grid.innerHTML = filteredParts.map(part => `
+                <div class="part-card grade-${part.grade}">
+                    <div class="part-header">
+                        <div class="part-name">${part.name}</div>
+                        <div class="part-grade grade-${part.grade}">${part.grade}</div>
+                    </div>
+                    
+                    <div class="part-brand">${part.brand} - ${part.model}</div>
+                    <div class="part-type">${part.type === 'e' ? '⚡ Performance' : '🎨 Cosmetic'} • ${getPartCategory(part.partIndex)}</div>
+                    
+                    <div class="part-stats">
+                        ${part.hp !== 0 ? `
+                            <div class="stat">
+                                <span class="stat-label">Horsepower</span>
+                                <span class="stat-value ${part.hp > 0 ? 'positive' : 'negative'}">${part.hp > 0 ? '+' : ''}${part.hp}</span>
+                            </div>
+                        ` : ''}
+                        ${part.tq !== 0 ? `
+                            <div class="stat">
+                                <span class="stat-label">Torque</span>
+                                <span class="stat-value ${part.tq > 0 ? 'positive' : 'negative'}">${part.tq > 0 ? '+' : ''}${part.tq}</span>
+                            </div>
+                        ` : ''}
+                        ${part.weight !== 0 ? `
+                            <div class="stat">
+                                <span class="stat-label">Weight</span>
+                                <span class="stat-value ${part.weight < 0 ? 'positive' : 'negative'}">${part.weight > 0 ? '+' : ''}${part.weight} lbs</span>
+                            </div>
+                        ` : ''}
+                        ${part.ps ? `
+                            <div class="stat">
+                                <span class="stat-label">Ride Height</span>
+                                <span class="stat-value neutral">Level ${part.ps}</span>
+                            </div>
+                        ` : ''}
+                    </div>
+                    
+                    <div class="part-price">
+                        <div class="price-item">
+                            <span class="price-label">💵</span>
+                            <span class="price-value">$${part.price.toLocaleString()}</span>
+                        </div>
+                        <div class="price-item">
+                            <span class="price-label">⭐</span>
+                            <span class="price-value">${part.points} pts</span>
+                        </div>
+                    </div>
+                    
+                    <div class="location-badge">📍 ${getLocationName(part.location)}</div>
+                </div>
+            `).join('');
+        }
+
+        function filterParts() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const typeFilter = document.querySelector('.filter-btn.active').dataset.type;
+            const gradeFilter = document.getElementById('gradeFilter').value;
+            const sortBy = document.getElementById('sortBy').value;
+
+            filteredParts = allParts.filter(part => {
+                const matchesSearch = part.name.toLowerCase().includes(searchTerm) ||
+                                    part.brand.toLowerCase().includes(searchTerm) ||
+                                    part.model.toLowerCase().includes(searchTerm) ||
+                                    getPartCategory(part.partIndex).toLowerCase().includes(searchTerm);
+                
+                const matchesType = typeFilter === 'all' || part.type === typeFilter;
+                const matchesGrade = gradeFilter === 'all' || part.grade === gradeFilter;
+
+                return matchesSearch && matchesType && matchesGrade;
+            });
+
+            // Sort
+            filteredParts.sort((a, b) => {
+                switch(sortBy) {
+                    case 'price-low': return a.price - b.price;
+                    case 'price-high': return b.price - a.price;
+                    case 'hp': return b.hp - a.hp;
+                    case 'grade': return a.grade.localeCompare(b.grade);
+                    default: return a.name.localeCompare(b.name);
+                }
+            });
+
+            renderParts();
+        }
+
+        // Event listeners
+        document.getElementById('searchInput').addEventListener('input', filterParts);
+        document.getElementById('gradeFilter').addEventListener('change', filterParts);
+        document.getElementById('sortBy').addEventListener('change', filterParts);
+
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                filterParts();
+            });
+        });
+
+        // Load parts on page load
+        loadParts();
+    </script>
+</body>
+</html>

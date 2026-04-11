@@ -5,6 +5,23 @@ import { advanceEngineConditionForCars } from "./engine-state.js";
 import { getPublicIdForPlayer } from "./public-id.js";
 import { ensureDefaultRaceRooms, getDefaultRaceRoom } from "./race-room-catalog.js";
 import { getSessionPlayerId } from "./session.js";
+import {
+  tcpConnectionsTotal,
+  tcpActiveConnections,
+  tcpMessagesReceived,
+  tcpMessagesSent,
+  tcpErrors,
+  tcpMalformedFrames,
+  tcpActiveRaces,
+  tcpPendingChallenges,
+  racesStartedTotal,
+  racesCompletedTotal,
+  cleanupEvictionsTotal,
+} from "./metrics.js";
+
+const MESSAGE_DELIMITER = "\x04";
+const FIELD_DELIMITER = "\x1e";
+const DEFAULT_GLOBAL_CHAT_CLASS = 2;
 
 const MESSAGE_DELIMITER = "\x04";
 const FIELD_DELIMITER = "\x1e";
@@ -69,6 +86,9 @@ export class TcpServer {
       try { conn.socket.destroy(); } catch {}
     }
     this.connections.clear();
+    this.connIdByPlayerId.clear();
+    this.raceIdByPlayerId.clear();
+    
     return new Promise((resolve) => {
       this.server.close(() => { this.started = false; resolve(); });
     });
@@ -77,6 +97,8 @@ export class TcpServer {
   handleConnection(socket) {
     const connId = this.nextConnId++;
     const remoteAddr = `${socket.remoteAddress}:${socket.remotePort}`;
+    tcpConnectionsTotal.inc();
+    tcpActiveConnections.inc();
     this.logger.info("TCP connection opened", { connId, remoteAddr });
 
     const conn = {
@@ -104,14 +126,42 @@ export class TcpServer {
     });
 
     socket.on("end", () => {
-      this.logger.info("TCP connection closed", { connId, remoteAddr });
+      this.logger.info("TCP connection ended", { connId, remoteAddr });
+      tcpActiveConnections.dec();
       this.leaveRoom(conn);
+      // Clean up reverse lookups
+      if (conn.playerId) {
+        this.connIdByPlayerId.delete(conn.playerId);
+        this.raceIdByPlayerId.delete(conn.playerId);
+      }
       this.connections.delete(connId);
+    });
+
+    socket.on("close", () => {
+      this.logger.info("TCP connection closed", { connId, remoteAddr });
+      // Only cleanup if not already cleaned up by 'end' event
+      if (this.connections.has(connId)) {
+        tcpActiveConnections.dec();
+        this.leaveRoom(conn);
+        // Clean up reverse lookups
+        if (conn.playerId) {
+          this.connIdByPlayerId.delete(conn.playerId);
+          this.raceIdByPlayerId.delete(conn.playerId);
+        }
+        this.connections.delete(connId);
+      }
     });
 
     socket.on("error", (error) => {
       this.logger.error("TCP socket error", { connId, error: error.message });
+      tcpActiveConnections.dec();
+      tcpErrors.inc({ category: "socket" });
       this.leaveRoom(conn);
+      // Clean up reverse lookups
+      if (conn.playerId) {
+        this.connIdByPlayerId.delete(conn.playerId);
+        this.raceIdByPlayerId.delete(conn.playerId);
+      }
       this.connections.delete(connId);
     });
   }
@@ -354,7 +404,7 @@ export class TcpServer {
           }
         }
 
-        // Send JR, LR, LRCU x2 to joining player
+        // 10.0.03 only acks the join here. The room snapshot follows after `GR`.
         this.sendMessage(conn, '"ac", "JR", "s", 1');
         this.sendRoomSnapshot(conn, filtered, { duplicateUsers: true });
 
@@ -408,18 +458,143 @@ export class TcpServer {
       } else if (messageType === "CRC" && this.handleKingOfHillRoomCreate(conn, parts)) {
         this.logger.info("TCP CRC handled as KOTH room create", { connId: conn.id, parts });
       } else if (messageType === "TE" || messageType === "CRC") {
-        this.logger.info("TCP chat parts", { connId: conn.id, messageType, parts });
-        // CRC has 8 parts - find the text (longest non-numeric part after index 0)
-        const chatText = messageType === "CRC"
-          ? parts.slice(1).find(p => p.length > 1 && !/^\d+$/.test(p)) || ""
-          : (parts[1] || "");
-        this.logger.info("TCP chat received", { connId: conn.id, messageType, chatText });
-        if (conn.roomId && chatText) {
-          const room = this.rooms.get(conn.roomId) || [];
-          const chatMsg = `"ac", "TE", "i", "${conn.playerId}", "t", "${chatText}"`;
-          for (const member of room) {
-            const memberConn = this.connections.get(member.connId);
-            if (memberConn) this.sendMessage(memberConn, chatMsg);
+        this.logger.info("TCP chat parts", { connId: conn.id, messageType, parts, partsCount: parts.length });
+        this.broadcastChatMessage(conn, {
+          messageType,
+          chatText: this.extractChatText(messageType, parts),
+        });
+
+      // --- NIM: Instant message (private message) ---
+      } else if (messageType === "NIM") {
+        const targetPlayerId = Number(parts[1] || 0);
+        const messageText = parts[2] || "";
+        this.logger.info("TCP NIM received", { 
+          connId: conn.id, 
+          fromPlayerId: conn.playerId, 
+          targetPlayerId, 
+          messageText 
+        });
+        
+        if (targetPlayerId && messageText && conn.playerId && conn.username) {
+          // Find target player's connection
+          const targetConn = this.findConnectionByPlayerId(targetPlayerId);
+          if (targetConn) {
+            // Send instant message to target with sender's username
+            const imMsg = `"ac", "NIM", "i", "${conn.playerId}", "u", "${this.escapeForTcp(conn.username)}", "t", "${this.escapeForTcp(messageText)}"`;
+            this.sendMessage(targetConn, imMsg);
+            // Ack to sender
+            this.sendMessage(conn, '"ac", "NIM", "s", 1');
+            this.logger.info("TCP NIM delivered", { 
+              fromPlayerId: conn.playerId, 
+              targetPlayerId 
+            });
+          } else {
+            // Target not online
+            this.sendMessage(conn, '"ac", "NIM", "s", 0');
+            this.logger.info("TCP NIM failed (target offline)", { 
+              fromPlayerId: conn.playerId, 
+              targetPlayerId 
+            });
+          }
+        } else {
+          this.sendMessage(conn, '"ac", "NIM", "s", 0');
+        }
+
+      // --- SRC: Start Race Connection ---
+      // The Flash client opens a *second* TCP connection for the actual race
+      // data exchange. The first message on that connection is SRC carrying
+      // the session key so we can associate it with the lobby connection.
+      // Format observed: SRC \x1e <sessionKey> [\x1e <raceGuid>]
+      } else if (messageType === "SRC") {
+        const srcSessionKey = parts[1] || "";
+        const srcRaceGuid   = parts[2] || "";
+        
+        // Validate session key format - should be alphanumeric, not chat text
+        const isValidSessionKey = srcSessionKey && /^[a-zA-Z0-9_-]{8,}$/.test(srcSessionKey);
+        
+        if (!isValidSessionKey) {
+          // Client is sending chat as SRC - treat it as a chat message
+          this.broadcastChatMessage(conn, {
+            messageType,
+            chatText: srcSessionKey,
+            logLabel: "TCP SRC chat received",
+          });
+          
+          // Ack the message
+          this.sendMessage(conn, '"ac", "SRC", "s", 1');
+          return;
+        }
+        
+        this.logger.info("TCP SRC received (race channel open)", {
+          connId: conn.id,
+          srcSessionKey,
+          srcRaceGuid,
+        });
+
+        // Resolve the player from the session key (only if not already identified)
+        if (this.supabase && srcSessionKey && !conn.playerId) {
+          try {
+            const playerId = await getSessionPlayerId({ supabase: this.supabase, sessionKey: srcSessionKey });
+            if (playerId) {
+              // Close any stale *race-channel* connection for the same player
+              // before adopting this new race-channel socket. A race-channel
+              // connection has `raceId` set. The lobby connection (no raceId)
+              // must NOT be destroyed here.
+              for (const [existingConnId, existingConn] of this.connections.entries()) {
+                if (existingConnId !== conn.id &&
+                    existingConn.playerId === playerId &&
+                    existingConn.raceId) {
+                  this.logger.info("SRC closing stale race connection for player", { staleConnId: existingConnId, playerId, newConnId: conn.id, staleRaceId: existingConn.raceId });
+                  this.leaveRoom(existingConn);
+                  existingConn.socket?.destroy();
+                  this.connections.delete(existingConnId);
+                  // Clean up reverse lookups for stale connection
+                  if (this.connIdByPlayerId.get(playerId) === existingConnId) {
+                    this.connIdByPlayerId.delete(playerId);
+                  }
+                  if (existingConn.raceId) {
+                    this.raceIdByPlayerId.delete(playerId);
+                  }
+                }
+              }
+              conn.playerId = playerId;
+              conn.sessionKey = srcSessionKey;
+              // Set reverse lookup for O(1) player->connection mapping
+              this.connIdByPlayerId.set(playerId, conn.id);
+              
+              const { data: player } = await this.supabase
+                .from("game_players")
+                .select("username, default_car_game_id")
+                .eq("id", playerId)
+                .maybeSingle();
+              conn.username = player?.username || "Player";
+              conn.carId = Number(player?.default_car_game_id || 0);
+            }
+          } catch (err) {
+            this.logger.error("SRC session lookup failed", { connId: conn.id, error: err.message });
+          }
+        } else if (!conn.playerId) {
+          this.logger.warn("SRC received without valid session or existing player", { connId: conn.id, hasSessionKey: !!srcSessionKey, hasPlayerId: !!conn.playerId });
+        }
+
+        // Find the active race for this player (by GUID hint or by playerId)
+        let srcRace = null;
+        if (srcRaceGuid) {
+          srcRace = this.races.get(srcRaceGuid) || this.pendingRaceChallenges.get(srcRaceGuid) || null;
+        }
+        if (!srcRace && conn.playerId) {
+          // Use O(1) lookup if available, otherwise fall back to scan
+          const cachedRaceId = this.raceIdByPlayerId.get(conn.playerId);
+          if (cachedRaceId) {
+            srcRace = this.races.get(cachedRaceId);
+          }
+          if (!srcRace) {
+            for (const [, r] of this.races) {
+              if (r.players.some(p => Number(p.playerId) === Number(conn.playerId))) {
+                srcRace = r;
+                break;
+              }
+            }
           }
         }
 
@@ -538,6 +713,356 @@ export class TcpServer {
         error: error.message,
         message: rawMessage.substring(0, 200),
       });
+    }
+  }
+
+  findRaceForConnection(conn) {
+    // Fast path: use cached raceId on connection
+    let race = conn.raceId ? this.races.get(conn.raceId) : null;
+    
+    // Fallback: use O(1) player->race lookup
+    if (!race && conn.playerId) {
+      const cachedRaceId = this.raceIdByPlayerId.get(conn.playerId);
+      if (cachedRaceId) {
+        race = this.races.get(cachedRaceId);
+        if (race) {
+          conn.raceId = cachedRaceId;
+        }
+      }
+    }
+    
+    // Last resort: O(n) scan (should rarely happen now)
+    if (!race && conn.playerId) {
+      for (const [, candidate] of this.races) {
+        if (candidate.players.some((player) => Number(player.playerId) === Number(conn.playerId))) {
+          race = candidate;
+          conn.raceId = candidate.id;
+          this.raceIdByPlayerId.set(conn.playerId, candidate.id);
+          break;
+        }
+      }
+    }
+    
+    return race || null;
+  }
+
+  normalizeNumericToken(value, fallback = "0") {
+    const token = String(value ?? "").trim();
+    return token !== "" && Number.isFinite(Number(token)) ? token : String(fallback);
+  }
+
+  extractChatText(messageType, parts) {
+    if (messageType === "CRC") {
+      return parts.slice(1).find((part) => part.length > 1 && !/^\d+$/.test(part)) || "";
+    }
+    return parts[1] || "";
+  }
+
+  broadcastChatMessage(conn, { messageType, chatText, logLabel = "TCP chat received" }) {
+    this.logger.info(logLabel, {
+      connId: conn.id,
+      messageType,
+      chatText,
+      username: conn.username,
+      playerId: conn.playerId,
+      roomId: conn.roomId,
+      hasUsername: !!conn.username,
+      hasPlayerId: !!conn.playerId,
+    });
+
+    if (!(chatText && conn.playerId && conn.username)) {
+      this.logger.warn("Chat message rejected", {
+        connId: conn.id,
+        messageType,
+        hasChatText: !!chatText,
+        hasPlayerId: !!conn.playerId,
+        hasUsername: !!conn.username,
+      });
+      return false;
+    }
+
+    if (conn.roomId) {
+      const room = this.rooms.get(conn.roomId) || [];
+      const roomChatMsg =
+        `"ac", "TE", "i", "${conn.playerId}", "u", "${this.escapeForTcp(conn.username)}", "t", "${this.escapeForTcp(chatText)}"`;
+      this.logger.info("Broadcasting room chat", { connId: conn.id, roomId: conn.roomId, memberCount: room.length });
+      for (const member of room) {
+        const memberConn = this.connections.get(member.connId);
+        if (memberConn) {
+          this.sendMessage(memberConn, roomChatMsg);
+        }
+      }
+      return true;
+    }
+
+    const globalChatMsg =
+      `"ac", "GC", "u", "${this.escapeForTcp(conn.username)}", "m", "${this.escapeForTcp(chatText)}", "c", ${DEFAULT_GLOBAL_CHAT_CLASS}`;
+    let recipientCount = 0;
+    for (const [, otherConn] of this.connections) {
+      if (otherConn.playerId && !otherConn.roomId) {
+        this.sendMessage(otherConn, globalChatMsg);
+        recipientCount += 1;
+      }
+    }
+    this.logger.info("Broadcasting global chat", {
+      connId: conn.id,
+      recipientCount,
+      chatClass: DEFAULT_GLOBAL_CHAT_CLASS,
+    });
+    return true;
+  }
+
+  handleRaceTelemetry(conn, messageType, parts) {
+    const race = this.findRaceForConnection(conn);
+    if (!race) {
+      this.logger.info("TCP telemetry received without race", { connId: conn.id, messageType });
+      return;
+    }
+
+    // Update race activity timestamp
+    race.lastActivity = Date.now();
+
+    const distance = this.normalizeNumericToken(parts[1], 0);
+    const velocity = this.normalizeNumericToken(parts[2], 0);
+    const acceleration = this.normalizeNumericToken(parts[3], 0);
+    const tick = messageType === "I" ? this.normalizeNumericToken(parts[4], 0) : "0";
+
+    // Send RIVRDY once when first telemetry is received
+    if (!race.rivalsReadySent) {
+      race.rivalsReadySent = true;
+      for (const participant of race.players) {
+        const participantConn = this.connections.get(participant.connId);
+        if (participantConn) {
+          this.sendMessage(participantConn, '"ac", "RIVRDY", "s", 1');
+        }
+      }
+    }
+
+    // Forward telemetry to opponent
+    const ioMessage =
+      `"ac", "IO", "d", ${distance}, "v", ${velocity}, "a", ${acceleration}, "t", ${tick}`;
+
+    for (const participant of race.players) {
+      if (participant.connId === conn.id) continue;
+      const participantConn = this.connections.get(participant.connId);
+      if (participantConn) {
+        this.sendMessage(participantConn, ioMessage);
+      }
+    }
+
+    // Send periodic race state updates to keep connection alive
+    if (!race.lastStateUpdate || Date.now() - race.lastStateUpdate > 5000) {
+      race.lastStateUpdate = Date.now();
+      for (const participant of race.players) {
+        const participantConn = this.connections.get(participant.connId);
+        if (participantConn) {
+          this.sendMessage(participantConn, '"ac", "RKA", "s", 1'); // Race Keep Alive
+        }
+      }
+    }
+  }
+
+  handleRivalsReactionTime(conn, parts) {
+    const race = this.findRaceForConnection(conn);
+    if (!race || !conn.playerId) {
+      this.logger.info("TCP RIVRT received without race", { connId: conn.id, parts });
+      return;
+    }
+
+    const reactionTime = this.normalizeNumericToken(parts[1], 0);
+    if (!race.reactionTimes) {
+      race.reactionTimes = new Map();
+    }
+    race.reactionTimes.set(Number(conn.playerId), reactionTime);
+
+    const racerIndex = Math.max(
+      1,
+      race.players.findIndex((player) => Number(player.playerId) === Number(conn.playerId)) + 1,
+    );
+    const rivalsMessage =
+      `"ac", "RIVRT", "r", ${racerIndex}, "rt", ${reactionTime}, "i", ${Number(conn.playerId)}`;
+
+    for (const participant of race.players) {
+      const participantConn = this.connections.get(participant.connId);
+      if (!participantConn) continue;
+      if (participant.connId !== conn.id) {
+        this.sendMessage(participantConn, `"ac", "RIVRTO", "rt", ${reactionTime}`);
+      }
+      this.sendMessage(participantConn, rivalsMessage);
+    }
+  }
+
+  handleRaceMeta(conn, parts) {
+    const race = this.findRaceForConnection(conn);
+    if (!race || !conn.playerId) {
+      this.logger.info("TCP M received without race", { connId: conn.id, parts });
+      return;
+    }
+
+    if (!race.metaByPlayer) {
+      race.metaByPlayer = new Map();
+    }
+    race.metaByPlayer.set(Number(conn.playerId), parts.slice(1));
+  }
+
+  handleKingOfHillRoomCreate(conn, parts) {
+    const roomType = Number(parts[2] || 0);
+    if (roomType !== 3 && roomType !== 6) {
+      return false;
+    }
+
+    const roomId = roomType === 3 ? 3 : 4;
+    const roomName = "User Room";
+    this.leaveRoom(conn);
+    conn.roomId = roomId;
+
+    const roomPlayers = this.rooms.get(roomId) || [];
+    const updatedPlayers = roomPlayers.filter((player) => Number(player.playerId) !== Number(conn.playerId));
+    updatedPlayers.push({
+      connId: conn.id,
+      playerId: Number(conn.playerId || 0),
+      username: conn.username || "Player",
+      carId: Number(conn.carId || 0),
+    });
+    this.rooms.set(roomId, updatedPlayers);
+
+    if (this.raceRoomRegistry && conn.playerId) {
+      this.raceRoomRegistry.addPlayer(roomId, {
+        id: Number(conn.playerId),
+        publicId: getPublicIdForPlayer({ id: Number(conn.playerId) }),
+        name: conn.username || "Player",
+      });
+    }
+
+    const roomXml =
+      `<rooms><r rc='1' cy='20' rt='${roomType}' cid='${roomId}' rn='${roomName}' ip='0' mo='0' sm='0' pro='0'/></rooms>`;
+    this.sendMessage(conn, `"ac", "CRC", "s", 1, "d", "${roomXml}"`);
+    this.sendMessage(conn, '"ac", "JR", "s", 1');
+    return true;
+  }
+
+  handleKingOfHillQueue(conn) {
+    const roomId = conn.roomId || 4;
+    const roomPlayers = this.rooms.get(roomId) || [];
+    
+    // Filter players who have made a KOTH selection (are in queue)
+    const queuedPlayers = [];
+    for (const player of roomPlayers) {
+      const playerConn = this.connections.get(player.connId);
+      if (playerConn?.kingOfHillSelection) {
+        queuedPlayers.push({
+          playerId: player.playerId,
+          carId: playerConn.kingOfHillSelection.carId,
+        });
+      }
+    }
+    
+    const queueXml = queuedPlayers.length > 0
+      ? queuedPlayers.map(p => `<k i='${p.playerId}' ks='0' ci='${p.carId}'/>`).join("")
+      : "<k i='0' ks='0' ci='0'/>";
+    
+    this.sendMessage(conn, `"ac", "KU", "s", "<q>${queueXml}</q>"`);
+  }
+
+  handleKingOfHillJoin(conn, parts) {
+    const carId = Number(parts[1] || 0);
+    const lane = Number(parts[2] || -1);
+    
+    conn.kingOfHillSelection = {
+      carId,
+      lane,
+    };
+    
+    this.sendMessage(conn, '"ac", "UNU", "i", 1, "s", 1, "ul", ""');
+    
+    // Try to match with another player in the KOTH queue
+    const roomId = conn.roomId || 4;
+    const roomPlayers = this.rooms.get(roomId) || [];
+    
+    // Find all players in queue (excluding current player)
+    const waitingPlayers = [];
+    for (const player of roomPlayers) {
+      if (player.connId === conn.id) continue;
+      const playerConn = this.connections.get(player.connId);
+      if (playerConn?.kingOfHillSelection && !playerConn.raceId) {
+        waitingPlayers.push({
+          conn: playerConn,
+          playerId: player.playerId,
+          carId: playerConn.kingOfHillSelection.carId,
+          lane: playerConn.kingOfHillSelection.lane,
+        });
+      }
+    }
+    
+    // If there's at least one waiting player, match them
+    if (waitingPlayers.length > 0 && !conn.raceId) {
+      const opponent = waitingPlayers[0];
+      
+      this.logger.info("KOTH match found", {
+        player1: { connId: conn.id, playerId: conn.playerId, carId },
+        player2: { connId: opponent.conn.id, playerId: opponent.playerId, carId: opponent.carId },
+      });
+      
+      // Create race request for player 1
+      const request1 = {
+        connId: conn.id,
+        requesterPlayerId: Number(conn.playerId),
+        requesterCarId: carId,
+        roomId,
+        lane: lane >= 0 ? lane : 0,
+        bet: 0,
+      };
+      
+      // Create race request for player 2
+      const request2 = {
+        connId: opponent.conn.id,
+        requesterPlayerId: Number(opponent.playerId),
+        requesterCarId: opponent.carId,
+        roomId,
+        lane: opponent.lane >= 0 ? opponent.lane : 1,
+        bet: 0,
+      };
+      
+      // Clear their KOTH selections
+      delete conn.kingOfHillSelection;
+      delete opponent.conn.kingOfHillSelection;
+      
+      // Create the race session
+      this.createRaceSession(request1, request2);
+      
+      // Broadcast updated queue to room
+      this.broadcastKothQueueUpdate(roomId);
+    } else {
+      // Broadcast updated queue to show this player joined
+      this.broadcastKothQueueUpdate(roomId);
+    }
+  }
+  
+  broadcastKothQueueUpdate(roomId) {
+    const roomPlayers = this.rooms.get(roomId) || [];
+    const queuedPlayers = [];
+    
+    for (const player of roomPlayers) {
+      const playerConn = this.connections.get(player.connId);
+      if (playerConn?.kingOfHillSelection) {
+        queuedPlayers.push({
+          playerId: player.playerId,
+          carId: playerConn.kingOfHillSelection.carId,
+        });
+      }
+    }
+    
+    const queueXml = queuedPlayers.length > 0
+      ? queuedPlayers.map(p => `<k i='${p.playerId}' ks='0' ci='${p.carId}'/>`).join("")
+      : "<k i='0' ks='0' ci='0'/>";
+    
+    const queueMessage = `"ac", "LR", "s", "<q>${queueXml}</q>"`;
+    
+    for (const player of roomPlayers) {
+      const playerConn = this.connections.get(player.connId);
+      if (playerConn) {
+        this.sendMessage(playerConn, queueMessage);
+      }
     }
   }
 
@@ -1429,6 +1954,157 @@ export class TcpServer {
       });
     } catch (error) {
       this.logger.error("TCP send error", { connId: conn.id, error: error.message });
+      tcpErrors.inc({ category: "send" });
+    }
+  }
+
+  /**
+   * Send a message to a single player by their playerId.
+   * Returns true if the message was sent, false if the player was not found.
+   */
+  sendToPlayer(playerId, message) {
+    const conn = this.findConnectionByPlayerId(playerId);
+    if (!conn) return false;
+    this.sendMessage(conn, message);
+    return true;
+  }
+
+  /**
+   * Send a batch of messages to multiple players in a single write per player.
+   * Each message is encrypted individually, then the frames are concatenated
+   * into one buffer per socket so the kernel sends them in a single TCP segment.
+   */
+  broadcastToPlayers(playerIds, messages) {
+    const msgList = Array.isArray(messages) ? messages : [messages];
+    let sent = 0;
+
+    for (const playerId of playerIds) {
+      const conn = this.findConnectionByPlayerId(playerId);
+      if (!conn) continue;
+
+      try {
+        const frames = msgList.map((msg) => {
+          const seed = Math.floor(Math.random() * 90) + 10;
+          return encryptPayload(msg, seed) + MESSAGE_DELIMITER;
+        });
+        const combined = Buffer.from(frames.join(""), "latin1");
+        conn.socket.write(combined);
+        sent++;
+        this.logger.info("TCP batch sent", {
+          connId: conn.id,
+          playerId,
+          messageCount: msgList.length,
+          bytes: combined.length,
+        });
+      } catch (error) {
+        this.logger.error("TCP batch send error", { connId: conn.id, playerId, error: error.message });
+      }
+    }
+
+    return sent;
+  }
+
+  cleanupStaleState() {
+    const now = Date.now();
+    const challengeTtl = 2 * 60 * 1000;   // 2 minutes
+    const raceTtl      = 10 * 60 * 1000;  // 10 minutes
+
+    // --- Pending race challenges ---
+    let cleanedChallenges = 0;
+    for (const [guid, challenge] of this.pendingRaceChallenges.entries()) {
+      if (now - challenge.createdAt > challengeTtl) {
+        this.pendingRaceChallenges.delete(guid);
+        cleanedChallenges++;
+      }
+    }
+
+    // --- Active races that have gone stale (both players likely disconnected) ---
+    let cleanedRaces = 0;
+    const emptyRaceGraceMs = 2 * 60 * 1000; // 2 minutes reconnect grace
+    const raceTimeoutMs = 3 * 60 * 1000; // 3 minutes for active race timeout
+    
+    for (const [raceId, race] of this.races.entries()) {
+      let shouldCleanup = false;
+      let reason = '';
+      
+      // Races that were emptied get a shorter grace period for reconnects
+      if (race.emptiedAt && now - race.emptiedAt > emptyRaceGraceMs) {
+        shouldCleanup = true;
+        reason = 'empty race grace period expired';
+      }
+      // Races that were never emptied get the full TTL
+      else if (!race.emptiedAt && now - race.createdAt > raceTtl) {
+        shouldCleanup = true;
+        reason = 'race TTL expired';
+      }
+      // Active races that have timed out due to inactivity
+      else if (race.lastActivity && now - race.lastActivity > raceTimeoutMs) {
+        shouldCleanup = true;
+        reason = 'race activity timeout';
+        
+        // Send timeout messages to remaining players before cleanup
+        for (const participant of race.players) {
+          const participantConn = this.connections.get(participant.connId);
+          if (participantConn) {
+            this.sendMessage(participantConn, '"ac", "RTO", "s", 1'); // Race Timeout
+            this.sendMessage(participantConn, '"ac", "RR", "s", 1');
+            this.sendMessage(participantConn, '"ac", "UR", "s", 1');
+            this.sendMessage(participantConn, '"ac", "OR", "s", 1');
+            participantConn.raceId = null;
+          }
+        }
+      }
+      
+      if (shouldCleanup) {
+        this.logger.info("Cleaning up race", { raceId, reason });
+        
+        // Clean up reverse lookups for all players in this race
+        for (const player of race.players) {
+          if (player.playerId && this.raceIdByPlayerId.get(player.playerId) === raceId) {
+            this.raceIdByPlayerId.delete(player.playerId);
+          }
+        }
+        this.races.delete(raceId);
+        this.raceCompletions.delete(raceId);
+        cleanedRaces++;
+      }
+    }
+
+    // --- Room members whose TCP connection is no longer alive ---
+    let cleanedMembers = 0;
+    for (const [roomId, members] of this.rooms.entries()) {
+      const live = members.filter((m) => this.connections.has(m.connId));
+      if (live.length !== members.length) {
+        const dead = members.filter((m) => !this.connections.has(m.connId));
+        cleanedMembers += dead.length;
+        this.rooms.set(roomId, live);
+
+        // Sync removals to the authoritative registry
+        if (this.raceRoomRegistry) {
+          for (const m of dead) {
+            if (m.playerId) this.raceRoomRegistry.removePlayer(roomId, Number(m.playerId));
+          }
+        }
+
+        // Notify surviving members of the updated roster
+        for (const m of live) {
+          const mc = this.connections.get(m.connId);
+          if (mc) this.sendRoomUsers(mc, live);
+        }
+      }
+    }
+
+    if (cleanedChallenges > 0 || cleanedRaces > 0 || cleanedMembers > 0) {
+      cleanupEvictionsTotal.inc({ type: "challenges" }, cleanedChallenges);
+      cleanupEvictionsTotal.inc({ type: "races" }, cleanedRaces);
+      cleanupEvictionsTotal.inc({ type: "room_members" }, cleanedMembers);
+      tcpActiveRaces.set({}, this.races.size);
+      tcpPendingChallenges.set({}, this.pendingRaceChallenges.size);
+      this.logger.info("TCP stale state cleaned up", {
+        challenges: cleanedChallenges,
+        races: cleanedRaces,
+        roomMembers: cleanedMembers,
+      });
     }
   }
 

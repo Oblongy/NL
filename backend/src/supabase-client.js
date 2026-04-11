@@ -1,7 +1,7 @@
 export async function createGameSupabase(config, logger) {
   if (!config.supabaseUrl || !config.supabaseServiceRoleKey) {
     logger.warn(
-      "Supabase credentials are missing. The backend will run in fixture-only mode until .env is configured.",
+      "Supabase credentials are missing. The backend will run in limited local mode until .env is configured.",
     );
     return null;
   }

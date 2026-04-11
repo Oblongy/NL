@@ -16,4 +16,24 @@ export class TeamState {
   list() {
     return [...this.teams.values()];
   }
+
+  remove(teamId) {
+    return this.teams.delete(String(teamId));
+  }
+
+  /**
+   * Remove team entries that have not been updated within `ttlMs` milliseconds.
+   * Returns the number of evicted entries.
+   */
+  cleanup(ttlMs = 60 * 60 * 1000) {
+    const cutoff = Date.now() - ttlMs;
+    let evicted = 0;
+    for (const [key, entry] of this.teams) {
+      if ((entry.updatedAt || 0) < cutoff) {
+        this.teams.delete(key);
+        evicted++;
+      }
+    }
+    return evicted;
+  }
 }

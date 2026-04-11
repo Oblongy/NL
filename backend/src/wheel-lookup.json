@@ -1,6 +1,6 @@
 {
   "generatedAction": "getallwheelstires",
-  "sourceFixture": "20260402_221744.decoded_http_responses.json",
+  "sourceCapture": "20260402_221744.decoded_http_responses.json",
   "notes": [
     "The captured wheel catalog contains 566 unique wheel part IDs mapped onto 154 visual design IDs.",
     "Use scripts/archive/export_wheel_lookup.py to rebuild the full catalog when bulk file writing is available.",

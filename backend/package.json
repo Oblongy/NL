@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
-    "check": "node --check src/index.js"
+    "check": "node --check src/index.js",
+    "analyze:capture": "node tools/analyze_capture_bundle.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.101.1"

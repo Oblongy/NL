@@ -80,9 +80,58 @@ function normalizeWheelXmlValue(value) {
 
 function normalizePartsXmlValue(value) {
   const partsXml = String(value || "").trim();
-  // Return empty string for empty or paint-only parts to avoid login hang
-  // The client will render the car correctly with just paint state
-  return partsXml;
+  if (!partsXml) {
+    return "";
+  }
+
+  // Stored part fragments sometimes come from shop payloads (`pi` / `t`) rather
+  // than owned-car payloads (`ci` / `pt`). The 10.0.03 garage/client code reads
+  // owned-car nodes, so normalize the legacy shop shape into the canonical form.
+  return partsXml.replace(/<p\b([^>]*)\/>/gi, (fullMatch, rawAttrs) => {
+    let attrs = String(rawAttrs || "");
+
+    if (!/\bci=/.test(attrs) && /\bpi=/.test(attrs)) {
+      attrs = attrs.replace(/\bpi=/, "ci=");
+    }
+
+    if (!/\bpt=/.test(attrs) && /\bt=/.test(attrs)) {
+      attrs = attrs.replace(/\bt=/, "pt=");
+    }
+
+    return `<p${attrs}/>`;
+  });
+}
+
+function isMissingPartsInventoryTableError(error) {
+  const message = String(error?.message || error || "");
+  return /game_parts_inventory/i.test(message) && /does not exist|unknown table|relation|column/i.test(message);
+}
+
+function parseTimestamp(value) {
+  if (!value) {
+    return null;
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function deriveTestDriveState(car) {
+  const invitationId = Number(car?.test_drive_invitation_id || 0);
+  if (invitationId <= 0) {
+    return null;
+  }
+
+  const expiresAt = parseTimestamp(car.test_drive_expires_at);
+  const msRemaining = expiresAt ? expiresAt.getTime() - Date.now() : 0;
+  const expired = !expiresAt || msRemaining <= 0;
+  const hoursRemaining = expiresAt ? Math.max(0, Math.ceil(msRemaining / TEST_DRIVE_HOUR_MS)) : 0;
+
+  return {
+    active: 1,
+    expired: expired ? 1 : 0,
+    hoursRemaining,
+  };
 }
 
 function parseTimestamp(value) {
@@ -179,6 +228,128 @@ async function repairLegacyCars(supabase, cars) {
   }
 
   return repairedCars;
+}
+
+export async function listPartsInventoryForPlayer(supabase, playerId) {
+  if (!supabase || !playerId) {
+    return [];
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("game_parts_inventory")
+      .select("*")
+      .eq("player_id", Number(playerId))
+      .order("id", { ascending: true });
+
+    if (error) {
+      throw error;
+    }
+
+    return data || [];
+  } catch (error) {
+    if (isMissingPartsInventoryTableError(error)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+export async function getPartInventoryItemById(supabase, inventoryId, playerId) {
+  if (!supabase || !inventoryId || !playerId) {
+    return null;
+  }
+
+  try {
+    return await maybeSingle(
+      supabase
+        .from("game_parts_inventory")
+        .select("*")
+        .eq("id", Number(inventoryId))
+        .eq("player_id", Number(playerId)),
+    );
+  } catch (error) {
+    if (isMissingPartsInventoryTableError(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function addPartInventoryItem(supabase, playerId, partCatalogId, quantityDelta = 1) {
+  if (!supabase || !playerId || !partCatalogId || quantityDelta <= 0) {
+    return null;
+  }
+
+  try {
+    const existing = await maybeSingle(
+      supabase
+        .from("game_parts_inventory")
+        .select("*")
+        .eq("player_id", Number(playerId))
+        .eq("part_catalog_id", Number(partCatalogId)),
+    );
+
+    if (existing) {
+      return singleResult(
+        supabase
+          .from("game_parts_inventory")
+          .update({ quantity: Number(existing.quantity || 0) + Number(quantityDelta || 0) })
+          .eq("id", Number(existing.id))
+          .select("*"),
+      );
+    }
+
+    return singleResult(
+      supabase
+        .from("game_parts_inventory")
+        .insert({
+          player_id: Number(playerId),
+          part_catalog_id: Number(partCatalogId),
+          quantity: Number(quantityDelta || 0),
+        })
+        .select("*"),
+    );
+  } catch (error) {
+    if (isMissingPartsInventoryTableError(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function consumePartInventoryItem(supabase, inventoryId, playerId) {
+  if (!supabase || !inventoryId || !playerId) {
+    return null;
+  }
+
+  const item = await getPartInventoryItemById(supabase, inventoryId, playerId);
+  if (!item) {
+    return null;
+  }
+
+  const quantity = Number(item.quantity || 0);
+  if (quantity > 1) {
+    await singleResult(
+      supabase
+        .from("game_parts_inventory")
+        .update({ quantity: quantity - 1 })
+        .eq("id", Number(item.id))
+        .select("*"),
+    );
+  } else {
+    const { error } = await supabase
+      .from("game_parts_inventory")
+      .delete()
+      .eq("id", Number(item.id))
+      .eq("player_id", Number(playerId));
+
+    if (error) {
+      throw error;
+    }
+  }
+
+  return item;
 }
 
 export async function getPlayerById(supabase, playerId) {
@@ -356,11 +527,20 @@ export async function createOwnedCar(
     car = await insertGameCarCompat(supabase, insert);
   }
 
-  if (selected) {
-    await supabase
-      .from("game_players")
-      .update({ default_car_game_id: Number(car.game_car_id) })
-      .eq("id", Number(playerId));
+  let car;
+  try {
+    car = await insertGameCarCompat(supabase, insert);
+  } catch (error) {
+    if (!isMissingTestDriveColumnError(error)) {
+      throw error;
+    }
+
+    delete insert.test_drive_invitation_id;
+    delete insert.test_drive_name;
+    delete insert.test_drive_money_price;
+    delete insert.test_drive_point_price;
+    delete insert.test_drive_expires_at;
+    car = await insertGameCarCompat(supabase, insert);
   }
 
   return normalizeOwnedCarRecord(car);
@@ -542,28 +722,32 @@ export async function updatePlayerDefaultCar(supabase, playerId, gameCarId) {
     return false;
   }
 
-  // First, unselect all cars for this player
-  await supabase
-    .from("game_cars")
-    .update({ selected: false })
-    .eq("player_id", Number(playerId));
-
-  // Then select the specified car
-  const { error } = await supabase
-    .from("game_cars")
-    .update({ selected: true })
-    .eq("game_car_id", Number(gameCarId))
-    .eq("player_id", Number(playerId));
+  // Atomic: unselect all → select one → update player default in a single DB transaction
+  const { error } = await supabase.rpc("select_player_car", {
+    p_player_id: Number(playerId),
+    p_game_car_id: Number(gameCarId),
+  });
 
   if (error) {
     throw error;
   }
 
-  // Also update the player's default_car_game_id
-  await supabase
+  return true;
+}
+
+export async function updatePlayerLocation(supabase, playerId, locationId) {
+  if (!supabase || !playerId || !locationId) {
+    return false;
+  }
+
+  const { error } = await supabase
     .from("game_players")
-    .update({ default_car_game_id: Number(gameCarId) })
+    .update({ location_id: Number(locationId) })
     .eq("id", Number(playerId));
+
+  if (error) {
+    throw error;
+  }
 
   return true;
 }
