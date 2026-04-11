@@ -7,6 +7,21 @@ const backendRoot = resolve(currentDir, "..");
 const projectRoot = resolve(backendRoot, "..");
 const fixturesRoot = resolve(backendRoot, "fixtures");
 
+function parseBooleanEnv(value, defaultValue = false) {
+  if (value === undefined || value === null || value === "") {
+    return defaultValue;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  return defaultValue;
+}
+
 function loadDotEnvFile() {
   const envPath = resolve(backendRoot, ".env");
   if (!existsSync(envPath)) {
@@ -44,6 +59,7 @@ export const config = {
   port: Number(env.PORT || 8082),
   tcpHost: env.TCP_HOST || env.HOST || "127.0.0.1",
   tcpPort: Number(env.TCP_PORT || 3724), // Default to 3724 (standard Nitto TCP port)
+  useFixtures: parseBooleanEnv(env.USE_FIXTURES, false),
   supabaseUrl: env.SUPABASE_URL || "",
   supabaseServiceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY || "",
   backendRoot,

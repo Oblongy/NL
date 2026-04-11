@@ -50,11 +50,24 @@ const DEFAULT_DYNO_PURCHASE_STATE = Object.freeze({
 });
 const PART_XML_ENTRY_REGEX = /<p\b[^>]*\/>/g;
 const PART_XML_ATTR_REGEX = /(\w+)='([^']*)'/g;
+const TEAM_RIVALS_ROOM_ID = 1;
+const TEAM_ROLE = Object.freeze({
+  LEADER: 1,
+  CO_LEADER: 2,
+  DEALER: 3,
+  MEMBER: 4,
+});
+const TEAM_APP_STATUS = Object.freeze({
+  PENDING: "Pending",
+  ACCEPTED: "Accepted",
+  DECLINED: "Declined",
+});
 
 let partsCatalogById = null;
 const pendingTestDriveInvitationsById = new Map();
 const pendingTestDriveInvitationsByPlayerId = new Map();
 const activeTestDriveCarsByPlayerId = new Map();
+const teamRivalsChallengesById = new Map();
 
 function parsePartXmlAttributes(rawEntry) {
   const attrs = {};
@@ -223,6 +236,1694 @@ async function attachOwnerPublicIds(supabase, cars) {
     ...car,
     owner_public_id: publicIdsByPlayerId.get(Number(car.player_id)) || Number(car.player_id) || 0,
   }));
+}
+
+function parseCsvIntegerList(value) {
+  return String(value || "")
+    .split(",")
+    .map((entry) => Number(String(entry).trim()))
+    .filter((entry) => Number.isFinite(entry) && entry > 0);
+}
+
+function escapeTcpXml(xml) {
+  return String(xml || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"');
+}
+
+function getActionValueCandidates(params) {
+  return [...params.entries()]
+    .filter(([key]) => !["action", "aid", "sk"].includes(String(key || "").toLowerCase()))
+    .map(([, value]) => value);
+}
+
+async function getPlayerTeamMembership(supabase, playerId) {
+  if (!supabase || !playerId) {
+    return null;
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("game_team_members")
+      .select("team_id, role")
+      .eq("player_id", Number(playerId))
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      const message = String(error?.message || error || "");
+      if (!/role/i.test(message) || !/does not exist|unknown column|column/i.test(message)) {
+        throw error;
+      }
+
+      const compat = await supabase
+        .from("game_team_members")
+        .select("team_id")
+        .eq("player_id", Number(playerId))
+        .limit(1)
+        .maybeSingle();
+
+      if (compat.error) {
+        throw compat.error;
+      }
+
+      return compat.data ? { team_id: compat.data.team_id, role: null } : null;
+    }
+
+    if (data?.team_id) {
+      return data;
+    }
+  } catch {
+    // Fall back to legacy player columns below.
+  }
+
+  try {
+    const playerResult = await supabase
+      .from("game_players")
+      .select("team_id")
+      .eq("id", Number(playerId))
+      .limit(1)
+      .maybeSingle();
+
+    if (playerResult.error) {
+      throw playerResult.error;
+    }
+
+    return playerResult.data?.team_id ? { team_id: playerResult.data.team_id, role: null } : null;
+  } catch {
+    return null;
+  }
+}
+
+function getDefaultTeamMeta() {
+  return {
+    leaderComments: "",
+    rolesByPlayerId: {},
+    dealerMaxBetByPlayerId: {},
+    contributionByPlayerId: {},
+    applications: [],
+  };
+}
+
+function sanitizeTeamMeta(teamMeta) {
+  const merged = { ...getDefaultTeamMeta(), ...(teamMeta || {}) };
+  return {
+    ...merged,
+    rolesByPlayerId: { ...(merged.rolesByPlayerId || {}) },
+    dealerMaxBetByPlayerId: { ...(merged.dealerMaxBetByPlayerId || {}) },
+    contributionByPlayerId: { ...(merged.contributionByPlayerId || {}) },
+    applications: [...(merged.applications || [])],
+  };
+}
+
+function getTeamMeta(services, teamId) {
+  if (!teamId) {
+    return getDefaultTeamMeta();
+  }
+
+  const teamState = services?.teamState;
+  const existing = sanitizeTeamMeta(teamState?.get(teamId));
+  if (teamState) {
+    teamState.set(teamId, existing);
+  }
+  return existing;
+}
+
+function saveTeamMeta(services, teamId, teamMeta) {
+  if (!teamId) {
+    return sanitizeTeamMeta(teamMeta);
+  }
+
+  const normalized = sanitizeTeamMeta(teamMeta);
+  if (services?.teamState) {
+    services.teamState.set(teamId, normalized);
+  }
+  return normalized;
+}
+
+function updateTeamMeta(services, teamId, updater) {
+  const current = getTeamMeta(services, teamId);
+  const next = typeof updater === "function" ? updater(current) : current;
+  return saveTeamMeta(services, teamId, next);
+}
+
+function normalizeTeamRole(value) {
+  const numericValue = Number(value || 0);
+  return Object.values(TEAM_ROLE).includes(numericValue) ? numericValue : TEAM_ROLE.MEMBER;
+}
+
+function isTeamLeader(roleCode) {
+  return Number(roleCode) === TEAM_ROLE.LEADER;
+}
+
+function isTeamManager(roleCode) {
+  const numericRole = Number(roleCode || 0);
+  return numericRole === TEAM_ROLE.LEADER || numericRole === TEAM_ROLE.CO_LEADER;
+}
+
+function getTeamRoleWeight(roleCode) {
+  switch (Number(roleCode || 0)) {
+    case TEAM_ROLE.LEADER:
+      return 0;
+    case TEAM_ROLE.CO_LEADER:
+      return 1;
+    case TEAM_ROLE.DEALER:
+      return 2;
+    default:
+      return 3;
+  }
+}
+
+function sortTeamPlayers(players, teamMeta) {
+  return [...players].sort((left, right) => {
+    const leftRole = normalizeTeamRole(teamMeta.rolesByPlayerId?.[Number(left.id)]);
+    const rightRole = normalizeTeamRole(teamMeta.rolesByPlayerId?.[Number(right.id)]);
+    const roleDelta = getTeamRoleWeight(leftRole) - getTeamRoleWeight(rightRole);
+    if (roleDelta !== 0) {
+      return roleDelta;
+    }
+
+    const scoreDelta = Number(right.score || 0) - Number(left.score || 0);
+    if (scoreDelta !== 0) {
+      return scoreDelta;
+    }
+
+    return String(left.username || "").localeCompare(String(right.username || ""), undefined, {
+      sensitivity: "base",
+    });
+  });
+}
+
+async function listPlayersForTeams(supabase, teamIds = []) {
+  if (!supabase || teamIds.length === 0) {
+    return [];
+  }
+
+  const ids = [...new Set(teamIds.map((value) => Number(value)).filter((value) => value > 0))];
+  if (ids.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("game_players")
+    .select("*")
+    .in("team_id", ids);
+
+  if (error) {
+    throw error;
+  }
+
+  return data || [];
+}
+
+function groupPlayersByTeamId(players) {
+  const playersByTeamId = new Map();
+  for (const player of players) {
+    const teamId = Number(player.team_id || 0);
+    if (teamId <= 0) {
+      continue;
+    }
+    if (!playersByTeamId.has(teamId)) {
+      playersByTeamId.set(teamId, []);
+    }
+    playersByTeamId.get(teamId).push(player);
+  }
+  return playersByTeamId;
+}
+
+function ensureTeamMetadata(services, team, players) {
+  const playerIds = new Set(players.map((player) => Number(player.id)));
+  const teamMeta = sanitizeTeamMeta(getTeamMeta(services, team.id));
+  let changed = false;
+
+  for (const key of Object.keys(teamMeta.rolesByPlayerId)) {
+    if (!playerIds.has(Number(key))) {
+      delete teamMeta.rolesByPlayerId[key];
+      changed = true;
+    }
+  }
+
+  for (const key of Object.keys(teamMeta.dealerMaxBetByPlayerId)) {
+    if (!playerIds.has(Number(key))) {
+      delete teamMeta.dealerMaxBetByPlayerId[key];
+      changed = true;
+    }
+  }
+
+  for (const key of Object.keys(teamMeta.contributionByPlayerId)) {
+    if (!playerIds.has(Number(key))) {
+      delete teamMeta.contributionByPlayerId[key];
+      changed = true;
+    }
+  }
+
+  let leaderId = players.find((player) =>
+    normalizeTeamRole(teamMeta.rolesByPlayerId?.[Number(player.id)]) === TEAM_ROLE.LEADER,
+  )?.id;
+
+  if (!leaderId && players.length > 0) {
+    const fallbackLeader = [...players].sort((left, right) =>
+      String(left.username || "").localeCompare(String(right.username || ""), undefined, {
+        sensitivity: "base",
+      }),
+    )[0];
+    leaderId = Number(fallbackLeader.id);
+    teamMeta.rolesByPlayerId[String(leaderId)] = TEAM_ROLE.LEADER;
+    changed = true;
+  }
+
+  for (const player of players) {
+    const key = String(Number(player.id));
+    if (!teamMeta.rolesByPlayerId[key]) {
+      teamMeta.rolesByPlayerId[key] = Number(player.id) === Number(leaderId)
+        ? TEAM_ROLE.LEADER
+        : TEAM_ROLE.MEMBER;
+      changed = true;
+    }
+    if (teamMeta.contributionByPlayerId[key] === undefined) {
+      teamMeta.contributionByPlayerId[key] = 0;
+      changed = true;
+    }
+  }
+
+  const sortedPlayers = sortTeamPlayers(players, teamMeta);
+  const totalContribution = sortedPlayers.reduce(
+    (sum, player) => sum + Number(teamMeta.contributionByPlayerId?.[String(player.id)] || 0),
+    0,
+  );
+
+  return {
+    teamMeta: changed ? saveTeamMeta(services, team.id, teamMeta) : teamMeta,
+    sortedPlayers,
+    totalContribution,
+  };
+}
+
+function renderTeamDetailXml(team, players, teamMeta, totalContribution = 0) {
+  const membersXml = players.map((player) => {
+    const playerId = Number(player.id || 0);
+    const publicId = getPublicIdForPlayer(player);
+    const roleCode = normalizeTeamRole(teamMeta.rolesByPlayerId?.[String(playerId)]);
+    const contribution = Number(teamMeta.contributionByPlayerId?.[String(playerId)] || 0);
+    const ownerPct = totalContribution > 0
+      ? Math.round((contribution / totalContribution) * 10000) / 100
+      : 0;
+    const maxBetPct = roleCode === TEAM_ROLE.DEALER
+      ? Number(teamMeta.dealerMaxBetByPlayerId?.[String(playerId)] ?? 0)
+      : -1;
+
+    return (
+      `<tm i='${publicId}' un='${escapeXml(player.username || "")}' sc='${Number(player.score || 0)}' ` +
+      `et='0' tr='${roleCode}' po='${ownerPct}' fu='${contribution}' mbp='${maxBetPct}'/>`
+    );
+  }).join("");
+
+  return (
+    `<t i='${Number(team.id || 0)}' n='${escapeXml(team.name || "")}' sc='${Number(team.score || 0)}' ` +
+    `bg='${escapeXml(team.background_color || "7D7D7D")}' de='${escapeXml(String(team.created_at || ""))}' ` +
+    `tf='${Number(team.team_fund || 0)}' lc='${escapeXml(teamMeta.leaderComments || "")}' ` +
+    `tw='${Number(team.wins || 0)}' tl='${Number(team.losses || 0)}' ` +
+    `rt='${escapeXml(team.recruitment_type || "open")}' v='${Number(team.vip || 0)}'>${membersXml}</t>`
+  );
+}
+
+function renderTeamsWithMetadata(teams, playersByTeamId, services) {
+  const body = teams.map((team) => {
+    const players = playersByTeamId.get(Number(team.id)) || [];
+    const { teamMeta, sortedPlayers, totalContribution } = ensureTeamMetadata(services, team, players);
+    return renderTeamDetailXml(team, sortedPlayers, teamMeta, totalContribution);
+  }).join("");
+
+  return `<teams>${body}</teams>`;
+}
+
+async function getTeamById(supabase, teamId) {
+  const teams = await listTeamsByIds(supabase, [teamId]);
+  return teams[0] || null;
+}
+
+async function loadTeamContextById({ supabase, services, teamId }) {
+  const team = await getTeamById(supabase, teamId);
+  if (!team) {
+    return null;
+  }
+
+  const players = await listPlayersForTeams(supabase, [teamId]);
+  const { teamMeta, sortedPlayers, totalContribution } = ensureTeamMetadata(services, team, players);
+  const playersByPublicId = new Map(sortedPlayers.map((player) => [Number(getPublicIdForPlayer(player)), player]));
+
+  return {
+    team,
+    players: sortedPlayers,
+    playersByPublicId,
+    teamMeta,
+    totalContribution,
+  };
+}
+
+async function loadCallerTeamContext(context, sourceLabel, options = {}) {
+  const caller = await resolveCallerSession(context, sourceLabel);
+  if (!caller?.ok) {
+    return { caller };
+  }
+
+  const callerTeamId = Number(caller.player?.team_id || 0);
+  if (!callerTeamId) {
+    return { caller, teamId: 0, teamContext: null, callerRole: 0 };
+  }
+
+  const teamContext = await loadTeamContextById({
+    supabase: context.supabase,
+    services: context.services,
+    teamId: callerTeamId,
+  });
+
+  if (!teamContext) {
+    if (options.requireMembership) {
+      return { caller, teamId: 0, teamContext: null, callerRole: 0 };
+    }
+    return { caller, teamId: callerTeamId, teamContext: null, callerRole: 0 };
+  }
+
+  const callerRole = normalizeTeamRole(teamContext.teamMeta.rolesByPlayerId?.[String(caller.playerId)]);
+  return {
+    caller,
+    teamId: callerTeamId,
+    teamContext,
+    callerRole,
+  };
+}
+
+function cleanTeamName(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^"+|"+$/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function isValidTeamName(value) {
+  if (!value || value.length < 2 || value.length > 32) {
+    return false;
+  }
+  return /^[A-Za-z0-9][A-Za-z0-9 '&.-]*$/.test(value);
+}
+
+function parseActionNumber(params, ...keys) {
+  for (const key of keys) {
+    const value = params.get(key);
+    const numericValue = Number(value);
+    if (Number.isFinite(numericValue) && numericValue !== 0) {
+      return numericValue;
+    }
+  }
+
+  for (const candidate of getActionValueCandidates(params)) {
+    const numericValue = Number(candidate);
+    if (Number.isFinite(numericValue) && numericValue !== 0) {
+      return numericValue;
+    }
+  }
+
+  return 0;
+}
+
+function parseActionNumbers(params) {
+  return getActionValueCandidates(params)
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value));
+}
+
+function parseActionString(params, ...keys) {
+  for (const key of keys) {
+    const value = params.get(key);
+    if (value != null && String(value).length > 0) {
+      return String(value);
+    }
+  }
+
+  const candidate = getActionValueCandidates(params).find((value) => String(value).length > 0);
+  return candidate != null ? String(candidate) : "";
+}
+
+function isMissingGameTeamMembersRelationError(error) {
+  const message = String(error?.message || error || "");
+  return (
+    (/relation|table/i.test(message) && /does not exist/i.test(message) && /game_team_members/i.test(message))
+    || (/game_team_members/i.test(message) && /does not exist/i.test(message))
+  );
+}
+
+/**
+ * Keeps `game_team_members` aligned with `game_players.team_id`.
+ * Team Rivals and `member_count` triggers depend on this table; updating only `game_players` breaks those paths.
+ */
+async function syncGameTeamMemberRow(supabase, playerId, teamId, options = {}) {
+  if (!supabase || !playerId) {
+    return;
+  }
+
+  const numericPlayerId = Number(playerId);
+  const { error: deleteError } = await supabase
+    .from("game_team_members")
+    .delete()
+    .eq("player_id", numericPlayerId);
+
+  if (deleteError) {
+    if (isMissingGameTeamMembersRelationError(deleteError)) {
+      return;
+    }
+    throw deleteError;
+  }
+
+  const numericTeamId = Number(teamId || 0);
+  if (numericTeamId <= 0) {
+    return;
+  }
+
+  const rawRole = String(options.dbMemberRole || "member").toLowerCase();
+  const role = rawRole === "owner" || rawRole === "admin" ? rawRole : "member";
+  const baseRow = { team_id: numericTeamId, player_id: numericPlayerId };
+
+  let { error: insertError } = await supabase
+    .from("game_team_members")
+    .insert({ ...baseRow, role });
+
+  if (insertError && /role|does not exist|unknown column|column/i.test(String(insertError.message || ""))) {
+    ({ error: insertError } = await supabase.from("game_team_members").insert(baseRow));
+  }
+
+  if (insertError) {
+    if (isMissingGameTeamMembersRelationError(insertError)) {
+      return;
+    }
+    throw insertError;
+  }
+}
+
+async function updatePlayerTeamMembership(supabase, playerId, team, membershipOptions = {}) {
+  if (!supabase || !playerId) {
+    return false;
+  }
+
+  const patch = team
+    ? { team_id: Number(team.id), team_name: String(team.name || "") }
+    : { team_id: null, team_name: "" };
+
+  const { error } = await supabase
+    .from("game_players")
+    .update(patch)
+    .eq("id", Number(playerId));
+
+  if (error) {
+    throw error;
+  }
+
+  await syncGameTeamMemberRow(supabase, playerId, team ? Number(team.id) : 0, {
+    dbMemberRole: membershipOptions.dbMemberRole,
+  });
+
+  return true;
+}
+
+function refreshTcpTeamMembership(services, { playerId, teamId = 0, teamRole = "" } = {}) {
+  const tcpServer = services?.tcpServer;
+  const numericPlayerId = Number(playerId || 0);
+  if (!tcpServer || !numericPlayerId) {
+    return;
+  }
+
+  for (const conn of tcpServer.connections.values()) {
+    if (Number(conn.playerId || 0) === numericPlayerId) {
+      conn.teamId = Number(teamId || 0);
+      conn.teamRole = String(teamRole || "");
+    }
+  }
+
+  const affectedRoomIds = new Set();
+  for (const [roomId, roomPlayers] of tcpServer.rooms.entries()) {
+    let touched = false;
+    for (const roomPlayer of roomPlayers) {
+      if (Number(roomPlayer.playerId || 0) === numericPlayerId) {
+        roomPlayer.teamId = Number(teamId || 0);
+        roomPlayer.teamRole = String(teamRole || "");
+        touched = true;
+      }
+    }
+    if (touched) {
+      affectedRoomIds.add(roomId);
+    }
+  }
+
+  for (const roomId of affectedRoomIds) {
+    const roomPlayers = tcpServer.rooms.get(roomId) || [];
+    for (const roomPlayer of roomPlayers) {
+      const conn = tcpServer.connections.get(roomPlayer.connId);
+      if (conn) {
+        tcpServer.sendRoomUsers(conn, roomPlayers);
+      }
+    }
+  }
+}
+
+async function updateTeamRecord(supabase, teamId, patch) {
+  const { data, error } = await supabase
+    .from("game_teams")
+    .update(patch)
+    .eq("id", Number(teamId))
+    .select("*")
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+function buildTeamApplicationsXml(applications = []) {
+  const body = applications.map((application) => (
+    `<a i='${Number(application.applicantPublicId || 0)}' u='${escapeXml(application.applicantName || "")}' ` +
+    `sc='${Number(application.applicantScore || 0)}' et='0' s='${escapeXml(application.status || TEAM_APP_STATUS.PENDING)}' ` +
+    `n='${escapeXml(application.comment || "")}'/>`
+  )).join("");
+
+  return `<apps>${body}</apps>`;
+}
+
+function buildMyApplicationsXml(applications = []) {
+  const body = applications.map((application) => (
+    `<a ti='${Number(application.teamId || 0)}' tn='${escapeXml(application.teamName || "")}' ` +
+    `sc='${Number(application.teamScore || 0)}' s='${escapeXml(application.status || TEAM_APP_STATUS.PENDING)}' ` +
+    `n='${escapeXml(application.comment || "")}'/>`
+  )).join("");
+
+  return `<apps>${body}</apps>`;
+}
+
+function removeApplicationsForPlayer(teamMeta, playerId) {
+  return {
+    ...teamMeta,
+    applications: (teamMeta.applications || []).filter(
+      (application) => Number(application.applicantPlayerId || 0) !== Number(playerId || 0),
+    ),
+  };
+}
+
+async function handleTeamCreate(context) {
+  const { supabase, params, services } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:teamcreate");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:teamcreate:bad-session" };
+  }
+
+  if (Number(caller.player?.team_id || 0) > 0) {
+    return { body: `"s", -1`, source: "supabase:teamcreate:already-on-team" };
+  }
+
+  const teamName = cleanTeamName(parseActionString(params, "n", "name", "tn"));
+  if (!isValidTeamName(teamName)) {
+    return { body: `"s", 0`, source: "supabase:teamcreate:invalid-name" };
+  }
+
+  const existingTeamResult = await supabase
+    .from("game_teams")
+    .select("id")
+    .ilike("name", teamName)
+    .limit(1)
+    .maybeSingle();
+
+  if (existingTeamResult.error) {
+    throw existingTeamResult.error;
+  }
+
+  if (existingTeamResult.data?.id) {
+    return { body: `"s", -2`, source: "supabase:teamcreate:name-taken" };
+  }
+
+  let insertResult = await supabase
+    .from("game_teams")
+    .insert({ name: teamName, score: 0, team_fund: 0 })
+    .select("*")
+    .single();
+
+  if (insertResult.error) {
+    const message = String(insertResult.error?.message || "");
+    if (/team_fund|column/i.test(message) && /does not exist|unknown column/i.test(message)) {
+      insertResult = await supabase
+        .from("game_teams")
+        .insert({ name: teamName, score: 0 })
+        .select("*")
+        .single();
+    }
+  }
+
+  if (insertResult.error) {
+    throw insertResult.error;
+  }
+
+  const ownerPatch = { owner_player_id: Number(caller.playerId) };
+  const { error: ownerError } = await supabase
+    .from("game_teams")
+    .update(ownerPatch)
+    .eq("id", Number(insertResult.data.id));
+  if (ownerError) {
+    const ownerMsg = String(ownerError.message || "");
+    const missingOwnerColumn = /owner_player_id/i.test(ownerMsg)
+      && /does not exist|unknown column/i.test(ownerMsg);
+    if (!missingOwnerColumn) {
+      throw ownerError;
+    }
+  }
+
+  await updatePlayerTeamMembership(supabase, caller.playerId, insertResult.data, {
+    dbMemberRole: "owner",
+  });
+  saveTeamMeta(services, insertResult.data.id, {
+    leaderComments: "",
+    rolesByPlayerId: { [String(caller.playerId)]: TEAM_ROLE.LEADER },
+    dealerMaxBetByPlayerId: {},
+    contributionByPlayerId: { [String(caller.playerId)]: 0 },
+    applications: [],
+  });
+  refreshTcpTeamMembership(services, {
+    playerId: caller.playerId,
+    teamId: insertResult.data.id,
+    teamRole: TEAM_ROLE.LEADER,
+  });
+
+  return {
+    body: `"s", 1, "tid", ${Number(insertResult.data.id)}`,
+    source: "supabase:teamcreate",
+  };
+}
+
+async function handleTeamKick(context) {
+  const { supabase, params, services } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const { caller, teamContext, callerRole } = await loadCallerTeamContext(context, "supabase:teamkick", {
+    requireMembership: true,
+  });
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:teamkick:bad-session" };
+  }
+  if (!teamContext) {
+    return { body: `"s", -2`, source: "supabase:teamkick:no-team" };
+  }
+
+  const targetPublicId = parseActionNumber(params, "aidtk", "aid", "uid", "id");
+  if (!targetPublicId) {
+    return { body: `"s", -2`, source: "supabase:teamkick:no-target" };
+  }
+  if (Number(targetPublicId) === Number(caller.publicId)) {
+    return { body: `"s", 0`, source: "supabase:teamkick:self" };
+  }
+  if (!isTeamManager(callerRole)) {
+    return { body: `"s", -3`, source: "supabase:teamkick:not-manager" };
+  }
+
+  const targetPlayer = teamContext.playersByPublicId.get(Number(targetPublicId));
+  if (!targetPlayer) {
+    return { body: `"s", -2`, source: "supabase:teamkick:missing-member" };
+  }
+
+  const targetRole = normalizeTeamRole(teamContext.teamMeta.rolesByPlayerId?.[String(targetPlayer.id)]);
+  if (targetRole === TEAM_ROLE.LEADER || (callerRole === TEAM_ROLE.CO_LEADER && targetRole === TEAM_ROLE.CO_LEADER)) {
+    return { body: `"s", ${callerRole === TEAM_ROLE.LEADER ? -1 : -3}`, source: "supabase:teamkick:denied" };
+  }
+
+  await updatePlayerTeamMembership(supabase, targetPlayer.id, null);
+  saveTeamMeta(services, teamContext.team.id, removeApplicationsForPlayer({
+    ...teamContext.teamMeta,
+    rolesByPlayerId: Object.fromEntries(
+      Object.entries(teamContext.teamMeta.rolesByPlayerId || {}).filter(([key]) => Number(key) !== Number(targetPlayer.id)),
+    ),
+    dealerMaxBetByPlayerId: Object.fromEntries(
+      Object.entries(teamContext.teamMeta.dealerMaxBetByPlayerId || {}).filter(([key]) => Number(key) !== Number(targetPlayer.id)),
+    ),
+    contributionByPlayerId: Object.fromEntries(
+      Object.entries(teamContext.teamMeta.contributionByPlayerId || {}).filter(([key]) => Number(key) !== Number(targetPlayer.id)),
+    ),
+  }, targetPlayer.id));
+
+  return { body: `"s", 1`, source: "supabase:teamkick" };
+}
+
+async function handleTeamChangeRole(context) {
+  const { supabase, params, services } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const { caller, teamContext, callerRole } = await loadCallerTeamContext(context, "supabase:teamchangerole", {
+    requireMembership: true,
+  });
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:teamchangerole:bad-session" };
+  }
+  if (!teamContext) {
+    return { body: `"s", -1`, source: "supabase:teamchangerole:no-team" };
+  }
+  if (!isTeamManager(callerRole)) {
+    return { body: `"s", 0`, source: "supabase:teamchangerole:not-manager" };
+  }
+
+  const values = parseActionNumbers(params);
+  const targetPublicId = Number(params.get("aidta") || params.get("aid") || values[0] || 0);
+  const desiredRole = normalizeTeamRole(Number(params.get("roleid") || params.get("role") || values[1] || 0));
+  const maxBetPct = Number(params.get("maxbet") || params.get("mbp") || values[2] || 0);
+
+  const targetPlayer = teamContext.playersByPublicId.get(targetPublicId);
+  if (!targetPlayer) {
+    return { body: `"s", -1`, source: "supabase:teamchangerole:missing-member" };
+  }
+
+  const targetCurrentRole = normalizeTeamRole(teamContext.teamMeta.rolesByPlayerId?.[String(targetPlayer.id)]);
+  if (targetCurrentRole === TEAM_ROLE.LEADER || desiredRole === TEAM_ROLE.LEADER) {
+    return { body: `"s", -2`, source: "supabase:teamchangerole:leader-denied" };
+  }
+  if (desiredRole === TEAM_ROLE.CO_LEADER && callerRole !== TEAM_ROLE.LEADER) {
+    return { body: `"s", -3`, source: "supabase:teamchangerole:coleader-denied" };
+  }
+  if (desiredRole === TEAM_ROLE.DEALER && (!Number.isFinite(maxBetPct) || maxBetPct < 0 || maxBetPct > 100)) {
+    return { body: `"s", -4`, source: "supabase:teamchangerole:bad-max-bet" };
+  }
+
+  saveTeamMeta(services, teamContext.team.id, {
+    ...teamContext.teamMeta,
+    rolesByPlayerId: {
+      ...teamContext.teamMeta.rolesByPlayerId,
+      [String(targetPlayer.id)]: desiredRole,
+    },
+    dealerMaxBetByPlayerId: {
+      ...teamContext.teamMeta.dealerMaxBetByPlayerId,
+      [String(targetPlayer.id)]: desiredRole === TEAM_ROLE.DEALER ? Number(maxBetPct || 0) : -1,
+    },
+  });
+
+  return { body: `"s", 1`, source: "supabase:teamchangerole" };
+}
+
+async function handleTeamUpdateMaxBet(context) {
+  const { supabase, params, services } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const { caller, teamContext, callerRole } = await loadCallerTeamContext(context, "supabase:teamupdatemaxbet", {
+    requireMembership: true,
+  });
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:teamupdatemaxbet:bad-session" };
+  }
+  if (!teamContext || !isTeamManager(callerRole)) {
+    return { body: `"s", 0`, source: "supabase:teamupdatemaxbet:not-manager" };
+  }
+
+  const values = parseActionNumbers(params);
+  const targetPublicId = Number(params.get("aidta") || params.get("aid") || values[0] || 0);
+  const maxBetPct = Number(params.get("maxbet") || params.get("mbp") || values[1] || 0);
+  const targetPlayer = teamContext.playersByPublicId.get(targetPublicId);
+  if (!targetPlayer) {
+    return { body: `"s", -1`, source: "supabase:teamupdatemaxbet:missing-member" };
+  }
+  if (!Number.isFinite(maxBetPct) || maxBetPct < 0 || maxBetPct > 100) {
+    return { body: `"s", -4`, source: "supabase:teamupdatemaxbet:bad-max-bet" };
+  }
+
+  saveTeamMeta(services, teamContext.team.id, {
+    ...teamContext.teamMeta,
+    dealerMaxBetByPlayerId: {
+      ...teamContext.teamMeta.dealerMaxBetByPlayerId,
+      [String(targetPlayer.id)]: Number(maxBetPct),
+    },
+  });
+
+  return { body: `"s", 1`, source: "supabase:teamupdatemaxbet" };
+}
+
+async function handleTeamNewLeader(context) {
+  const { supabase, params, services } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const { caller, teamContext, callerRole } = await loadCallerTeamContext(context, "supabase:teamnewleader", {
+    requireMembership: true,
+  });
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:teamnewleader:bad-session" };
+  }
+  if (!teamContext || callerRole !== TEAM_ROLE.LEADER) {
+    return { body: `"s", 0`, source: "supabase:teamnewleader:not-leader" };
+  }
+
+  const targetPublicId = parseActionNumber(params, "aid", "uid", "id");
+  const targetPlayer = teamContext.playersByPublicId.get(targetPublicId);
+  if (!targetPlayer || Number(targetPlayer.id) === Number(caller.playerId)) {
+    return { body: `"s", 0`, source: "supabase:teamnewleader:bad-target" };
+  }
+
+  saveTeamMeta(services, teamContext.team.id, {
+    ...teamContext.teamMeta,
+    rolesByPlayerId: {
+      ...teamContext.teamMeta.rolesByPlayerId,
+      [String(caller.playerId)]: TEAM_ROLE.CO_LEADER,
+      [String(targetPlayer.id)]: TEAM_ROLE.LEADER,
+    },
+  });
+
+  return { body: `"s", 1`, source: "supabase:teamnewleader" };
+}
+
+async function handleTeamStepDown(context) {
+  const { supabase, services } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const { caller, teamContext, callerRole } = await loadCallerTeamContext(context, "supabase:teamstepdown", {
+    requireMembership: true,
+  });
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:teamstepdown:bad-session" };
+  }
+  if (!teamContext || callerRole !== TEAM_ROLE.LEADER) {
+    return { body: `"s", 0`, source: "supabase:teamstepdown:not-leader" };
+  }
+
+  const replacement = teamContext.players.find((player) => Number(player.id) !== Number(caller.playerId));
+  if (!replacement) {
+    return { body: `"s", -1`, source: "supabase:teamstepdown:no-replacement" };
+  }
+
+  saveTeamMeta(services, teamContext.team.id, {
+    ...teamContext.teamMeta,
+    rolesByPlayerId: {
+      ...teamContext.teamMeta.rolesByPlayerId,
+      [String(caller.playerId)]: TEAM_ROLE.CO_LEADER,
+      [String(replacement.id)]: TEAM_ROLE.LEADER,
+    },
+  });
+
+  return { body: `"s", 1`, source: "supabase:teamstepdown" };
+}
+
+async function handleTeamQuit(context) {
+  const { supabase, services } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const { caller, teamContext, callerRole } = await loadCallerTeamContext(context, "supabase:teamquit", {
+    requireMembership: true,
+  });
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:teamquit:bad-session" };
+  }
+  if (!teamContext) {
+    return { body: `"s", 0`, source: "supabase:teamquit:no-team" };
+  }
+  if (callerRole === TEAM_ROLE.LEADER && teamContext.players.length > 1) {
+    return { body: `"s", 0`, source: "supabase:teamquit:leader-must-step-down" };
+  }
+
+  await updatePlayerTeamMembership(supabase, caller.playerId, null);
+  const remainingPlayers = teamContext.players.filter((player) => Number(player.id) !== Number(caller.playerId));
+
+  if (remainingPlayers.length === 0) {
+    const deleteResult = await supabase
+      .from("game_teams")
+      .delete()
+      .eq("id", Number(teamContext.team.id));
+    if (deleteResult.error) {
+      throw deleteResult.error;
+    }
+    if (services?.teamState) {
+      services.teamState.teams.delete(String(teamContext.team.id));
+    }
+  } else {
+    saveTeamMeta(services, teamContext.team.id, removeApplicationsForPlayer({
+      ...teamContext.teamMeta,
+      rolesByPlayerId: Object.fromEntries(
+        Object.entries(teamContext.teamMeta.rolesByPlayerId || {}).filter(([key]) => Number(key) !== Number(caller.playerId)),
+      ),
+      dealerMaxBetByPlayerId: Object.fromEntries(
+        Object.entries(teamContext.teamMeta.dealerMaxBetByPlayerId || {}).filter(([key]) => Number(key) !== Number(caller.playerId)),
+      ),
+      contributionByPlayerId: Object.fromEntries(
+        Object.entries(teamContext.teamMeta.contributionByPlayerId || {}).filter(([key]) => Number(key) !== Number(caller.playerId)),
+      ),
+    }, caller.playerId));
+  }
+
+  return { body: `"s", 1`, source: "supabase:teamquit" };
+}
+
+async function handleTeamDeposit(context) {
+  const { supabase, params, services } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const { caller, teamContext } = await loadCallerTeamContext(context, "supabase:teamdeposit", {
+    requireMembership: true,
+  });
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:teamdeposit:bad-session" };
+  }
+  if (!teamContext) {
+    return { body: `"s", 0`, source: "supabase:teamdeposit:no-team" };
+  }
+
+  const amount = Math.floor(Number(params.get("amount") || parseActionNumbers(params)[0] || 0));
+  if (amount <= 0 || amount > 100000000) {
+    return { body: `"s", -2`, source: "supabase:teamdeposit:bad-amount" };
+  }
+  if (Number(caller.player.money || 0) < amount) {
+    return { body: `"s", -1`, source: "supabase:teamdeposit:insufficient-funds" };
+  }
+
+  await updatePlayerMoney(supabase, caller.playerId, Number(caller.player.money || 0) - amount);
+  await updateTeamRecord(supabase, teamContext.team.id, {
+    team_fund: Number(teamContext.team.team_fund || 0) + amount,
+  });
+  saveTeamMeta(services, teamContext.team.id, {
+    ...teamContext.teamMeta,
+    contributionByPlayerId: {
+      ...teamContext.teamMeta.contributionByPlayerId,
+      [String(caller.playerId)]: Number(teamContext.teamMeta.contributionByPlayerId?.[String(caller.playerId)] || 0) + amount,
+    },
+  });
+
+  return { body: `"s", 1`, source: "supabase:teamdeposit" };
+}
+
+async function handleTeamWithdraw(context) {
+  const { supabase, params, services } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const { caller, teamContext } = await loadCallerTeamContext(context, "supabase:teamwithdraw", {
+    requireMembership: true,
+  });
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:teamwithdraw:bad-session" };
+  }
+  if (!teamContext) {
+    return { body: `"s", 0`, source: "supabase:teamwithdraw:no-team" };
+  }
+
+  const amount = Math.floor(Number(params.get("amount") || parseActionNumbers(params)[0] || 0));
+  if (amount <= 0 || amount > 100000000) {
+    return { body: `"s", -2`, source: "supabase:teamwithdraw:bad-amount" };
+  }
+
+  const contribution = Number(teamContext.teamMeta.contributionByPlayerId?.[String(caller.playerId)] || 0);
+  const teamFunds = Number(teamContext.team.team_fund || 0);
+  if (amount > contribution || amount > teamFunds) {
+    return { body: `"s", -1`, source: "supabase:teamwithdraw:insufficient-funds" };
+  }
+
+  await updatePlayerMoney(supabase, caller.playerId, Number(caller.player.money || 0) + amount);
+  await updateTeamRecord(supabase, teamContext.team.id, {
+    team_fund: teamFunds - amount,
+  });
+  saveTeamMeta(services, teamContext.team.id, {
+    ...teamContext.teamMeta,
+    contributionByPlayerId: {
+      ...teamContext.teamMeta.contributionByPlayerId,
+      [String(caller.playerId)]: contribution - amount,
+    },
+  });
+
+  return { body: `"s", 1`, source: "supabase:teamwithdraw" };
+}
+
+async function handleTeamDisperse(context) {
+  const { supabase, params, services } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const { caller, teamContext, callerRole } = await loadCallerTeamContext(context, "supabase:teamdisperse", {
+    requireMembership: true,
+  });
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:teamdisperse:bad-session" };
+  }
+  if (!teamContext || !isTeamManager(callerRole)) {
+    return { body: `"s", 0`, source: "supabase:teamdisperse:not-manager" };
+  }
+
+  const values = parseActionNumbers(params);
+  const amount = Math.floor(Number(params.get("amount") || values[0] || 0));
+  const targetPublicId = Number(params.get("aidto") || params.get("aid") || values[1] || 0);
+  const targetPlayer = teamContext.playersByPublicId.get(targetPublicId);
+  if (!targetPlayer) {
+    return { body: `"s", -1`, source: "supabase:teamdisperse:missing-member" };
+  }
+  if (amount <= 0 || amount > 100000000) {
+    return { body: `"s", -2`, source: "supabase:teamdisperse:bad-amount" };
+  }
+
+  const contribution = Number(teamContext.teamMeta.contributionByPlayerId?.[String(targetPlayer.id)] || 0);
+  const teamFunds = Number(teamContext.team.team_fund || 0);
+  if (amount > contribution || amount > teamFunds) {
+    return { body: `"s", -2`, source: "supabase:teamdisperse:insufficient-funds" };
+  }
+
+  await updatePlayerMoney(supabase, targetPlayer.id, Number(targetPlayer.money || 0) + amount);
+  await updateTeamRecord(supabase, teamContext.team.id, {
+    team_fund: teamFunds - amount,
+  });
+  saveTeamMeta(services, teamContext.team.id, {
+    ...teamContext.teamMeta,
+    contributionByPlayerId: {
+      ...teamContext.teamMeta.contributionByPlayerId,
+      [String(targetPlayer.id)]: contribution - amount,
+    },
+  });
+
+  return { body: `"s", 1`, source: "supabase:teamdisperse" };
+}
+
+async function handleTeamAccept(context) {
+  const { supabase, services, params } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:teamaccept");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:teamaccept:bad-session" };
+  }
+
+  if (Number(caller.player?.team_id || 0) > 0) {
+    return { body: `"s", -1`, source: "supabase:teamaccept:already-on-team" };
+  }
+
+  const teamId = Number(params.get("tid") || parseActionNumbers(params)[0] || 0);
+  if (!teamId) {
+    return { body: `"s", 0`, source: "supabase:teamaccept:no-team" };
+  }
+
+  const teamContext = await loadTeamContextById({ supabase, services, teamId });
+  if (!teamContext) {
+    return { body: `"s", 0`, source: "supabase:teamaccept:unknown-team" };
+  }
+
+  const application = (teamContext.teamMeta.applications || []).find((entry) =>
+    Number(entry.applicantPlayerId || 0) === Number(caller.playerId)
+    && String(entry.status || TEAM_APP_STATUS.PENDING) === TEAM_APP_STATUS.ACCEPTED,
+  );
+
+  if (!application) {
+    return { body: `"s", -1`, source: "supabase:teamaccept:not-accepted" };
+  }
+
+  await updatePlayerTeamMembership(supabase, caller.playerId, teamContext.team, {
+    dbMemberRole: "member",
+  });
+  saveTeamMeta(services, teamContext.team.id, removeApplicationsForPlayer({
+    ...teamContext.teamMeta,
+    rolesByPlayerId: {
+      ...teamContext.teamMeta.rolesByPlayerId,
+      [String(caller.playerId)]: TEAM_ROLE.MEMBER,
+    },
+    contributionByPlayerId: {
+      ...teamContext.teamMeta.contributionByPlayerId,
+      [String(caller.playerId)]: 0,
+    },
+  }, caller.playerId));
+  refreshTcpTeamMembership(services, {
+    playerId: caller.playerId,
+    teamId: teamContext.team.id,
+    teamRole: TEAM_ROLE.MEMBER,
+  });
+
+  return { body: `"s", 1`, source: "supabase:teamaccept" };
+}
+
+async function handleTeamGetAllApps(context) {
+  const { supabase, services, params } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:getallteamapps");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:getallteamapps:bad-session" };
+  }
+
+  const teamId = Number(params.get("tid") || 0);
+  if (!teamId) {
+    return { body: wrapSuccessData("<apps></apps>"), source: "supabase:getallteamapps:none" };
+  }
+
+  const teamContext = await loadTeamContextById({ supabase, services, teamId });
+  const applications = teamContext?.teamMeta?.applications || [];
+  return {
+    body: wrapSuccessData(buildTeamApplicationsXml(applications)),
+    source: "supabase:getallteamapps",
+  };
+}
+
+async function handleTeamGetMyApps(context) {
+  const { supabase, services } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:getallmyapps");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:getallmyapps:bad-session" };
+  }
+
+  const applications = [];
+  for (const teamMetaEntry of services?.teamState?.list?.() || []) {
+    for (const application of teamMetaEntry.applications || []) {
+      if (Number(application.applicantPlayerId || 0) === Number(caller.playerId)) {
+        applications.push(application);
+      }
+    }
+  }
+
+  return {
+    body: wrapSuccessData(buildMyApplicationsXml(applications)),
+    source: "supabase:getallmyapps",
+  };
+}
+
+async function handleTeamAddApplication(context) {
+  const { supabase, services, params } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:addteamapp");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:addteamapp:bad-session" };
+  }
+  if (Number(caller.player?.team_id || 0) > 0) {
+    return { body: `"s", -1`, source: "supabase:addteamapp:already-on-team" };
+  }
+
+  const teamId = Number(params.get("tid") || 0);
+  const comment = String(params.get("c") || "").trim();
+  if (!teamId) {
+    return { body: `"s", 0`, source: "supabase:addteamapp:no-team" };
+  }
+  if (comment.length > 280) {
+    return { body: `"s", -5`, source: "supabase:addteamapp:comment-too-long" };
+  }
+
+  const teamContext = await loadTeamContextById({ supabase, services, teamId });
+  if (!teamContext) {
+    return { body: `"s", 0`, source: "supabase:addteamapp:unknown-team" };
+  }
+  if (String(teamContext.team.recruitment_type || "open").toLowerCase() === "closed") {
+    return { body: `"s", -3`, source: "supabase:addteamapp:closed" };
+  }
+  if ((teamContext.teamMeta.applications || []).some(
+    (entry) => Number(entry.applicantPlayerId || 0) === Number(caller.playerId),
+  )) {
+    return { body: `"s", -2`, source: "supabase:addteamapp:duplicate" };
+  }
+
+  const application = {
+    id: `${teamId}:${caller.playerId}`,
+    applicantPlayerId: Number(caller.playerId),
+    applicantPublicId: Number(caller.publicId),
+    applicantName: caller.player.username,
+    applicantScore: Number(caller.player.score || 0),
+    teamId: Number(teamContext.team.id),
+    teamName: teamContext.team.name,
+    teamScore: Number(teamContext.team.score || 0),
+    comment,
+    status: TEAM_APP_STATUS.PENDING,
+    createdAt: Date.now(),
+  };
+
+  saveTeamMeta(services, teamContext.team.id, {
+    ...teamContext.teamMeta,
+    applications: [...(teamContext.teamMeta.applications || []), application],
+  });
+
+  return { body: `"s", 1`, source: "supabase:addteamapp" };
+}
+
+async function handleTeamDeleteApplication(context) {
+  const { supabase, services, params } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:deleteapp");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:deleteapp:bad-session" };
+  }
+
+  const teamId = Number(params.get("tid") || 0);
+  if (!teamId) {
+    return { body: `"s", 0`, source: "supabase:deleteapp:no-team" };
+  }
+
+  const teamContext = await loadTeamContextById({ supabase, services, teamId });
+  if (!teamContext) {
+    return { body: `"s", 0`, source: "supabase:deleteapp:unknown-team" };
+  }
+
+  saveTeamMeta(services, teamContext.team.id, {
+    ...teamContext.teamMeta,
+    applications: (teamContext.teamMeta.applications || []).filter(
+      (entry) => Number(entry.applicantPlayerId || 0) !== Number(caller.playerId),
+    ),
+  });
+
+  return { body: `"s", 1`, source: "supabase:deleteapp" };
+}
+
+async function handleTeamUpdateApplication(context) {
+  const { supabase, services, params } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const { caller, teamContext, callerRole } = await loadCallerTeamContext(context, "supabase:updateteamapp", {
+    requireMembership: true,
+  });
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:updateteamapp:bad-session" };
+  }
+  if (!teamContext || !isTeamManager(callerRole)) {
+    return { body: `"s", 0`, source: "supabase:updateteamapp:not-manager" };
+  }
+
+  const applicantPublicId = Number(params.get("aaid") || 0);
+  const responseValue = Number(params.get("r") || 0);
+  const targetStatus = responseValue === 1 ? TEAM_APP_STATUS.ACCEPTED : TEAM_APP_STATUS.DECLINED;
+  const existingApp = (teamContext.teamMeta.applications || []).find(
+    (entry) => Number(entry.applicantPublicId || 0) === applicantPublicId,
+  );
+
+  if (!existingApp) {
+    return { body: `"s", -1`, source: "supabase:updateteamapp:missing-app" };
+  }
+  if (String(existingApp.status || TEAM_APP_STATUS.PENDING) !== TEAM_APP_STATUS.PENDING) {
+    return { body: `"s", -2`, source: "supabase:updateteamapp:already-processed" };
+  }
+
+  saveTeamMeta(services, teamContext.team.id, {
+    ...teamContext.teamMeta,
+    applications: (teamContext.teamMeta.applications || []).map((entry) => (
+      Number(entry.applicantPublicId || 0) === applicantPublicId
+        ? { ...entry, status: targetStatus }
+        : entry
+    )),
+  });
+
+  return { body: `"s", 1`, source: "supabase:updateteamapp" };
+}
+
+async function handleTeamUpdateLeaderComments(context) {
+  const { supabase, services, params } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const { caller, teamContext, callerRole } = await loadCallerTeamContext(context, "supabase:updateleadercomments", {
+    requireMembership: true,
+  });
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:updateleadercomments:bad-session" };
+  }
+  if (!teamContext || !isTeamManager(callerRole)) {
+    return { body: `"s", 0`, source: "supabase:updateleadercomments:not-manager" };
+  }
+
+  saveTeamMeta(services, teamContext.team.id, {
+    ...teamContext.teamMeta,
+    leaderComments: String(params.get("lc") || "").slice(0, 400),
+  });
+
+  return { body: `"s", 1`, source: "supabase:updateleadercomments" };
+}
+
+async function handleSetTeamColor(context) {
+  const { supabase, params } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const { caller, teamContext, callerRole } = await loadCallerTeamContext(context, "supabase:setteamcolor", {
+    requireMembership: true,
+  });
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:setteamcolor:bad-session" };
+  }
+  if (!teamContext || !isTeamManager(callerRole)) {
+    return { body: `"s", 0`, source: "supabase:setteamcolor:not-manager" };
+  }
+
+  const colorCode = String(params.get("bg") || "").replace(/[^0-9A-F]/gi, "").toUpperCase().slice(0, 6) || "7D7D7D";
+  await updateTeamRecord(supabase, teamContext.team.id, { background_color: colorCode });
+  return { body: `"s", 1`, source: "supabase:setteamcolor" };
+}
+
+async function handleUpdateTeamReq(context) {
+  const { supabase, params } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const { caller, teamContext, callerRole } = await loadCallerTeamContext(context, "supabase:updateteamreq", {
+    requireMembership: true,
+  });
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:updateteamreq:bad-session" };
+  }
+  if (!teamContext || !isTeamManager(callerRole)) {
+    return { body: `"s", 0`, source: "supabase:updateteamreq:not-manager" };
+  }
+
+  const recruitmentType = String(params.get("rt") || teamContext.team.recruitment_type || "open");
+  const vip = Number(params.get("v") || teamContext.team.vip || 0);
+  await updateTeamRecord(supabase, teamContext.team.id, {
+    recruitment_type: recruitmentType,
+    vip,
+  });
+
+  return { body: `"s", 1`, source: "supabase:updateteamreq" };
+}
+
+async function loadTeamRivalsContext({ supabase, roomPlayers = [], teamIds = [] }) {
+  const relevantTeamIds = [
+    ...new Set(
+      [
+        ...roomPlayers.map((player) => Number(player.teamId || 0)),
+        ...teamIds.map((teamId) => Number(teamId || 0)),
+      ].filter((teamId) => teamId > 0),
+    ),
+  ];
+
+  if (relevantTeamIds.length === 0) {
+    return { teams: [], members: [], players: [], playersById: new Map(), membersByTeamId: new Map() };
+  }
+
+  const [teams, members] = await Promise.all([
+    listTeamsByIds(supabase, relevantTeamIds),
+    listTeamMembersForTeams(supabase, relevantTeamIds),
+  ]);
+  const players = await listPlayersByIds(
+    supabase,
+    members.map((member) => Number(member.player_id || 0)),
+  );
+  const playersById = new Map(players.map((player) => [Number(player.id), player]));
+  const membersByTeamId = new Map();
+
+  for (const member of members) {
+    const key = Number(member.team_id || 0);
+    if (!membersByTeamId.has(key)) {
+      membersByTeamId.set(key, []);
+    }
+    membersByTeamId.get(key).push({
+      ...member,
+      player: playersById.get(Number(member.player_id || 0)) || null,
+    });
+  }
+
+  return { teams, members, players, playersById, membersByTeamId };
+}
+
+function getLeaderForTeam(team, membersByTeamId, roomPlayersById = new Map()) {
+  const members = membersByTeamId.get(Number(team.id)) || [];
+  const onlineMembers = members.filter((member) => roomPlayersById.has(Number(member.player_id || 0)));
+  const preferred = onlineMembers[0] || members[0] || null;
+  return preferred?.player || null;
+}
+
+function buildTeamRivalsTeamsXml({ teams, membersByTeamId, roomPlayers, callerTeamId }) {
+  const roomPlayersById = new Map(
+    roomPlayers.map((player) => [Number(player.playerId || 0), player]),
+  );
+  const callerTeam = teams.find((team) => Number(team.id) === Number(callerTeamId)) || null;
+  const rootMaxBet = Number(callerTeam?.team_fund || 0);
+  const teamsXml = teams.map((team) => {
+    const leader = getLeaderForTeam(team, membersByTeamId, roomPlayersById);
+    return (
+      `<t i='${Number(team.id)}' n='${escapeXml(team.name || "")}' ` +
+      `l='${escapeXml(leader?.username || "")}' li='${Number(leader?.id || 0)}' ` +
+      `sc='${Number(team.score || 0)}' mb='${Number(team.team_fund || 0)}'/>`
+    );
+  }).join("");
+
+  return `<t mb='${rootMaxBet}'>${teamsXml}</t>`;
+}
+
+function buildTeamRivalsChallengeXml(challenge) {
+  const matchesXml = (challenge.matches || []).map((match, index) =>
+    `<m idx='${index + 1}' ai1='${Number(match.ai1 || 0)}' ai2='${Number(match.ai2 || 0)}' ` +
+    `aci1='${Number(match.aci1 || 0)}' aci2='${Number(match.aci2 || 0)}' ` +
+    `bt1='${Number(match.bt1 || 0)}' bt2='${Number(match.bt2 || 0)}'/>`
+  ).join("");
+
+  return (
+    `<tr id='${escapeXml(challenge.id)}' ti1='${Number(challenge.ti1 || 0)}' ti2='${Number(challenge.ti2 || 0)}' ` +
+    `ai1='${Number(challenge.ai1 || 0)}' h='${Number(challenge.h || 0)}' r='${Number(challenge.r || 0)}' ` +
+    `b='${Number(challenge.b || 0)}' mb='${Number(challenge.b || 0)}' s='${escapeXml(challenge.status || "pending")}' ` +
+    `cr='${Number(challenge.createdBy || 0)}'>${matchesXml}</tr>`
+  );
+}
+
+function buildTeamRivalsQueueXml() {
+  const challenges = [...teamRivalsChallengesById.values()]
+    .filter((challenge) => challenge.status !== "denied")
+    .sort((left, right) => Number(left.createdAt || 0) - Number(right.createdAt || 0));
+  return `<q>${challenges.map((challenge) => buildTeamRivalsChallengeXml(challenge)).join("")}</q>`;
+}
+
+function refreshTeamRivalsRoomState(services) {
+  const raceRoomRegistry = services?.raceRoomRegistry;
+  const tcpServer = services?.tcpServer;
+  const queueXml = buildTeamRivalsQueueXml();
+
+  if (raceRoomRegistry) {
+    const room = raceRoomRegistry.get(TEAM_RIVALS_ROOM_ID);
+    if (room) {
+      raceRoomRegistry.upsert(TEAM_RIVALS_ROOM_ID, {
+        ...room,
+        teamRivalsQueueXml: queueXml,
+      });
+    }
+  }
+
+  if (!tcpServer) {
+    return;
+  }
+
+  const roomPlayers = tcpServer.rooms.get(TEAM_RIVALS_ROOM_ID) || [];
+  for (const player of roomPlayers) {
+    const conn = tcpServer.connections.get(player.connId);
+    if (!conn) {
+      continue;
+    }
+    tcpServer.sendMessage(conn, `"ac", "LR", "s", "${escapeTcpXml(queueXml)}"`);
+    tcpServer.sendRoomUsers(conn, roomPlayers);
+  }
+}
+
+async function handleTeamRivalsGetTeams(context) {
+  const { supabase, services } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:trgetteams");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:trgetteams:bad-session" };
+  }
+
+  const roomPlayers = services?.tcpServer?.rooms?.get(TEAM_RIVALS_ROOM_ID) || [];
+  const callerRoomPlayer = roomPlayers.find((player) => Number(player.playerId || 0) === Number(caller.playerId));
+  const membership = callerRoomPlayer?.teamId
+    ? { team_id: callerRoomPlayer.teamId }
+    : await getPlayerTeamMembership(supabase, caller.playerId);
+  const callerTeamId = Number(membership?.team_id || 0);
+
+  const { teams, membersByTeamId } = await loadTeamRivalsContext({
+    supabase,
+    roomPlayers,
+    teamIds: callerTeamId ? [callerTeamId] : [],
+  });
+
+  return {
+    body: wrapSuccessData(
+      buildTeamRivalsTeamsXml({
+        teams,
+        membersByTeamId,
+        roomPlayers,
+        callerTeamId,
+      }),
+    ),
+    source: "supabase:trgetteams",
+  };
+}
+
+async function handleTeamRivalsGetRacers() {
+  return {
+    body: wrapSuccessData(buildTeamRivalsQueueXml()),
+    source: "generated:trgetracers",
+  };
+}
+
+async function handleTeamRivalsPreRequest(context) {
+  const { supabase, params } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:trprerequest");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:trprerequest:bad-session" };
+  }
+
+  const values = getActionValueCandidates(params);
+  const challengeeTeamId = Number(
+    params.get("tid")
+    || params.get("teamid")
+    || params.get("challengeeteamid")
+    || values[0]
+    || 0,
+  );
+  const callerMembership = await getPlayerTeamMembership(supabase, caller.playerId);
+  const callerTeamId = Number(callerMembership?.team_id || 0);
+
+  if (!callerTeamId || !challengeeTeamId || callerTeamId === challengeeTeamId) {
+    return { body: `"s", 0`, source: "supabase:trprerequest:invalid-team" };
+  }
+
+  return {
+    body: `"s", 1`,
+    source: "supabase:trprerequest",
+  };
+}
+
+async function handleTeamRivalsRequest(context) {
+  const { supabase, params, services } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:trrequest");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:trrequest:bad-session" };
+  }
+
+  const callerMembership = await getPlayerTeamMembership(supabase, caller.playerId);
+  const callerTeamId = Number(callerMembership?.team_id || 0);
+  const values = getActionValueCandidates(params);
+  const challengeeTeamId = Number(params.get("tid") || params.get("teamid") || values[0] || 0);
+  const challengerIds = parseCsvIntegerList(params.get("caids") || params.get("aids1") || params.get("challengeraccountids") || values[1]);
+  const challengeeIds = parseCsvIntegerList(params.get("oaids") || params.get("aids2") || params.get("challengeeaccountids") || values[2]);
+  const challengerCarIds = parseCsvIntegerList(params.get("cacids") || params.get("cids1") || params.get("challengeraccountcarids") || values[3]);
+  const challengeeCarIds = parseCsvIntegerList(params.get("oacids") || params.get("cids2") || params.get("challengeeaccountcarids") || values[4]);
+  const betAmount = Number(params.get("b") || params.get("bet") || params.get("betamount") || values[5] || 0);
+  const isHeadsUp = Number(params.get("h") || params.get("headsup") || values[6] || 0) ? 1 : 0;
+  const isRanked = Number(params.get("r") || params.get("ranked") || values[7] || 0) ? 1 : 0;
+
+  const expectedMatchCount = challengerIds.length;
+  const lengths = [challengeeIds.length, challengerCarIds.length, challengeeCarIds.length];
+  if (!callerTeamId || !challengeeTeamId || callerTeamId === challengeeTeamId || expectedMatchCount < 2 || lengths.some((length) => length !== expectedMatchCount)) {
+    return {
+      body: `"s", 0, "d", "<e e='Invalid Team Rivals challenge setup.'/>"`,
+      source: "supabase:trrequest:invalid",
+    };
+  }
+
+  const challengeId = randomUUID();
+  const challenge = {
+    id: challengeId,
+    createdAt: Date.now(),
+    createdBy: caller.playerId,
+    ti1: callerTeamId,
+    ti2: challengeeTeamId,
+    ai1: challengerIds[0],
+    b: betAmount,
+    h: isHeadsUp ? 1 : 0,
+    r: isRanked ? 1 : 0,
+    status: "pending",
+    matches: challengerIds.map((challengerId, index) => ({
+      ai1: challengerId,
+      ai2: challengeeIds[index],
+      aci1: challengerCarIds[index],
+      aci2: challengeeCarIds[index],
+      bt1: 0,
+      bt2: 0,
+    })),
+  };
+
+  teamRivalsChallengesById.set(challengeId, challenge);
+  refreshTeamRivalsRoomState(services);
+
+  return {
+    body: `"s", 1`,
+    source: "supabase:trrequest",
+  };
+}
+
+async function handleTeamRivalsResponse(context) {
+  const { params, services } = context;
+  const values = getActionValueCandidates(params);
+  const raceGuid = String(params.get("id") || params.get("guid") || params.get("raceguid") || values[0] || "").trim();
+  const accept = Number(params.get("a") || params.get("accept") || values[1] || 0) ? 1 : 0;
+  const challenge = teamRivalsChallengesById.get(raceGuid);
+
+  if (!challenge) {
+    return {
+      body: `"s", -1, "msg", "Challenge no longer exists."`,
+      source: "generated:trresponse:not-found",
+    };
+  }
+
+  if (!accept) {
+    teamRivalsChallengesById.delete(raceGuid);
+    refreshTeamRivalsRoomState(services);
+    return {
+      body: `"s", 1, "msg", ""`,
+      source: "generated:trresponse:denied",
+    };
+  }
+
+  challenge.status = "accepted";
+  teamRivalsChallengesById.set(raceGuid, challenge);
+  refreshTeamRivalsRoomState(services);
+  return {
+    body: `"s", 1, "msg", ""`,
+    source: "generated:trresponse:accepted",
+  };
+}
+
+async function handleTeamRivalsOk(context) {
+  const caller = await resolveCallerSession(context, "supabase:trok");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:trok:bad-session" };
+  }
+
+  const values = getActionValueCandidates(context.params);
+  const bracketTime = Number(context.params.get("bt") || context.params.get("brackettime") || values[0] || 0) || 0;
+
+  return {
+    body: wrapSuccessData(`<r i='${Number(caller.playerId)}' bt='${bracketTime}'/>`),
+    source: "generated:trok",
+  };
 }
 
 async function handleLogin(context) {
@@ -917,6 +2618,25 @@ async function handleGetRemarks(context) {
   return {
     body: wrapSuccessData("<remarks/>"),
     source: "getremarks:empty",
+  };
+}
+
+async function handleGetWinsAndLosses(context) {
+  const { supabase } = context;
+
+  if (supabase) {
+    const caller = await resolveCallerSession(context, "supabase:getwinsandlosses");
+    if (!caller?.ok) {
+      return {
+        body: caller?.body || failureBody(),
+        source: caller?.source || "supabase:getwinsandlosses:bad-session",
+      };
+    }
+  }
+
+  return {
+    body: wrapSuccessData("<wl w='0' l='0'/>"),
+    source: "getwinsandlosses:zero",
   };
 }
 
@@ -1998,7 +3718,7 @@ async function handleGetBuddies(context) {
 }
 
 async function handleTeamInfo(context) {
-  const { supabase, params } = context;
+  const { supabase, params, services } = context;
   if (!supabase) {
     return null;
   }
@@ -2015,50 +3735,27 @@ async function handleTeamInfo(context) {
 
   if (teamIds.length === 0) {
     return {
-      body: wrapSuccessData(renderTeams([{ id: 0, name: "", members: [] }])),
+      body: wrapSuccessData("<teams></teams>"),
       source: "supabase:teaminfo:none",
     };
   }
 
-  const [teams, members] = await Promise.all([
+  const [teams, players] = await Promise.all([
     listTeamsByIds(supabase, teamIds),
-    listTeamMembersForTeams(supabase, teamIds),
+    listPlayersForTeams(supabase, teamIds),
   ]);
 
   if (teams.length === 0) {
     return {
-      body: wrapSuccessData(renderTeams([{ id: 0, name: "", members: [] }])),
+      body: wrapSuccessData("<teams></teams>"),
       source: "supabase:teaminfo:not-found",
     };
   }
 
-  const players = await listPlayersByIds(
-    supabase,
-    members.map((member) => member.player_id),
-  );
-  const playersById = new Map(players.map((player) => [Number(player.id), player]));
-  const membersByTeamId = new Map();
-
-  for (const member of members) {
-    const key = Number(member.team_id);
-    if (!membersByTeamId.has(key)) {
-      membersByTeamId.set(key, []);
-    }
-    membersByTeamId.get(key).push({
-      ...member,
-      player: playersById.get(Number(member.player_id)) || null,
-    });
-  }
+  const playersByTeamId = groupPlayersByTeamId(players);
 
   return {
-    body: wrapSuccessData(
-      renderTeams(
-        teams.map((team) => ({
-          ...team,
-          members: membersByTeamId.get(Number(team.id)) || [],
-        })),
-      ),
-    ),
+    body: wrapSuccessData(renderTeamsWithMetadata(teams, playersByTeamId, services)),
     source: "supabase:teaminfo",
   };
 }
@@ -2138,13 +3835,34 @@ const handlers = {
   gettotalnewmail: handleGetTotalNewMail,
   getemaillist: handleGetEmailList,
   getremarks: handleGetRemarks,
+  getwinsandlosses: handleGetWinsAndLosses,
   getblackcardprogress: handleGetBlackCardProgress,
   checktestdrive: handleCheckTestDrive,
   accepttestdrive: handleAcceptTestDrive,
   removetestdrivecar: handleRemoveTestDriveCar,
   rejecttestdrive: handleRejectTestDrive,
+  teamcreate: handleTeamCreate,
+  teamkick: handleTeamKick,
+  teamchangerole: handleTeamChangeRole,
+  teamupdatemaxbet: handleTeamUpdateMaxBet,
+  teamnewleader: handleTeamNewLeader,
+  teamquit: handleTeamQuit,
+  teamaccept: handleTeamAccept,
+  teamdisperse: handleTeamDisperse,
+  teamstepdown: handleTeamStepDown,
+  teamdeposit: handleTeamDeposit,
+  teamwithdraw: handleTeamWithdraw,
+  teamwithdrawal: handleTeamWithdraw,
   teaminfo: handleTeamInfo,
   getteaminfo: handleTeamInfo,
+  addteamapp: handleTeamAddApplication,
+  getallteamapps: handleTeamGetAllApps,
+  getallmyapps: handleTeamGetMyApps,
+  deleteapp: handleTeamDeleteApplication,
+  updateteamapp: handleTeamUpdateApplication,
+  updateleadercomments: handleTeamUpdateLeaderComments,
+  setteamcolor: handleSetTeamColor,
+  updateteamreq: handleUpdateTeamReq,
   getleaderboardmenu: handleGetLeaderboardMenu,
   getleaderboard: handleGetLeaderboard,
   getnews: handleGetNews,
@@ -2153,6 +3871,12 @@ const handlers = {
   getdescription: handleGetDescription,
   getavatarage: handleGetAvatarAge,
   getteamavatarage: handleGetTeamAvatarAge,
+  trgetracers: handleTeamRivalsGetRacers,
+  trgetteams: handleTeamRivalsGetTeams,
+  trprerequest: handleTeamRivalsPreRequest,
+  trrequest: handleTeamRivalsRequest,
+  trresponse: handleTeamRivalsResponse,
+  trok: handleTeamRivalsOk,
   // --- Buddies ---
   getbuddies: handleGetBuddies,
   getbuddylist: handleGetBuddies,
@@ -2387,7 +4111,8 @@ const handlers = {
 
 export async function handleGameAction(context) {
   const { action, rawQuery, decodedQuery, fixtureStore, logger } = context;
-  const handler = handlers[action];
+  const normalizedAction = String(action || "");
+  const handler = handlers[normalizedAction] || handlers[normalizedAction.toLowerCase()];
 
   if (handler) {
     const result = await handler(context);
@@ -2396,7 +4121,7 @@ export async function handleGameAction(context) {
     }
   }
 
-  const fixture = fixtureStore.find(decodedQuery, action, rawQuery);
+  const fixture = fixtureStore?.find(decodedQuery, action, rawQuery);
   if (fixture) {
     return {
       body: fixture.body,
@@ -2404,7 +4129,11 @@ export async function handleGameAction(context) {
     };
   }
 
-  logger.warn("No handler or fixture for action", { action, decodedQuery });
+  logger.warn("No handler for action", {
+    action,
+    decodedQuery,
+    fixturesEnabled: Boolean(fixtureStore),
+  });
   // Return success stub so the client doesn't show error 003 for unknown actions.
   // Returning "s", 0 breaks the UI flow for many calls.
   return {

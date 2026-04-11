@@ -22,7 +22,7 @@ export class TcpServer {
     this.server = null;
     this.connections = new Map();
     this.nextConnId = 1;
-    // Room state: roomId -> [{ connId, playerId, username, carId }]
+    // Room state: roomId -> [{ connId, playerId, username, carId, teamId, teamRole }]
     this.rooms = new Map();
     this.ensureRoomCatalog();
     // Pending lobby challenges keyed by server-issued race GUID.
@@ -189,16 +189,13 @@ export class TcpServer {
                   this.connections.delete(existingConnId);
                 }
               }
-              conn.playerId = playerId;
-              // Also fetch username for room display
-              const { data: player } = await this.supabase
-                .from("game_players")
-                .select("username, default_car_game_id")
-                .eq("id", playerId)
-                .maybeSingle();
-              conn.username = player?.username || "Player";
-              conn.carId = Number(player?.default_car_game_id || 0);
-              this.logger.info("Player associated with connection", { connId: conn.id, playerId, username: conn.username });
+              await this.hydrateConnectionPlayerContext(conn, { playerId, sessionKey });
+              this.logger.info("Player associated with connection", {
+                connId: conn.id,
+                playerId,
+                username: conn.username,
+                teamId: conn.teamId || 0,
+              });
             }
           } catch (error) {
             this.logger.error("Failed to lookup player ID from session", { connId: conn.id, error: error.message });
@@ -231,17 +228,38 @@ export class TcpServer {
           }
         }
         if (syncRace) {
+          // Forward raw encrypted bytes to opponent - do NOT decrypt/re-encrypt
           for (const p of syncRace.players) {
             if (p.connId === conn.id) continue;
             const opponentConn = this.connections.get(p.connId);
-            if (opponentConn) {
-              opponentConn.socket.write(
-                Buffer.from(conn._lastRaw + MESSAGE_DELIMITER, "latin1")
-              );
+            if (opponentConn && opponentConn.socket) {
+              try {
+                opponentConn.socket.write(
+                  Buffer.from(conn._lastRaw + MESSAGE_DELIMITER, "latin1")
+                );
+                this.logger.debug("TCP forwarded I/S packet", {
+                  fromConnId: conn.id,
+                  toConnId: opponentConn.id,
+                  messageType,
+                  raceId: syncRace.id
+                });
+              } catch (error) {
+                this.logger.error("TCP I/S forward error", {
+                  connId: conn.id,
+                  opponentConnId: opponentConn.id,
+                  error: error.message
+                });
+              }
             }
           }
+        } else {
+          this.logger.warn("TCP I/S packet received without active race", {
+            connId: conn.id,
+            playerId: conn.playerId,
+            messageType
+          });
         }
-        // no ack
+        // no ack - per protocol spec
 
       // --- RD: Race done / result data ---
       } else if (messageType === "RD") {
@@ -310,7 +328,14 @@ export class TcpServer {
         // Add player to room, removing any stale entries for this connId OR playerId
         const room = this.rooms.get(roomId) || [];
         const filtered = room.filter(p => p.connId !== conn.id && p.playerId !== playerId);
-        filtered.push({ connId: conn.id, playerId, username, carId: conn.carId || 0 });
+        filtered.push({
+          connId: conn.id,
+          playerId,
+          username,
+          carId: conn.carId || 0,
+          teamId: Number(conn.teamId || 0),
+          teamRole: conn.teamRole || "",
+        });
         this.rooms.set(roomId, filtered);
 
         if (this.raceRoomRegistry && playerId > 0) {
@@ -348,10 +373,20 @@ export class TcpServer {
       } else if (messageType === "LRC") {
         this.handleLobbyRoomRefresh(conn);
 
+      // --- LR: Leave room ---
+      } else if (messageType === "LR" && parts.length === 1) {
+        this.logger.info("TCP LR (leave room) received", { connId: conn.id, roomId: conn.roomId });
+        this.leaveRoom(conn);
+        this.sendMessage(conn, '"ac", "LR", "s", 1');
+
       // --- GR: Get race (after JRC, triggers race announcement) ---
       } else if (messageType === "GR") {
         this.logger.info("TCP GR received", { connId: conn.id });
-        this.sendMessage(conn, '"ac", "GR", "s", 1');
+        const roomId = Number(conn.roomId || 0);
+        const roomPlayers = this.rooms.get(roomId) || [];
+        if (roomId > 0 && roomPlayers.some((player) => player.connId === conn.id)) {
+          this.sendRoomSnapshot(conn, roomPlayers, { duplicateUsers: true });
+        }
 
       // --- TC: Team / title channel selection ---
       } else if (messageType === "TC") {
@@ -369,7 +404,9 @@ export class TcpServer {
       } else if (messageType === "LO") {
         conn.socket.end();
 
-      // --- TE / CRC: Chat message in room ---
+      // --- TE / CRC: Chat message in room / KOTH room creation ---
+      } else if (messageType === "CRC" && this.handleKingOfHillRoomCreate(conn, parts)) {
+        this.logger.info("TCP CRC handled as KOTH room create", { connId: conn.id, parts });
       } else if (messageType === "TE" || messageType === "CRC") {
         this.logger.info("TCP chat parts", { connId: conn.id, messageType, parts });
         // CRC has 8 parts - find the text (longest non-numeric part after index 0)
@@ -405,15 +442,7 @@ export class TcpServer {
           try {
             const playerId = await getSessionPlayerId({ supabase: this.supabase, sessionKey: srcSessionKey });
             if (playerId) {
-              conn.playerId = playerId;
-              conn.sessionKey = srcSessionKey;
-              const { data: player } = await this.supabase
-                .from("game_players")
-                .select("username, default_car_game_id")
-                .eq("id", playerId)
-                .maybeSingle();
-              conn.username = player?.username || "Player";
-              conn.carId = Number(player?.default_car_game_id || 0);
+              await this.hydrateConnectionPlayerContext(conn, { playerId, sessionKey: srcSessionKey });
             }
           } catch (err) {
             this.logger.error("SRC session lookup failed", { connId: conn.id, error: err.message });
@@ -438,15 +467,18 @@ export class TcpServer {
           // Attach this race-channel connection to the race
           conn.raceId = srcRace.id;
           
-          // Update the race player's connId to point to this race channel connection
-          // This ensures I/S packets are forwarded to the correct connection
+          // CRITICAL: Update the race player's connId to point to this race channel connection
+          // The SRC connection is the RACE CHANNEL - all I/S packets flow through it
           const racePlayer = srcRace.players.find(p => Number(p.playerId) === Number(conn.playerId));
           if (racePlayer) {
+            const oldConnId = racePlayer.connId;
             racePlayer.connId = conn.id;
-            this.logger.info("TCP SRC updated race player connId", { 
-              connId: conn.id, 
+            this.logger.info("TCP SRC race channel established", { 
+              connId: conn.id,
+              oldConnId,
               raceId: srcRace.id, 
-              playerId: conn.playerId 
+              playerId: conn.playerId,
+              playerLane: racePlayer.lane
             });
           }
           
@@ -462,11 +494,20 @@ export class TcpServer {
           }))}"`);
           this.sendMessage(conn, `"ac", "RO", "t", ${srcRace.trackId || 32}`);
           this.sendInitialIoFrames(conn);
-          this.logger.info("TCP SRC race channel linked", { connId: conn.id, raceId: srcRace.id });
+          this.logger.info("TCP SRC race initialized", { 
+            connId: conn.id, 
+            raceId: srcRace.id,
+            trackId: srcRace.trackId || 32,
+            players: srcRace.players.map(p => ({ playerId: p.playerId, connId: p.connId, lane: p.lane }))
+          });
         } else {
           // No active race yet — just ack so the client doesn't time out
           this.sendMessage(conn, '"ac", "SRC", "s", 1');
-          this.logger.info("TCP SRC ack sent (no active race found)", { connId: conn.id });
+          this.logger.warn("TCP SRC ack sent (no active race found)", { 
+            connId: conn.id,
+            playerId: conn.playerId,
+            srcRaceGuid
+          });
         }
 
       // --- RRS: Race ready status ---
@@ -476,6 +517,12 @@ export class TcpServer {
       // --- RO: Race open ---
       } else if (messageType === "RO") {
         this.handleRaceOpen(conn);
+
+      // --- GK / JK: KOTH queue query / join ---
+      } else if (messageType === "GK") {
+        this.handleKingOfHillQueue(conn);
+      } else if (messageType === "JK") {
+        this.handleKingOfHillJoin(conn, parts);
 
       // --- RR: Race result ---
       } else if (messageType === "RR") {
@@ -507,9 +554,19 @@ export class TcpServer {
       }
     }
     if (!conn.roomId) return;
-    const room = this.rooms.get(conn.roomId) || [];
+    const roomId = Number(conn.roomId);
+    const roomType = this.getRoomDefinition(roomId)?.type || "";
+    const hadKothSelection = Boolean(conn.kingOfHillSelection);
+    const room = this.rooms.get(roomId) || [];
     const updated = room.filter(p => p.connId !== conn.id);
-    this.rooms.set(conn.roomId, updated);
+    this.rooms.set(roomId, updated);
+
+    if (this.raceRoomRegistry && conn.playerId) {
+      this.raceRoomRegistry.removePlayer(roomId, Number(conn.playerId));
+    }
+
+    delete conn.kingOfHillSelection;
+
     // Notify remaining players
     if (updated.length > 0) {
       for (const member of updated) {
@@ -517,7 +574,10 @@ export class TcpServer {
         if (otherConn) this.sendRoomUsers(otherConn, updated);
       }
     }
-    this.logger.info("Player left room", { connId: conn.id, roomId: conn.roomId, remaining: updated.length });
+    if (this.isKingOfTheHillRoomType(roomType)) {
+      this.broadcastKothQueueUpdate(roomId);
+    }
+    this.logger.info("Player left room", { connId: conn.id, roomId, remaining: updated.length, hadKothSelection });
     conn.roomId = null;
   }
 
@@ -588,6 +648,16 @@ export class TcpServer {
   buildRoomQueueXml(roomPlayers, roomId = null) {
     const roomType = this.getRoomDefinition(roomId)?.type || "";
 
+    // Team Rivals room snapshots should start empty until actual challenge
+    // records are pushed; generic 1v1 rows confuse the Team Rivals room movie.
+    if (roomType === "team") {
+      const roomState = this.raceRoomRegistry?.get(roomId);
+      if (roomState?.teamRivalsQueueXml) {
+        return String(roomState.teamRivalsQueueXml);
+      }
+      return "<q></q>";
+    }
+
     // KOTH strips use a line-up list keyed by racer/car, not Rivals challenge
     // pairs. The 10.0.03 room movie expects at least one child node here and
     // reads `i` + `ci` directly when rendering the queue.
@@ -606,9 +676,13 @@ export class TcpServer {
 
   buildRoomUsersXml(roomPlayers) {
     const usersXml = roomPlayers.map((player) =>
-      `<u i='${player.playerId}' un='${player.username}' ti='1' tid='1' tf='7D7D7D' ms='5' iv='0'/>`
+      `<u i='${player.playerId}' un='${this.escapeXml(player.username)}' ti='${Number(player.teamId || 0)}' tid='${Number(player.teamId || 0)}' tf='7D7D7D' ms='5' iv='0'/>`
     ).join("");
     return `<ul>${usersXml}</ul>`;
+  }
+
+  isKingOfTheHillRoomType(roomType) {
+    return roomType === "bracket_koth" || roomType === "h2h_koth";
   }
 
   sendRoomUsers(conn, roomPlayers) {
@@ -674,6 +748,211 @@ export class TcpServer {
     });
   }
 
+  handleKingOfHillRoomCreate(conn, parts) {
+    const roomType = Number(parts[2] || 0);
+    if (roomType !== 3 && roomType !== 6) {
+      return false;
+    }
+
+    const roomId = roomType === 3 ? 3 : 4;
+    const roomName = "User Room";
+    this.leaveRoom(conn);
+    conn.roomId = roomId;
+
+    const roomPlayers = this.rooms.get(roomId) || [];
+    const updatedPlayers = roomPlayers.filter((player) => Number(player.playerId) !== Number(conn.playerId));
+    updatedPlayers.push({
+      connId: conn.id,
+      playerId: Number(conn.playerId || 0),
+      username: conn.username || "Player",
+      carId: Number(conn.carId || 0),
+      teamId: Number(conn.teamId || 0),
+      teamRole: conn.teamRole || "",
+    });
+    this.rooms.set(roomId, updatedPlayers);
+
+    if (this.raceRoomRegistry && conn.playerId) {
+      this.raceRoomRegistry.addPlayer(roomId, {
+        id: Number(conn.playerId),
+        publicId: getPublicIdForPlayer({ id: Number(conn.playerId) }),
+        name: conn.username || "Player",
+      });
+    }
+
+    const roomXml =
+      `<rooms><r rc='1' cy='20' rt='${roomType}' cid='${roomId}' rn='${roomName}' ip='0' mo='0' sm='0' pro='0'/></rooms>`;
+    this.sendMessage(conn, `"ac", "CRC", "s", 1, "d", "${roomXml}"`);
+    this.sendMessage(conn, '"ac", "JR", "s", 1');
+    return true;
+  }
+
+  handleKingOfHillQueue(conn) {
+    const roomId = conn.roomId || 4;
+    const roomPlayers = this.rooms.get(roomId) || [];
+    const queuedPlayers = [];
+
+    for (const player of roomPlayers) {
+      const playerConn = this.connections.get(player.connId);
+      if (playerConn?.kingOfHillSelection) {
+        queuedPlayers.push({
+          playerId: player.playerId,
+          carId: playerConn.kingOfHillSelection.carId,
+        });
+      }
+    }
+
+    const queueXml = queuedPlayers.length > 0
+      ? queuedPlayers.map((player) => `<k i='${player.playerId}' ks='0' ci='${player.carId}'/>`).join("")
+      : "<k i='0' ks='0' ci='0'/>";
+
+    this.sendMessage(conn, `"ac", "KU", "s", "<q>${queueXml}</q>"`);
+  }
+
+  handleKingOfHillJoin(conn, parts) {
+    const carId = Number(parts[1] || 0);
+    const lane = Number(parts[2] || -1);
+
+    conn.kingOfHillSelection = {
+      carId,
+      lane,
+    };
+
+    this.sendMessage(conn, '"ac", "UNU", "i", 1, "s", 1, "ul", ""');
+
+    const roomId = conn.roomId || 4;
+    const roomPlayers = this.rooms.get(roomId) || [];
+    const waitingPlayers = [];
+
+    for (const player of roomPlayers) {
+      if (player.connId === conn.id) continue;
+      const playerConn = this.connections.get(player.connId);
+      if (playerConn?.kingOfHillSelection && !playerConn.raceId) {
+        waitingPlayers.push({
+          conn: playerConn,
+          playerId: player.playerId,
+          carId: playerConn.kingOfHillSelection.carId,
+          lane: playerConn.kingOfHillSelection.lane,
+        });
+      }
+    }
+
+    if (waitingPlayers.length > 0 && !conn.raceId) {
+      const opponent = waitingPlayers[0];
+
+      this.logger.info("KOTH match found", {
+        player1: { connId: conn.id, playerId: conn.playerId, carId },
+        player2: { connId: opponent.conn.id, playerId: opponent.playerId, carId: opponent.carId },
+      });
+
+      const request1 = {
+        connId: conn.id,
+        requesterPlayerId: Number(conn.playerId),
+        requesterCarId: carId,
+        roomId,
+        lane: lane >= 0 ? lane : 0,
+        bet: 0,
+      };
+      const request2 = {
+        connId: opponent.conn.id,
+        requesterPlayerId: Number(opponent.playerId),
+        requesterCarId: opponent.carId,
+        roomId,
+        lane: opponent.lane >= 0 ? opponent.lane : 1,
+        bet: 0,
+      };
+
+      delete conn.kingOfHillSelection;
+      delete opponent.conn.kingOfHillSelection;
+
+      this.createRaceSession(request1, request2);
+      this.broadcastKothQueueUpdate(roomId);
+      return;
+    }
+
+    this.broadcastKothQueueUpdate(roomId);
+  }
+
+  broadcastKothQueueUpdate(roomId) {
+    const roomPlayers = this.rooms.get(roomId) || [];
+    const queuedPlayers = [];
+
+    for (const player of roomPlayers) {
+      const playerConn = this.connections.get(player.connId);
+      if (playerConn?.kingOfHillSelection) {
+        queuedPlayers.push({
+          playerId: player.playerId,
+          carId: playerConn.kingOfHillSelection.carId,
+        });
+      }
+    }
+
+    const queueXml = queuedPlayers.length > 0
+      ? queuedPlayers.map((player) => `<k i='${player.playerId}' ks='0' ci='${player.carId}'/>`).join("")
+      : "<k i='0' ks='0' ci='0'/>";
+    const queueMessage = `"ac", "LR", "s", "<q>${queueXml}</q>"`;
+
+    for (const player of roomPlayers) {
+      const playerConn = this.connections.get(player.connId);
+      if (playerConn) {
+        this.sendMessage(playerConn, queueMessage);
+      }
+    }
+  }
+
+  async hydrateConnectionPlayerContext(conn, { playerId, sessionKey = conn.sessionKey } = {}) {
+    if (!this.supabase || !playerId) {
+      return;
+    }
+
+    const numericPlayerId = Number(playerId);
+    const playerResult = await this.supabase
+      .from("game_players")
+      .select("username, default_car_game_id, team_id")
+      .eq("id", numericPlayerId)
+      .maybeSingle();
+
+    if (playerResult.error) {
+      throw playerResult.error;
+    }
+
+    const player = playerResult.data;
+    let teamMember = null;
+
+    const teamWithRoleResult = await this.supabase
+      .from("game_team_members")
+      .select("team_id, role")
+      .eq("player_id", numericPlayerId)
+      .maybeSingle();
+
+    if (teamWithRoleResult.error) {
+      const message = String(teamWithRoleResult.error?.message || "");
+      if (/role/i.test(message) && /does not exist|unknown column|column/i.test(message)) {
+        const compatTeamResult = await this.supabase
+          .from("game_team_members")
+          .select("team_id")
+          .eq("player_id", numericPlayerId)
+          .maybeSingle();
+        if (compatTeamResult.error) {
+          throw compatTeamResult.error;
+        }
+        teamMember = compatTeamResult.data
+          ? { team_id: compatTeamResult.data.team_id, role: "" }
+          : null;
+      } else {
+        throw teamWithRoleResult.error;
+      }
+    } else {
+      teamMember = teamWithRoleResult.data;
+    }
+
+    conn.playerId = numericPlayerId;
+    conn.sessionKey = sessionKey;
+    conn.username = player?.username || "Player";
+    conn.carId = Number(player?.default_car_game_id || 0);
+    conn.teamId = Number(teamMember?.team_id || player?.team_id || 0);
+    conn.teamRole = teamMember?.role || "";
+  }
+
   handleRaceRequest(conn, parts) {
     const requesterPlayerId = Number(conn.playerId || 0);
     const requesterCarId = Number(parts[1] || conn.carId || 0);
@@ -686,9 +965,10 @@ export class TcpServer {
 
     this.sendMessage(conn, '"ac", "RRQ", "s", 1');
 
-    const targetConn = this.findConnectionByPlayerId(targetPlayerId);
+    // Use excludeRaceChannels to get the lobby connection for the target
+    const targetConn = this.findConnectionByPlayerId(targetPlayerId, true);
     if (!targetConn) {
-      this.logger.info("TCP RRQ ignored (target not connected)", {
+      this.logger.warn("TCP RRQ ignored (target not connected)", {
         connId: conn.id,
         requesterPlayerId,
         targetPlayerId,
@@ -726,7 +1006,7 @@ export class TcpServer {
 
     this.pendingRaceChallenges.set(raceGuid, challenge);
 
-    this.logger.info("TCP RRQ queued", {
+    this.logger.info("TCP RRQ challenge created", {
       connId: conn.id,
       raceGuid,
       requesterPlayerId,
@@ -754,14 +1034,37 @@ export class TcpServer {
 
     this.sendMessage(targetConn, `"ac", "UCU", "d", "${this.escapeForTcp(ucuXml)}"`);
     this.sendMessage(targetConn, `"ac", "RCLG", "d", "${this.escapeForTcp(rclgXml)}"`);
+    
+    this.logger.info("TCP RRQ challenge sent to target", {
+      targetConnId: targetConn.id,
+      targetPlayerId,
+      raceGuid
+    });
   }
 
-  findConnectionByPlayerId(playerId) {
+  findConnectionByPlayerId(playerId, excludeRaceChannels = false) {
     if (!playerId) return null;
+    const matches = [];
     for (const [, candidate] of this.connections) {
-      if (Number(candidate.playerId || 0) === Number(playerId)) return candidate;
+      if (Number(candidate.playerId || 0) === Number(playerId)) {
+        matches.push(candidate);
+      }
     }
-    return null;
+    
+    if (matches.length === 0) return null;
+    
+    // If we have multiple connections for the same player, prefer the lobby connection
+    // (the one that has roomId set) unless we specifically want the race channel
+    if (matches.length === 1) return matches[0];
+    
+    if (excludeRaceChannels) {
+      // Return the connection that has a roomId (lobby connection)
+      const lobbyConn = matches.find(c => c.roomId);
+      return lobbyConn || matches[0];
+    }
+    
+    // Return the most recent connection
+    return matches[matches.length - 1];
   }
 
   escapeXml(value) {
@@ -873,9 +1176,15 @@ export class TcpServer {
     // If we already have an active race, keep the existing per-player ready flow.
     const existingRace = conn.raceId ? this.races.get(conn.raceId) : null;
     if (existingRace) {
-      const player = existingRace.players.find((entry) => entry.connId === conn.id);
+      // Find player by playerId (not connId) since this might be the lobby connection
+      const player = existingRace.players.find((entry) => Number(entry.playerId) === Number(conn.playerId));
       if (!player) {
-        this.logger.info("TCP RRS received from unknown race player", { connId: conn.id, raceId: existingRace.id });
+        this.logger.warn("TCP RRS received from unknown race player", { 
+          connId: conn.id, 
+          playerId: conn.playerId,
+          raceId: existingRace.id,
+          racePlayers: existingRace.players.map(p => ({ playerId: p.playerId, connId: p.connId }))
+        });
         return;
       }
 
@@ -883,15 +1192,30 @@ export class TcpServer {
       this.sendMessage(conn, `"ac", "RRS", "s", 1, "i", "${existingRace.id}"`);
       this.logger.info("TCP RRS received", {
         connId: conn.id,
+        playerId: conn.playerId,
         raceId: existingRace.id,
         readyCount: existingRace.players.filter((entry) => entry.ready).length,
+        totalPlayers: existingRace.players.length
       });
 
       if (!existingRace.announced && existingRace.players.every((entry) => entry.ready)) {
         existingRace.announced = true;
+        this.logger.info("TCP race starting - both players ready", { 
+          raceId: existingRace.id,
+          players: existingRace.players.map(p => ({ playerId: p.playerId, ready: p.ready }))
+        });
+        
         for (const participant of existingRace.players) {
-          const participantConn = this.connections.get(participant.connId);
-          if (!participantConn) continue;
+          // Use the lobby connection for these messages (not race channel yet)
+          const participantConn = this.findConnectionByPlayerId(participant.playerId);
+          if (!participantConn) {
+            this.logger.warn("TCP RRS cannot find connection for player", {
+              playerId: participant.playerId,
+              raceId: existingRace.id
+            });
+            continue;
+          }
+          
           this.sendMessage(participantConn, `"ac", "RN", "d", "${this.escapeForTcp(this.buildRnXml({
             challengerPlayerId: existingRace.players[0].playerId,
             challengerCarId: existingRace.players[0].carId,
@@ -906,12 +1230,12 @@ export class TcpServer {
                 challengerCarId: existingRace.players[0].carId,
                 challengedPlayerId: existingRace.players[1].playerId,
                 challengedCarId: existingRace.players[1].carId,
-                trackId: 32,
+                trackId: existingRace.trackId || 32,
               })
             )}"`
           );
           // Fallback: if the client doesn't emit RO, bootstrap the track anyway.
-          this.sendMessage(participantConn, '"ac", "RO", "t", 32');
+          this.sendMessage(participantConn, `"ac", "RO", "t", ${existingRace.trackId || 32}`);
           this.sendInitialIoFrames(participantConn);
         }
         this.logger.info("TCP race ready broadcast sent", { raceId: existingRace.id });

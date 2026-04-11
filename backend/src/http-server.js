@@ -392,7 +392,7 @@ export function createHttpServer({ config, logger, fixtureStore, supabase, servi
         }
 
         // Fall back to decoded capture fixtures for the remaining static routes.
-        const fixture = fixtureStore.find(requestUrl.pathname);
+        const fixture = fixtureStore?.find(requestUrl.pathname);
         if (fixture) {
           logger.info("Serving static route from fixture", { 
             path: requestUrl.pathname, 

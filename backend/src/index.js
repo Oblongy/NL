@@ -11,10 +11,12 @@ import { TcpNotify } from "./tcp-notify.js";
 import { TcpProxy } from "./tcp-proxy.js";
 import { TcpServer } from "./tcp-server.js";
 
-const fixtureStore = new FixtureStore({
-  fixturesRoot: config.fixturesRoot,
-  logger,
-});
+const fixtureStore = config.useFixtures
+  ? new FixtureStore({
+      fixturesRoot: config.fixturesRoot,
+      logger,
+    })
+  : null;
 
 const supabase = await createGameSupabase(config, logger);
 const raceRoomRegistry = new RaceRoomRegistry();
@@ -73,6 +75,7 @@ server.listen(config.port, config.httpHost, () => {
     port: config.port,
     tcpHost: config.tcpHost,
     tcpPort: config.tcpPort,
+    useFixtures: config.useFixtures,
     supabase: Boolean(supabase),
   });
 });
