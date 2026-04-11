@@ -23,9 +23,6 @@ const MESSAGE_DELIMITER = "\x04";
 const FIELD_DELIMITER = "\x1e";
 const DEFAULT_GLOBAL_CHAT_CLASS = 2;
 
-const MESSAGE_DELIMITER = "\x04";
-const FIELD_DELIMITER = "\x1e";
-
 export class TcpServer {
   constructor({ logger, notify, proxy, supabase, raceRoomRegistry = null, port = 3724, host = "127.0.0.1" }) {
     this.logger = logger;
@@ -594,46 +591,6 @@ export class TcpServer {
                 srcRace = r;
                 break;
               }
-            }
-          }
-        }
-
-      // --- SRC: Start Race Connection ---
-      // The Flash client opens a *second* TCP connection for the actual race
-      // data exchange. The first message on that connection is SRC carrying
-      // the session key so we can associate it with the lobby connection.
-      // Format observed: SRC \x1e <sessionKey> [\x1e <raceGuid>]
-      } else if (messageType === "SRC") {
-        const srcSessionKey = parts[1] || "";
-        const srcRaceGuid   = parts[2] || "";
-        this.logger.info("TCP SRC received (race channel open)", {
-          connId: conn.id,
-          srcSessionKey,
-          srcRaceGuid,
-        });
-
-        // Resolve the player from the session key
-        if (this.supabase && srcSessionKey) {
-          try {
-            const playerId = await getSessionPlayerId({ supabase: this.supabase, sessionKey: srcSessionKey });
-            if (playerId) {
-              await this.hydrateConnectionPlayerContext(conn, { playerId, sessionKey: srcSessionKey });
-            }
-          } catch (err) {
-            this.logger.error("SRC session lookup failed", { connId: conn.id, error: err.message });
-          }
-        }
-
-        // Find the active race for this player (by GUID hint or by playerId)
-        let srcRace = null;
-        if (srcRaceGuid) {
-          srcRace = this.races.get(srcRaceGuid) || this.pendingRaceChallenges.get(srcRaceGuid) || null;
-        }
-        if (!srcRace && conn.playerId) {
-          for (const [, r] of this.races) {
-            if (r.players.some(p => Number(p.playerId) === Number(conn.playerId))) {
-              srcRace = r;
-              break;
             }
           }
         }
