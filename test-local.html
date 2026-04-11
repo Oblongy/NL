@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Nitto 1320 Legends - Local Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #000;
+            color: #fff;
+            font-family: Arial, sans-serif;
+        }
+        .info {
+            background: #222;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+        .info h2 {
+            margin-top: 0;
+            color: #0f0;
+        }
+        .info code {
+            background: #000;
+            padding: 2px 6px;
+            border-radius: 3px;
+            color: #0ff;
+        }
+        #gameContainer {
+            width: 800px;
+            height: 600px;
+            margin: 0 auto;
+            background: #000;
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <h2>Local Test Configuration</h2>
+        <p><strong>HTTP Server:</strong> <code id="httpServer"></code></p>
+        <p><strong>TCP Server:</strong> <code id="tcpServer"></code></p>
+        <p><strong>Status:</strong> <span id="status">Checking...</span></p>
+    </div>
+
+    <div id="gameContainer">
+        <object classid="clsid:d27cdb6e-ae6d-11cf-96b8-444553540000"
+                width="800"
+                height="600"
+                id="game"
+                align="middle">
+            <param name="movie" value="0.swf" />
+            <param name="quality" value="high" />
+            <param name="bgcolor" value="#000000" />
+            <param name="play" value="true" />
+            <param name="loop" value="false" />
+            <param name="wmode" value="direct" />
+            <param name="scale" value="showall" />
+            <param name="menu" value="true" />
+            <param name="devicefont" value="false" />
+            <param name="salign" value="" />
+            <param name="allowScriptAccess" value="always" />
+            <param name="FlashVars" id="flashVarsPrimary" value="" />
+
+            <!--[if !IE]>-->
+            <object type="application/x-shockwave-flash"
+                    data="0.swf"
+                    width="800"
+                    height="600">
+                <param name="movie" value="0.swf" />
+                <param name="quality" value="high" />
+                <param name="bgcolor" value="#000000" />
+                <param name="play" value="true" />
+                <param name="loop" value="false" />
+                <param name="wmode" value="direct" />
+                <param name="scale" value="showall" />
+                <param name="menu" value="true" />
+                <param name="devicefont" value="false" />
+                <param name="salign" value="" />
+                <param name="allowScriptAccess" value="always" />
+                <param name="FlashVars" id="flashVarsFallback" value="" />
+            <!--<![endif]-->
+                <a href="http://www.adobe.com/go/getflash">
+                    <img src="http://www.adobe.com/images/shared/download_buttons/get_flash_player.gif" alt="Get Adobe Flash player" />
+                </a>
+            <!--[if !IE]>-->
+            </object>
+            <!--<![endif]-->
+        </object>
+    </div>
+
+    <script>
+        const httpBaseUrl = 'http://localhost:8082';
+        const tcpHost = 'localhost';
+        const tcpPort = '3724';
+        const flashVars = `serverURL=${httpBaseUrl}&tcpHost=${tcpHost}&tcpPort=${tcpPort}`;
+
+        document.getElementById('httpServer').textContent = httpBaseUrl;
+        document.getElementById('tcpServer').textContent = `${tcpHost}:${tcpPort}`;
+        document.getElementById('flashVarsPrimary').value = flashVars;
+        document.getElementById('flashVarsFallback').value = flashVars;
+
+        fetch(`${httpBaseUrl}/healthz`)
+            .then((response) => {
+                if (response.ok) {
+                    document.getElementById('status').innerHTML = '<span style="color: #0f0;">Server is running</span>';
+                } else {
+                    document.getElementById('status').innerHTML = '<span style="color: #f00;">Server returned an error</span>';
+                }
+            })
+            .catch(() => {
+                document.getElementById('status').innerHTML = '<span style="color: #f00;">Server not reachable</span>';
+            });
+    </script>
+</body>
+</html>
