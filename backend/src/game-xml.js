@@ -1,5 +1,6 @@
 import { getClientRoleForPlayer } from "./player-role.js";
 import { renderVisibleBadgesXml } from "./profile-badges.js";
+import { normalizeOwnedPartsXmlValue } from "./parts-xml.js";
 import {
   DEFAULT_COLOR_CODE,
   DEFAULT_PAINT_INDEX,

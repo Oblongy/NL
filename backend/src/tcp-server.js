@@ -3,6 +3,7 @@ import { createServer } from "node:net";
 import { decodePayload, encryptPayload } from "./nitto-cipher.js";
 import { advanceEngineConditionForCars } from "./engine-state.js";
 import { getPublicIdForPlayer } from "./public-id.js";
+import { getClientRoleForPlayer } from "./player-role.js";
 import { ensureDefaultRaceRooms, getDefaultRaceRoom } from "./race-room-catalog.js";
 import { getSessionPlayerId } from "./session.js";
 import {
@@ -45,6 +46,9 @@ export class TcpServer {
     this.races = new Map();
     // Track race completion for cleanup
     this.raceCompletions = new Map(); // raceId -> Set of playerIds who sent RD
+    // O(1) lookups for player->connection and player->race mappings
+    this.connIdByPlayerId = new Map();
+    this.raceIdByPlayerId = new Map();
     
     // Cleanup stale challenges every 5 minutes
     this.challengeCleanupInterval = setInterval(() => {
@@ -284,7 +288,7 @@ export class TcpServer {
                 opponentConn.socket.write(
                   Buffer.from(conn._lastRaw + MESSAGE_DELIMITER, "latin1")
                 );
-                this.logger.debug("TCP forwarded I/S packet", {
+                this.logger.info("TCP forwarded I/S packet", {
                   fromConnId: conn.id,
                   toConnId: opponentConn.id,
                   messageType,
@@ -361,8 +365,11 @@ export class TcpServer {
 
       // --- LRCR2: Get room list ---
       } else if (messageType === "LRCR2") {
-        this.sendInitialLobbyBootstrap(conn, { source: "LRCR2", includeHandshake: false, forceRooms: true });
-        this.logger.info("Sent LRCR2 room list", { connId: conn.id });
+        const requestedStripId = Number(parts[2] || parts[1] || 0);
+        this.sendMessage(conn,
+          `"ac", "LRCR2", "d", "${this.escapeForTcp(this.buildLobbyRoomsXml(requestedStripId))}"`
+        );
+        this.logger.info("Sent LRCR2 room list", { connId: conn.id, stripId: requestedStripId });
 
       // --- JRC: Join room (create) ---
       } else if (messageType === "JRC") {
@@ -382,6 +389,7 @@ export class TcpServer {
           carId: conn.carId || 0,
           teamId: Number(conn.teamId || 0),
           teamRole: conn.teamRole || "",
+          clientRole: conn.clientRole || 5,
         });
         this.rooms.set(roomId, filtered);
 
@@ -477,7 +485,8 @@ export class TcpServer {
           const targetConn = this.findConnectionByPlayerId(targetPlayerId);
           if (targetConn) {
             // Send instant message to target with sender's username
-            const imMsg = `"ac", "NIM", "i", "${conn.playerId}", "u", "${this.escapeForTcp(conn.username)}", "t", "${this.escapeForTcp(messageText)}"`;
+            const chatClass = conn.clientRole === 1 ? 1 : (conn.clientRole === 8 ? 8 : (conn.clientRole === 2 ? 5 : DEFAULT_GLOBAL_CHAT_CLASS));
+            const imMsg = `"ac", "NIM", "i", "${conn.playerId}", "u", "${this.escapeForTcp(conn.username)}", "t", "${this.escapeForTcp(messageText)}", "c", ${chatClass}`;
             this.sendMessage(targetConn, imMsg);
             // Ack to sender
             this.sendMessage(conn, '"ac", "NIM", "s", 1');
@@ -708,6 +717,10 @@ export class TcpServer {
     return token !== "" && Number.isFinite(Number(token)) ? token : String(fallback);
   }
 
+  isRaceReadyForTelemetry(race) {
+    return race.players.length === 2 && race.players.every((participant) => participant.raceConnId && participant.opened);
+  }
+
   extractChatText(messageType, parts) {
     if (messageType === "CRC") {
       return parts.slice(1).find((part) => part.length > 1 && !/^\d+$/.test(part)) || "";
@@ -740,8 +753,9 @@ export class TcpServer {
 
     if (conn.roomId) {
       const room = this.rooms.get(conn.roomId) || [];
+      const chatClass = conn.clientRole === 1 ? 1 : (conn.clientRole === 8 ? 8 : (conn.clientRole === 2 ? 5 : DEFAULT_GLOBAL_CHAT_CLASS));
       const roomChatMsg =
-        `"ac", "TE", "i", "${conn.playerId}", "u", "${this.escapeForTcp(conn.username)}", "t", "${this.escapeForTcp(chatText)}"`;
+        `"ac", "TE", "i", "${conn.playerId}", "u", "${this.escapeForTcp(conn.username)}", "t", "${this.escapeForTcp(chatText)}", "c", ${chatClass}`;
       this.logger.info("Broadcasting room chat", { connId: conn.id, roomId: conn.roomId, memberCount: room.length });
       for (const member of room) {
         const memberConn = this.connections.get(member.connId);
@@ -752,8 +766,10 @@ export class TcpServer {
       return true;
     }
 
+    const chatClass = conn.clientRole === 1 ? 1 : (conn.clientRole === 8 ? 8 : (conn.clientRole === 2 ? 5 : DEFAULT_GLOBAL_CHAT_CLASS));
+
     const globalChatMsg =
-      `"ac", "GC", "u", "${this.escapeForTcp(conn.username)}", "m", "${this.escapeForTcp(chatText)}", "c", ${DEFAULT_GLOBAL_CHAT_CLASS}`;
+      `"ac", "GC", "u", "${this.escapeForTcp(conn.username)}", "m", "${this.escapeForTcp(chatText)}", "c", ${chatClass}`;
     let recipientCount = 0;
     for (const [, otherConn] of this.connections) {
       if (otherConn.playerId && !otherConn.roomId) {
@@ -764,7 +780,7 @@ export class TcpServer {
     this.logger.info("Broadcasting global chat", {
       connId: conn.id,
       recipientCount,
-      chatClass: DEFAULT_GLOBAL_CHAT_CLASS,
+      chatClass,
     });
     return true;
   }
@@ -772,46 +788,96 @@ export class TcpServer {
   handleRaceTelemetry(conn, messageType, parts) {
     const race = this.findRaceForConnection(conn);
     if (!race) {
-      this.logger.info("TCP telemetry received without race", { connId: conn.id, messageType });
+      // Solo/test drive mode - client sends telemetry but no race exists
+      // Silently ignore (no need to forward to opponent)
+      return;
+    }
+
+    // Find sender by race channel connection ID
+    const sender = race.players.find((participant) => participant.raceConnId === conn.id);
+    if (!sender) {
+      this.logger.warn("TCP telemetry rejected (connection not bound to race participant)", {
+        connId: conn.id,
+        raceId: race.id,
+        playerId: conn.playerId,
+        messageType,
+        players: race.players.map(p => ({ playerId: p.playerId, connId: p.connId, raceConnId: p.raceConnId }))
+      });
+      return;
+    }
+
+    if (!this.isRaceReadyForTelemetry(race) || !race.sequenceStarted) {
       return;
     }
 
     // Update race activity timestamp
     race.lastActivity = Date.now();
 
-    const distance = this.normalizeNumericToken(parts[1], 0);
-    const velocity = this.normalizeNumericToken(parts[2], 0);
-    const acceleration = this.normalizeNumericToken(parts[3], 0);
-    const tick = messageType === "I" ? this.normalizeNumericToken(parts[4], 0) : "0";
+    // Extract telemetry data - Flash client expects IO messages, not raw I/S
+    // The client's RaceOpponent class processes IO messages to update opponent position
+    const rawDistance = parts[1];
+    const rawVelocity = parts[2];
+    const rawAcceleration = parts[3];
+    const rawTick = parts[4] || "0";
+    
+    // Normalize values but preserve original if valid
+    const distance = this.normalizeNumericToken(rawDistance, "0");
+    const velocity = this.normalizeNumericToken(rawVelocity, "0");
+    const acceleration = this.normalizeNumericToken(rawAcceleration, "0");
+    const tick = this.normalizeNumericToken(rawTick, "0");
 
-    // Send RIVRDY once when first telemetry is received
-    if (!race.rivalsReadySent) {
-      race.rivalsReadySent = true;
-      for (const participant of race.players) {
-        const participantConn = this.connections.get(participant.connId);
-        if (participantConn) {
-          this.sendMessage(participantConn, '"ac", "RIVRDY", "s", 1');
-        }
-      }
-    }
-
-    // Forward telemetry to opponent
+    // Forward telemetry to opponent as IO message
+    // This is what the Flash client's amLive.oppObj.raceOpp.getPos() expects
     const ioMessage =
       `"ac", "IO", "d", ${distance}, "v", ${velocity}, "a", ${acceleration}, "t", ${tick}`;
 
     for (const participant of race.players) {
-      if (participant.connId === conn.id) continue;
-      const participantConn = this.connections.get(participant.connId);
-      if (participantConn) {
-        this.sendMessage(participantConn, ioMessage);
+      if (participant.raceConnId === conn.id) continue; // Skip sender
+      const participantConn = this.connections.get(participant.raceConnId);
+      if (participantConn && participantConn.socket && !participantConn.socket.destroyed) {
+        try {
+          this.sendMessage(participantConn, ioMessage);
+          
+          // Debug logging (can be disabled in production for performance)
+          if (this.debugTelemetry) {
+            this.logger.info("TCP forwarded telemetry as IO", {
+              fromConnId: conn.id,
+              toConnId: participantConn.id,
+              messageType,
+              raceId: race.id,
+              distance,
+              velocity
+            });
+          }
+        } catch (error) {
+          this.logger.error("TCP telemetry forward error", {
+            connId: conn.id,
+            opponentConnId: participantConn.id,
+            raceId: race.id,
+            error: error.message,
+            stack: error.stack,
+            socketDestroyed: participantConn.socket?.destroyed,
+            socketWritable: participantConn.socket?.writable
+          });
+          tcpErrors.inc({ category: "telemetry_forward" });
+        }
+      } else {
+        this.logger.warn("TCP opponent connection unavailable for telemetry", {
+          connId: conn.id,
+          opponentConnId: participant.raceConnId,
+          raceId: race.id,
+          socketExists: !!participantConn?.socket,
+          socketDestroyed: participantConn?.socket?.destroyed
+        });
       }
     }
 
     // Send periodic race state updates to keep connection alive
+    // Only send if no recent telemetry to avoid interference
     if (!race.lastStateUpdate || Date.now() - race.lastStateUpdate > 5000) {
       race.lastStateUpdate = Date.now();
       for (const participant of race.players) {
-        const participantConn = this.connections.get(participant.connId);
+        const participantConn = this.connections.get(participant.raceConnId);
         if (participantConn) {
           this.sendMessage(participantConn, '"ac", "RKA", "s", 1'); // Race Keep Alive
         }
@@ -840,9 +906,9 @@ export class TcpServer {
       `"ac", "RIVRT", "r", ${racerIndex}, "rt", ${reactionTime}, "i", ${Number(conn.playerId)}`;
 
     for (const participant of race.players) {
-      const participantConn = this.connections.get(participant.connId);
+      const participantConn = this.connections.get(participant.raceConnId);
       if (!participantConn) continue;
-      if (participant.connId !== conn.id) {
+      if (participant.raceConnId !== conn.id) {
         this.sendMessage(participantConn, `"ac", "RIVRTO", "rt", ${reactionTime}`);
       }
       this.sendMessage(participantConn, rivalsMessage);
@@ -1106,6 +1172,7 @@ export class TcpServer {
         maxPlayers: Number(room.maxPlayers ?? fallback.maxPlayers ?? 8),
         tcpRoomType: Number(room.tcpRoomType ?? fallback.tcpRoomType ?? 5),
         systemMessages: Number(room.systemMessages ?? fallback.systemMessages ?? 0),
+        stripId: Number(room.stripId ?? fallback.stripId ?? room.roomId ?? fallback.id ?? 0),
         players: room.players || [],
       };
     });
@@ -1115,13 +1182,18 @@ export class TcpServer {
     return this.getRoomDefinitions().find((room) => Number(room.roomId) === Number(roomId)) || null;
   }
 
-  buildLobbyRoomsXml() {
-    const roomsXml = this.getRoomDefinitions().map((room) => {
+  buildLobbyRoomsXml(stripId = 0) {
+    const allRooms = this.getRoomDefinitions();
+    const rooms = stripId > 0
+      ? allRooms.filter((room) => (room.stripId ?? room.roomId) === stripId)
+      : allRooms;
+    const roomsXml = rooms.map((room) => {
       const tcpPlayerCount = this.rooms.get(room.roomId)?.length ?? 0;
       const activePlayers = tcpPlayerCount > 0 ? tcpPlayerCount : (room.players.length ?? 0);
+      const pi = room.stripId ?? room.roomId;
       return (
         `<r rc='${activePlayers}' cy='${room.maxPlayers}' rt='${room.tcpRoomType}' ` +
-        `cid='${room.roomId}' rn='${this.escapeXml(room.name)}' ip='0' mo='0' sm='${room.systemMessages}' pro='0'/>`
+        `cid='${room.roomId}' pi='${pi}' rn='${this.escapeXml(room.name)}' ip='0' mo='0' sm='${room.systemMessages}' pro='0'/>`
       );
     }).join("");
     return `<rooms>${roomsXml}</rooms>`;
@@ -1157,9 +1229,15 @@ export class TcpServer {
   }
 
   buildRoomUsersXml(roomPlayers) {
-    const usersXml = roomPlayers.map((player) =>
-      `<u i='${player.playerId}' un='${this.escapeXml(player.username)}' ti='${Number(player.teamId || 0)}' tid='${Number(player.teamId || 0)}' tf='7D7D7D' ms='5' iv='0'/>`
-    ).join("");
+    const usersXml = roomPlayers.map((player) => {
+      let color = "7D7D7D"; // Default user grey
+      if (player.clientRole === 1) color = "FF0000"; // Admin
+      else if (player.clientRole === 2) color = "66CCFF"; // Mod
+      else if (player.clientRole === 8) color = "0000FF"; // Senior Mod
+      else if (player.clientRole === 6) color = "00AA00"; // Team Member Green
+      
+      return `<u i='${player.playerId}' un='${this.escapeXml(player.username)}' ti='${Number(player.teamId || 0)}' tid='${Number(player.teamId || 0)}' tf='${color}' ms='5' iv='0'/>`;
+    }).join("");
     return `<ul>${usersXml}</ul>`;
   }
 
@@ -1250,6 +1328,7 @@ export class TcpServer {
       carId: Number(conn.carId || 0),
       teamId: Number(conn.teamId || 0),
       teamRole: conn.teamRole || "",
+      clientRole: conn.clientRole || 5,
     });
     this.rooms.set(roomId, updatedPlayers);
 
@@ -1389,7 +1468,7 @@ export class TcpServer {
     const numericPlayerId = Number(playerId);
     const playerResult = await this.supabase
       .from("game_players")
-      .select("username, default_car_game_id, team_id")
+      .select("username, default_car_game_id, team_id, role")
       .eq("id", numericPlayerId)
       .maybeSingle();
 
@@ -1433,6 +1512,7 @@ export class TcpServer {
     conn.carId = Number(player?.default_car_game_id || 0);
     conn.teamId = Number(teamMember?.team_id || player?.team_id || 0);
     conn.teamRole = teamMember?.role || "";
+    conn.clientRole = getClientRoleForPlayer(player);
   }
 
   handleRaceRequest(conn, parts) {

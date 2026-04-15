@@ -58,7 +58,7 @@ export const config = {
   port: Number(env.PORT || 8082),
   tcpHost: env.TCP_HOST || env.HOST || "127.0.0.1",
   tcpPort: Number(env.TCP_PORT || 3724), // Default to 3724 (standard Nitto TCP port)
-  useFixtures: parseBooleanEnv(env.USE_FIXTURES, false),
+  useFixtures: false,
   supabaseUrl: env.SUPABASE_URL || "",
   supabaseServiceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY || "",
   backendRoot,

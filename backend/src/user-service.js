@@ -134,33 +134,6 @@ function deriveTestDriveState(car) {
   };
 }
 
-function parseTimestamp(value) {
-  if (!value) {
-    return null;
-  }
-
-  const date = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function deriveTestDriveState(car) {
-  const invitationId = Number(car?.test_drive_invitation_id || 0);
-  if (invitationId <= 0) {
-    return null;
-  }
-
-  const expiresAt = parseTimestamp(car.test_drive_expires_at);
-  const msRemaining = expiresAt ? expiresAt.getTime() - Date.now() : 0;
-  const expired = !expiresAt || msRemaining <= 0;
-  const hoursRemaining = expiresAt ? Math.max(0, Math.ceil(msRemaining / TEST_DRIVE_HOUR_MS)) : 0;
-
-  return {
-    active: 1,
-    expired: expired ? 1 : 0,
-    hoursRemaining,
-  };
-}
-
 export function normalizeOwnedCarRecord(car) {
   if (!car) {
     return car;
@@ -527,22 +500,6 @@ export async function createOwnedCar(
     car = await insertGameCarCompat(supabase, insert);
   }
 
-  let car;
-  try {
-    car = await insertGameCarCompat(supabase, insert);
-  } catch (error) {
-    if (!isMissingTestDriveColumnError(error)) {
-      throw error;
-    }
-
-    delete insert.test_drive_invitation_id;
-    delete insert.test_drive_name;
-    delete insert.test_drive_money_price;
-    delete insert.test_drive_point_price;
-    delete insert.test_drive_expires_at;
-    car = await insertGameCarCompat(supabase, insert);
-  }
-
   return normalizeOwnedCarRecord(car);
 }
 
@@ -727,23 +684,6 @@ export async function updatePlayerDefaultCar(supabase, playerId, gameCarId) {
     p_player_id: Number(playerId),
     p_game_car_id: Number(gameCarId),
   });
-
-  if (error) {
-    throw error;
-  }
-
-  return true;
-}
-
-export async function updatePlayerLocation(supabase, playerId, locationId) {
-  if (!supabase || !playerId || !locationId) {
-    return false;
-  }
-
-  const { error } = await supabase
-    .from("game_players")
-    .update({ location_id: Number(locationId) })
-    .eq("id", Number(playerId));
 
   if (error) {
     throw error;

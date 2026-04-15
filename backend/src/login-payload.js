@@ -5,8 +5,7 @@ import {
   PAINT_CATEGORIES_XML as STATIC_PAINT_CATS_XML,
   PAINTS_XML as STATIC_PAINTS_XML,
 } from "./paint-catalog-source.js";
-
-const LEGACY_LOGIN_ROLE = 5;
+import { getClientRoleForPlayer } from "./player-role.js";
 
 // ---------------------------------------------------------------------------
 // Static game data - these never change per-player, sourced from game data
@@ -132,13 +131,15 @@ function renderLoginNode(player) {
       ? 1
       : 0;
 
+  const clientRole = getClientRoleForPlayer(player);
+
   return (
     "<n id='login'>" +
-    `<r u='${escapeXml(player.username)}' i='${publicId}' r='${LEGACY_LOGIN_ROLE}' m='${player.money}' p='${player.points}' ` +
-    `sc='${player.score}' im='${player.image_id ?? 0}' act='${player.active}' vip='${player.vip}' ` +
-    `fbc='${player.facebook_connected}' alr='${player.alert_flag}' bpr='${player.blackcard_progress}' ` +
+    `<r u='${escapeXml(player.username)}' i='${publicId}' r='${clientRole}' m='${player.money}' p='${player.points}' ` +
+    `sc='${player.score}' im='${player.image_id ?? 0}' act='${player.active ? 1 : 0}' vip='${player.vip ? 1 : 0}' ` +
+    `fbc='${player.facebook_connected ? 1 : 0}' alr='${player.alert_flag ? 1 : 0}' bpr='${player.blackcard_progress ? 1 : 0}' ` +
     `sr='${player.sponsor_rating}' dt='${escapeXml(player.driver_text || "")}' tn='${escapeXml(player.team_name || "")}' ` +
-    `em='' me='' g='${genderValue}' rl='${player.respect_level}' mb='${player.message_badge}' ` +
+    `em='' me='' g='${genderValue}' rl='${player.respect_level}' mb='${player.message_badge ? 1 : 0}' ` +
     `ti='${player.title_id}' tr='${player.track_rank}' lid='${player.location_id}' ` +
     `bg='${player.background_id}' dc='${player.default_car_game_id || 0}'/>` +
     "</n>"

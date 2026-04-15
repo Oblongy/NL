@@ -41,22 +41,22 @@ const BASE_CAR_PRICES = [
 // list, not the old Del Sol). Normalize the affected showroom prices here so
 // Diamond Point / Vista Heights no longer expose obviously invalid pricing.
 const SPECIAL_SHOWROOM_PRICE_OVERRIDES = new Map([
-  ["26", 150000],  // Royal Purple Nissan Z
-  ["29", 160000],  // Acura NSX Race Edition
-  ["42", 165000],  // Royal Purple ZR1
+  ["26", 1500000],  // Royal Purple Nissan Z
+  ["29", 1600000],  // Acura NSX Race Edition
+  ["42", 16500000],  // Royal Purple ZR1
   ["66", 180000],  // Supercharged ZR1
   ["86", 145000],  // Drag Spec Camaro
   ["102", 325000], // SLR McLaren LE II
-  ["104", 120000], // SEMA Series Challenger
-  ["111", 180000], // STI Year of the Dragon
-  ["112", 200000], // STI Year of the Dragon II
-  ["121", 95000],  // Box
+  ["104", 1200000], // SEMA Series Challenger
+  ["111", 1800000], // STI Year of the Dragon
+  ["112", 2000000], // STI Year of the Dragon II
+  ["121", 5000],  // Box
   ["123", 500000], // McLaren F1 GTR
   ["129", 55000],  // Ram SRT-10
-  ["133", 95000],  // Scion FR-S Widebody
-  ["146", 65000],  // Ford Deuce Coupe Gold
-  ["147", 85000],  // Ford Deuce Coupe Champion
-  ["158", 240000], // RWB Stella
+  ["133", 950000],  // Scion FR-S Widebody
+  ["146", 650000],  // Ford Deuce Coupe Gold
+  ["147", 850000],  // Ford Deuce Coupe Champion
+  ["158", 2400000], // RWB Stella
 ]);
 
 const priceByCarId = new Map(BASE_CAR_PRICES);

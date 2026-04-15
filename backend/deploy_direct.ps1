@@ -1,0 +1,107 @@
+# Direct deployment script for Windows - syncs local backend to VPS
+# No Git required - uses SCP to copy files directly
+
+param(
+    [string]$VpsIp = "173.249.220.49",
+    [string]$VpsUser = "root"
+)
+
+$ErrorActionPreference = "Stop"
+$LocalBackendDir = $PSScriptRoot
+$VpsBackendDir = "/opt/NL/backend"
+
+Write-Host "=== Direct VPS Deployment ===" -ForegroundColor Cyan
+Write-Host "Local:  $LocalBackendDir"
+Write-Host "Remote: ${VpsUser}@${VpsIp}:${VpsBackendDir}"
+Write-Host ""
+
+# Check if ssh/scp are available
+try {
+    $null = Get-Command ssh -ErrorAction Stop
+    $null = Get-Command scp -ErrorAction Stop
+} catch {
+    Write-Host "Error: SSH/SCP not found. Install OpenSSH:" -ForegroundColor Red
+    Write-Host "  Settings > Apps > Optional Features > Add OpenSSH Client"
+    exit 1
+}
+
+# Create a temporary archive of the backend (excluding unnecessary files)
+Write-Host "Creating deployment package..." -ForegroundColor Yellow
+$TempArchive = Join-Path $env:TEMP "nl-backend-deploy.zip"
+$ExcludePatterns = @(
+    "node_modules",
+    ".git",
+    ".env",
+    "*.log",
+    ".deploy-backups",
+    "fixtures"
+)
+
+# Use 7zip or PowerShell compression
+if (Get-Command 7z -ErrorAction SilentlyContinue) {
+    $ExcludeArgs = $ExcludePatterns | ForEach-Object { "-xr!$_" }
+    & 7z a -tzip $TempArchive "$LocalBackendDir\*" $ExcludeArgs -mx1 | Out-Null
+} else {
+    # Fallback: create temp directory and copy files
+    $TempDir = Join-Path $env:TEMP "nl-backend-deploy"
+    if (Test-Path $TempDir) { Remove-Item $TempDir -Recurse -Force }
+    New-Item -ItemType Directory -Path $TempDir | Out-Null
+    
+    Get-ChildItem $LocalBackendDir -Recurse | Where-Object {
+        $item = $_
+        $shouldExclude = $false
+        foreach ($pattern in $ExcludePatterns) {
+            if ($item.FullName -like "*\$pattern\*" -or $item.Name -like $pattern) {
+                $shouldExclude = $true
+                break
+            }
+        }
+        -not $shouldExclude
+    } | ForEach-Object {
+        $dest = $_.FullName.Replace($LocalBackendDir, $TempDir)
+        $destDir = Split-Path $dest -Parent
+        if (-not (Test-Path $destDir)) {
+            New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+        }
+        if (-not $_.PSIsContainer) {
+            Copy-Item $_.FullName $dest -Force
+        }
+    }
+    
+    Compress-Archive -Path "$TempDir\*" -DestinationPath $TempArchive -Force
+    Remove-Item $TempDir -Recurse -Force
+}
+
+Write-Host "Uploading to VPS..." -ForegroundColor Yellow
+scp $TempArchive "${VpsUser}@${VpsIp}:/tmp/nl-backend-deploy.zip"
+
+Write-Host "Extracting and installing on VPS..." -ForegroundColor Yellow
+
+# Execute commands one by one to avoid line ending issues
+ssh "${VpsUser}@${VpsIp}" "cd /tmp && unzip -o nl-backend-deploy.zip -d nl-backend-temp"
+ssh "${VpsUser}@${VpsIp}" "rm -rf $VpsBackendDir/src"
+ssh "${VpsUser}@${VpsIp}" "rm -f $VpsBackendDir/package*.json $VpsBackendDir/*.js $VpsBackendDir/*.sh $VpsBackendDir/*.ps1"
+ssh "${VpsUser}@${VpsIp}" "mkdir -p $VpsBackendDir"
+ssh "${VpsUser}@${VpsIp}" "cp -rf /tmp/nl-backend-temp/* $VpsBackendDir/"
+ssh "${VpsUser}@${VpsIp}" "rm -rf /tmp/nl-backend-temp /tmp/nl-backend-deploy.zip"
+ssh "${VpsUser}@${VpsIp}" "cd $VpsBackendDir && npm install --omit=dev"
+ssh "${VpsUser}@${VpsIp}" "pm2 delete nl-backend || true"
+ssh "${VpsUser}@${VpsIp}" "pm2 start $VpsBackendDir/ecosystem.config.cjs"
+
+Write-Host ""
+Write-Host "Checking status..." -ForegroundColor Yellow
+ssh "${VpsUser}@${VpsIp}" "pm2 status"
+
+Write-Host ""
+Write-Host "Recent logs:" -ForegroundColor Yellow
+ssh "${VpsUser}@${VpsIp}" "pm2 logs nl-backend --lines 20 --nostream"
+
+Remove-Item $TempArchive -Force
+
+Write-Host ""
+Write-Host "=== Deployment Complete ===" -ForegroundColor Green
+Write-Host "Your local backend is now running on the VPS"
+Write-Host ""
+Write-Host "Test it:"
+Write-Host "  curl http://${VpsIp}/oneclient.html"
+Write-Host "  curl http://${VpsIp}/healthz"

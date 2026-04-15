@@ -6,9 +6,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const CATALOG_DIR = path.join(__dirname, "catalog-data");
 const PARTS_CATALOG_PATH = path.join(CATALOG_DIR, "parts-catalog.xml");
+const PARTS_CATEGORIES_PATH = path.join(CATALOG_DIR, "parts-categories.xml");
 const CARS_CATALOG_PATH = path.join(CATALOG_DIR, "cars-catalog.json");
 
 let cachedPartsCatalogXml = null;
+let cachedPartsCategoriesBody = null;
 let cachedCarsCatalogEntries = null;
 
 export function getFixturePartsCatalogXml() {
@@ -18,6 +20,15 @@ export function getFixturePartsCatalogXml() {
 
   cachedPartsCatalogXml = fs.readFileSync(PARTS_CATALOG_PATH, "utf8").trim();
   return cachedPartsCatalogXml;
+}
+
+export function getFixturePartsCategoriesBody() {
+  if (cachedPartsCategoriesBody) {
+    return cachedPartsCategoriesBody;
+  }
+
+  cachedPartsCategoriesBody = fs.readFileSync(PARTS_CATEGORIES_PATH, "utf8").trim();
+  return cachedPartsCategoriesBody;
 }
 
 export function getFixtureCarsCatalogEntries() {

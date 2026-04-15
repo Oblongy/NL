@@ -1,7 +1,18 @@
 import { RaceManager } from "./race-manager.js";
 import { buildLoginBody } from "./login-payload.js";
-import { PARTS_CATALOG_XML } from "./parts-catalog.js";
+import { PARTS_CATALOG_XML, PARTS_CATEGORIES_BODY } from "./parts-catalog.js";
+import { buildStaticCarsXml, FULL_CAR_CATALOG, getCatalogCarPrice } from "./car-catalog.js";
 import { randomUUID } from "node:crypto";
+import {
+  handleGetLeaderboard as handleGetLeaderboardImpl,
+  handleGetLeaderboardMenu as handleGetLeaderboardMenuImpl,
+  handleGetNews as handleGetNewsImpl,
+  handleGetSpotlightRacers as handleGetSpotlightRacersImpl,
+  handleGetTotalNewMail as handleGetTotalNewMailImpl,
+  handleGetRemarks as handleGetRemarksImpl,
+  handleGetEmailList as handleGetEmailListImpl,
+  handleGetBlackCardProgress as handleGetBlackCardProgressImpl,
+} from "./game-actions/social.js";
 import {
   escapeXml,
   failureBody,
@@ -49,7 +60,7 @@ const DEFAULT_DYNO_PURCHASE_STATE = Object.freeze({
   redLine: 7800,
 });
 const PART_XML_ENTRY_REGEX = /<p\b[^>]*\/>/g;
-const PART_XML_ATTR_REGEX = /(\w+)='([^']*)'/g;
+const PART_XML_ATTR_REGEX = /(\w+)=['"]([^'"]*)['"]/g;
 const TEAM_RIVALS_ROOM_ID = 1;
 const TEAM_ROLE = Object.freeze({
   LEADER: 1,
@@ -148,6 +159,8 @@ function parseShowroomPurchaseCatalogCarId(params) {
       || params.get("ci")
       || params.get("cid")
       || params.get("carid")
+      || params.get("catalogid")
+      || params.get("i")
       || params.get("id")
       || 0,
   );
@@ -158,13 +171,9 @@ function parseShowroomPurchasePrice(params) {
     params.get("pr")
       || params.get("price")
       || params.get("cp")
+      || params.get("p")
       || 0,
   );
-}
-
-function getCatalogCarPrice(catalogCarId) {
-  const car = FULL_CAR_CATALOG.find(([cid]) => cid === catalogCarId);
-  return car ? car[2] : 0;
 }
 
 async function resolveInternalPlayerIdByPublicId(supabase, publicId) {
@@ -1974,7 +1983,7 @@ async function handleLogin(context) {
 }
 
 async function handleCreateAccount(context) {
-  const { supabase, params, fixtureStore } = context;
+  const { supabase, params } = context;
   if (!supabase) {
     return null;
   }
@@ -2252,6 +2261,7 @@ async function handleGetAllParts(context) {
 async function handleGetOneCarEngine(context) {
   const { supabase, params } = context;
   const accountCarId = params.get("acid") || "";
+  let car = null;
 
   if (supabase) {
     const caller = await resolveCallerSession(context, "supabase:getonecarengine");
@@ -2261,15 +2271,37 @@ async function handleGetOneCarEngine(context) {
         source: caller?.source || "supabase:getonecarengine:bad-session",
       };
     }
+
+    if (accountCarId) {
+      car = await getCarById(supabase, accountCarId);
+    }
   }
 
-  const timing = [273,273,273,273,273,273,273,273,273,375,387,398,410,421,432,444,455,467,478,490,501,513,524,536,547,559,570,582,593,605,614,617,619,622,624,626,629,631,634,636,639,641,644,646,648,651,653,656,658,661,663,665,668,670,673,675,678,680,680,672,665,657,649,641,633,625,617,609,601,593,585,577,569,561,554,546,537,529,520,512,503,494,486,477,469,460,452,443,435,426,418,409,401,392,384,375,367,358,350,341];
+  // Read the car's installed parts — only b (boost), e (NOS), es (sound) change per build
+  let boostType = "0";
+  let nosSize = 0;
+
+  if (car?.parts_xml) {
+    const xml = car.parts_xml;
+    if (/<p[^>]*\bci=["']87["'][^>]*\/>/.test(xml)) boostType = "T";
+    else if (/<p[^>]*\bci=["']81["'][^>]*\/>/.test(xml)) boostType = "S";
+    const hasBottles = /<p[^>]*\bci=["']203["'][^>]*\/>/.test(xml);
+    const hasJets    = /<p[^>]*\bci=["']204["'][^>]*\/>/.test(xml);
+    if (hasBottles && hasJets) nosSize = 100;
+  }
+
+  const engineSound = boostType === "T" ? 2 : boostType === "S" ? 3 : 1;
+
+  // Look up per-car physics data based on catalog car ID
+  const catalogCarId = String(car?.catalog_car_id || "");
+  const eng = getCarEngineData(catalogCarId) || DEFAULT_ENGINE_DATA;
+  const timing = generateTimingArray(catalogCarId);
 
   const engineXml =
-    `<n2 es='1' sl='7200' sg='0' rc='0' tmp='0' r='3257' v='2.2398523985239853' ` +
-    `a='6800' n='7600' o='7800' s='1.208' b='0' p='0.15' c='11' e='0' d='T' ` +
-    `f='3.587' g='2.022' h='1.384' i='1' j='0.861' k='0' l='4.058' q='300' ` +
-    `m='100' t='100' u='28' w='0.4607' x='63.98' y='506.71' z='92.13' ` +
+    `<n2 es='${engineSound}' sl='7200' sg='0' rc='0' tmp='0' r='3257' v='2.2398523985239853' ` +
+    `a='6800' n='7600' o='7800' s='1.208' b='${boostType}' p='0.15' c='11' e='${nosSize}' d='T' ` +
+    `f='3.587' g='2.022' h='1.384' i='1' j='0.861' k='0' l='4.058' ` +
+    `q='${eng.q}' m='100' t='100' u='28' w='${eng.w}' x='${eng.x}' y='${eng.y}' z='${eng.z}' ` +
     `aa='4' ab='${accountCarId}' ac='9' ad='0' ae='100' af='100' ag='100' ah='100' ai='100' ` +
     `aj='0' ak='0' al='0' am='0' an='0' ao='100' ap='0' aq='0' ar='1' as='0' ` +
     `at='100' au='100' av='0' aw='100' ax='0'/>`;
@@ -2351,7 +2383,7 @@ async function handleBuyPart(context) {
     return { body: failureBody(), source: "supabase:buypart:no-car" };
   }
 
-  const catalogPart = partId ? getPartsCatalogById().get(partId) : null;
+  const catalogPart = partId ? getPartsCatalogById().get(Number(partId)) : null;
   let partName = "Part";
   let partSlotId = "";
   let partPs = "";
@@ -2463,7 +2495,7 @@ async function handleBuyEnginePart(context) {
     return { body: failureBody(), source: "supabase:buyenginepart:no-car" };
   }
 
-  const catalogPart = partId ? getPartsCatalogById().get(partId) : null;
+  const catalogPart = partId ? getPartsCatalogById().get(Number(partId)) : null;
   if (!catalogPart) {
     return { body: failureBody(), source: "supabase:buyenginepart:no-part" };
   }
@@ -2980,72 +3012,13 @@ async function handleRejectTestDrive(context) {
 // valid XML so the client can move on.
 // ---------------------------------------------------------------------------
 
-// Full car catalog - only cars with logo SWFs in the 10.0.03 game cache (104 cars)
-const FULL_CAR_CATALOG = [
-  ["1","Acura Integra GSR",24000], ["6","Acura RSX Type-S",24000], ["28","Acura NSX",140000],
-  ["20","Acura Integra Type R",30000], ["32","Acura RSX-S",26000],
-  ["11","BMW M3",54000],
-  ["7","Chevy Corvette C6",45000], ["18","Chevy Camaro",25000], ["52","Chevy Cobalt SS",20000],
-  ["82","Chevy C-10",5000], ["100","Chevy Impala SS",28000], ["46","Chevy Camaro SS",32000],
-  ["48","Chevy Camaro SS",42000], ["83","Chevy S-10",12000], ["34","Chevy Corvette Z06",75000],
-  ["108","Chevy Camaro Z28",35000],
-  ["10","Dodge Viper SRT-10",80000], ["15","Dodge Neon SRT-4",20000],
-  ["59","Dodge Challenger SRT-8",38000], ["60","Dodge Charger SRT-8",35000],
-  ["63","Dodge Challenger R/T",32000], ["75","Dodge Charger R/T",30000],
-  ["81","Dodge Ram SRT-10",45000], ["97","Dodge Charger SRT-8",40000],
-  ["109","Dodge Viper ACR-X",120000],
-  ["103","Dodge Dart GTS",18000],
-  ["3","Ford Mustang GT",30000], ["5","Ford GT",150000],
-  ["45","Ford SVT Cobra R",55000], ["68","Ford Shelby GT500",55000],
-  ["26","Ford Mustang Mach 1",35000], ["71","Ford Mustang Boss 302",42000],
-  ["8","Honda Integra Type R",27000], ["9","Honda S2000",33000], ["31","Honda Civic Si",18000],
-  ["37","Honda Civic Si",19000], ["44","Honda Prelude DOHC VTEC",22000], ["74","Honda CR-X Si",12000],
-  ["76","Honda Civic Si",20000], ["105","Honda Civic Type R",35000], ["29","Honda Del Sol VTEC",16000],
-  ["30","Honda Accord Euro R",25000],
-  ["4","Infiniti G35 Coupe",32000], ["51","Infiniti G37S",38000],
-  ["54","Lexus IS 300",33000], ["66","Lexus SC 300",38000],
-  ["57","Mazda Furai",500000], ["19","Mazdaspeed 6 Bergenholtz",25000], ["23","Mazdaspeed 3",20000],
-  ["24","Mazda RX-8",28000], ["16","Mazda RX-7",30000], ["73","Mazda RX-3",3000],
-  ["107","Mazda MX-5 Miata",24000], ["36","Mazda Speed3",20000], ["86","Mazda RX-7 Spirit R",75000],
-  ["2","Mitsubishi Lancer Evo VIII",35000], ["87","Mitsubishi Lancer Evo X",38000],
-  ["88","Mitsubishi Eclipse GSX",25000], ["17","Mitsubishi Eclipse GT",24000],
-  ["27","Mitsubishi 3000GT VR-4",40000], ["40","Mitsubishi Lancer Evo IX",35000],
-  ["104","Mitsubishi Galant VR-4",28000],
-  ["55","Nissan 370Z",35000], ["38","Nissan Skyline GT-R",80000], ["35","Nissan 300ZX",35000],
-  ["47","Nissan Sentra SE-R",16000], ["41","Nissan 240SX",18000], ["25","Nissan 350Z",30000],
-  ["21","Nissan GT-R",85000], ["39","Nissan Pulsar NX",12000], ["42","Nissan Silvia S15",25000],
-  ["69","Nissan 180SX",20000], ["70","Nissan 240SX Fastback",18000], ["98","Nissan Skyline R32 GT-R",60000],
-  ["101","Nissan GT-R Black Edition",110000], ["102","Nissan Leaf",30000],
-  ["110","Nissan Silvia S13",18000], ["111","Nissan Sentra B15",14000], ["112","Nissan Altima SE-R",22000],
-  ["79","Plymouth 'Cuda",5000], ["80","Plymouth Road Runner",4000],
-  ["33","Pontiac Solstice GXP",25000], ["43","Pontiac GTO",33000], ["49","Pontiac Trans Am",28000],
-  ["50","Pontiac GTO",40000], ["56","Pontiac GTO Judge",6000], ["85","Pontiac Firebird Trans Am",26000],
-  ["13","Scion tC",17000], ["22","Scion xB",15000], ["95","Scion tC",18000],
-  ["89","Subaru Impreza WRX STI",38000], ["92","Subaru Impreza WRX STI",36000],
-  ["91","Subaru Impreza WRX STI",37000], ["12","Subaru Impreza WRX",28000],
-  ["14","Toyota Supra",42000], ["61","Toyota MR2",15000],
-  ["65","Toyota Celica GT-S",19000], ["99","Toyota Corolla GT-S",12000],
-  ["58","VW Golf R32",32000], ["62","VW Beetle",18000], ["67","VW Golf GTI",22000],
-  ["64","VW Golf GTI",24000], ["77","VW Corrado",20000], ["84","VW Jetta GLI",22000],
-  ["72","Buick Grand National",30000],
-  ["53","Cadillac CTS-V",60000],
-  ["90","McLaren MP4-12C",230000],
-  ["94","Honda Fit Sport",15000],
-];
-
-function getCatalogCarRecord(catalogCarId) {
-  return FULL_CAR_CATALOG.find(([cid]) => Number(cid) === Number(catalogCarId)) || null;
-}
-
 function getCatalogCarName(catalogCarId) {
-  return getCatalogCarRecord(catalogCarId)?.[1] || "Unknown";
+  return FULL_CAR_CATALOG.find(([cid]) => Number(cid) === Number(catalogCarId))?.[1] || "Unknown";
 }
 
 function getCatalogCarPointPrice(catalogCarId) {
   const moneyPrice = getCatalogCarPrice(catalogCarId);
-  if (moneyPrice <= 0) {
-    return -1;
-  }
+  if (moneyPrice <= 0) return -1;
   return Math.max(1, Math.round(moneyPrice / 1000));
 }
 
@@ -3080,6 +3053,7 @@ const DEFAULT_SHOWROOM_CAR_SPEC = {
 };
 
 const SHOWROOM_CAR_SPEC_OVERRIDES = new Map([
+  ["1", { eo: "1.8L I4 VTEC", dt: "FWD", np: "4", ct: "Coupe", et: "14.5 sec 1/4", tt: "130 mph top speed", sw: "2600", st: "6.5", y: "1999", hp: 170, tq: 128 }],
   ["5", { eo: "5.4L V8 SC", dt: "RWD", np: "2", ct: "Coupe", et: "11.6 sec 1/4", tt: "205 mph top speed", sw: "3480", st: "3.6", y: "2005" }],
   ["7", { eo: "6.0L V8", dt: "RWD", np: "2", ct: "Coupe", et: "12.5 sec 1/4", tt: "186 mph top speed", sw: "3210", st: "4.2", y: "2005" }],
   ["10", { eo: "8.3L V10", dt: "RWD", np: "2", ct: "Roadster", et: "11.9 sec 1/4", tt: "190 mph top speed", sw: "3410", st: "3.9", y: "2005" }],
@@ -3271,6 +3245,190 @@ function getShowroomCarSpec(carId) {
   return SHOWROOM_CAR_SPEC_OVERRIDES.get(String(carId || "")) || DEFAULT_SHOWROOM_CAR_SPEC;
 }
 
+const BASE_TIMING_CURVE = Object.freeze([
+  91, 91, 91, 91, 91, 91, 91, 91, 91, 93, 95, 98, 102, 106, 109, 112, 115,
+  117, 119, 121, 122, 123, 124, 125, 126, 126, 127, 127, 128, 128, 128, 128,
+  128, 127, 127, 127, 126, 126, 125, 125, 124, 123, 122, 121, 120, 119, 118,
+  117, 116, 115, 113, 112, 110, 108, 106, 104, 101, 98, 98, 96, 95, 93, 91,
+  89, 87, 85, 83, 81, 79, 77, 75, 73, 71, 69, 67, 65, 63, 61, 59, 57, 55, 53,
+  51, 49, 47, 45, 43, 41, 39, 37, 35, 33, 31, 29, 27, 25, 23, 21, 19, 17, 15,
+  13,
+]);
+
+function generateTimingArray(catalogCarId) {
+  const spec = getShowroomCarSpec(catalogCarId);
+  const power = Number(spec.hp) || 170;
+  const weight = Number(spec.sw) || 2800;
+  const powerToWeight = power / weight;
+  const baseTime = 15.5;
+  const estimatedTime = baseTime - (powerToWeight - 0.06) * 20;
+  const scale = estimatedTime / baseTime;
+
+  return BASE_TIMING_CURVE.map((value) => Math.max(1, Math.round(value * scale)));
+}
+
+// PLACEHOLDER — per-car n2 physics values. These are approximations until real
+// capture data is available for each car. The only confirmed data is from a
+// fully-built car (acid=39) which ran ~5s with NOS.
+// Values scaled from that reference: q/z/y/x/w control power output.
+// TODO: replace with real getonecarengine capture data per car.
+const CAR_ENGINE_DATA = new Map([
+  // PLACEHOLDER — scaled from one known data point (built car ~5s).
+  // Formula: q = 300*(5/et)^2, others proportional. ET from SHOWROOM_CAR_SPEC_OVERRIDES or price tier.
+  // TODO: replace with real getonecarengine capture data per car.
+  ["1", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
+  ["2", { q: "48", z: "14.74", y: "81.07", x: "10.24", w: "0.0737" }],
+  ["3", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["4", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["5", { q: "55.74", z: "17.12", y: "94.14", x: "11.89", w: "0.0856" }],
+  ["6", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
+  ["7", { q: "48", z: "14.74", y: "81.07", x: "10.24", w: "0.0737" }],
+  ["8", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
+  ["9", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["10", { q: "52.96", z: "16.26", y: "89.46", x: "11.3", w: "0.0813" }],
+  ["11", { q: "43.7", z: "13.42", y: "73.82", x: "9.32", w: "0.0671" }],
+  ["13", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
+  ["14", { q: "45.07", z: "13.84", y: "76.12", x: "9.61", w: "0.0692" }],
+  ["15", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
+  ["16", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["17", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
+  ["18", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["19", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
+  ["20", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["21", { q: "53.86", z: "16.54", y: "90.98", x: "11.49", w: "0.0827" }],
+  ["22", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
+  ["23", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["24", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["25", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["26", { q: "48", z: "14.74", y: "81.07", x: "10.24", w: "0.0737" }],
+  ["28", { q: "45.07", z: "13.84", y: "76.12", x: "9.61", w: "0.0692" }],
+  ["29", { q: "56.71", z: "17.42", y: "95.79", x: "12.09", w: "0.0871" }],
+  ["30", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
+  ["31", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
+  ["33", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
+  ["35", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["37", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
+  ["38", { q: "43.7", z: "13.42", y: "73.82", x: "9.32", w: "0.0671" }],
+  ["39", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
+  ["40", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["41", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
+  ["42", { q: "48", z: "14.74", y: "81.07", x: "10.24", w: "0.0737" }],
+  ["43", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["44", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
+  ["45", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["46", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["47", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
+  ["48", { q: "44.38", z: "13.63", y: "74.96", x: "9.46", w: "0.0682" }],
+  ["49", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["50", { q: "48", z: "14.74", y: "81.07", x: "10.24", w: "0.0737" }],
+  ["51", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["52", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
+  ["55", { q: "42.4", z: "13.02", y: "71.61", x: "9.04", w: "0.0651" }],
+  ["56", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["57", { q: "78.09", z: "23.98", y: "131.9", x: "16.65", w: "0.1199" }],
+  ["58", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["59", { q: "43.7", z: "13.42", y: "73.82", x: "9.32", w: "0.0671" }],
+  ["60", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["61", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
+  ["62", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
+  ["63", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["64", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
+  ["65", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
+  ["66", { q: "56.71", z: "17.42", y: "95.79", x: "12.09", w: "0.0871" }],
+  ["67", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
+  ["68", { q: "48.78", z: "14.98", y: "82.39", x: "10.4", w: "0.0749" }],
+  ["69", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
+  ["70", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
+  ["71", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["72", { q: "40.55", z: "12.45", y: "68.49", x: "8.65", w: "0.0623" }],
+  ["73", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
+  ["74", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
+  ["75", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["76", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
+  ["77", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
+  ["78", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["79", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["80", { q: "48", z: "14.74", y: "81.07", x: "10.24", w: "0.0737" }],
+  ["81", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["82", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
+  ["83", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
+  ["84", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
+  ["85", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["86", { q: "47.24", z: "14.51", y: "79.79", x: "10.07", w: "0.0725" }],
+  ["87", { q: "42.4", z: "13.02", y: "71.61", x: "9.04", w: "0.0651" }],
+  ["88", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
+  ["89", { q: "42.4", z: "13.02", y: "71.61", x: "9.04", w: "0.0651" }],
+  ["90", { q: "61.98", z: "19.04", y: "104.69", x: "13.22", w: "0.0952" }],
+  ["91", { q: "43.04", z: "13.22", y: "72.7", x: "9.18", w: "0.0661" }],
+  ["92", { q: "43.7", z: "13.42", y: "73.82", x: "9.32", w: "0.0671" }],
+  ["94", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
+  ["95", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
+  ["97", { q: "48", z: "14.74", y: "81.07", x: "10.24", w: "0.0737" }],
+  ["98", { q: "47.24", z: "14.51", y: "79.79", x: "10.07", w: "0.0725" }],
+  ["99", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
+  ["100", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["101", { q: "55.74", z: "17.12", y: "94.14", x: "11.89", w: "0.0856" }],
+  ["102", { q: "48", z: "14.74", y: "81.07", x: "10.24", w: "0.0737" }],
+  ["104", { q: "56.71", z: "17.42", y: "95.79", x: "12.09", w: "0.0871" }],
+  ["105", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
+  ["106", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
+  ["107", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
+  ["109", { q: "60.87", z: "18.69", y: "102.81", x: "12.98", w: "0.0935" }],
+  ["110", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["111", { q: "48", z: "14.74", y: "81.07", x: "10.24", w: "0.0737" }],
+  ["112", { q: "56.71", z: "17.42", y: "95.79", x: "12.09", w: "0.0871" }],
+  ["113", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["114", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
+  ["115", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
+  ["116", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
+  ["117", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["118", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
+  ["119", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["120", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["121", { q: "48", z: "14.74", y: "81.07", x: "10.24", w: "0.0737" }],
+  ["122", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
+  ["123", { q: "56.71", z: "17.42", y: "95.79", x: "12.09", w: "0.0871" }],
+  ["124", { q: "56.71", z: "17.42", y: "95.79", x: "12.09", w: "0.0871" }],
+  ["125", { q: "48", z: "14.74", y: "81.07", x: "10.24", w: "0.0737" }],
+  ["126", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
+  ["127", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["128", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["129", { q: "48", z: "14.74", y: "81.07", x: "10.24", w: "0.0737" }],
+  ["133", { q: "56.71", z: "17.42", y: "95.79", x: "12.09", w: "0.0871" }],
+  ["134", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
+  ["135", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
+  ["136", { q: "56.71", z: "17.42", y: "95.79", x: "12.09", w: "0.0871" }],
+  ["137", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
+  ["138", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
+  ["139", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["140", { q: "56.71", z: "17.42", y: "95.79", x: "12.09", w: "0.0871" }],
+  ["141", { q: "56.71", z: "17.42", y: "95.79", x: "12.09", w: "0.0871" }],
+  ["142", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["143", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["144", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
+  ["145", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
+  ["146", { q: "48", z: "14.74", y: "81.07", x: "10.24", w: "0.0737" }],
+  ["147", { q: "56.71", z: "17.42", y: "95.79", x: "12.09", w: "0.0871" }],
+  ["148", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
+  ["149", { q: "48", z: "14.74", y: "81.07", x: "10.24", w: "0.0737" }],
+  ["150", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
+  ["153", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
+  ["155", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
+  ["156", { q: "48", z: "14.74", y: "81.07", x: "10.24", w: "0.0737" }],
+  ["158", { q: "56.71", z: "17.42", y: "95.79", x: "12.09", w: "0.0871" }],
+  ["159", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
+  ["160", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
+]);
+
+function getCarEngineData(catalogCarId) {
+  return CAR_ENGINE_DATA.get(String(catalogCarId || "")) || null;
+}
+
+// Default stock physics — used for any car without a specific entry.
+// Approximated from the one known data point (built car ~5s).
+// TODO: replace with real capture data.
+const DEFAULT_ENGINE_DATA = { q: "100", z: "30.71", y: "168.90", x: "21.33", w: "0.1536" };
+
 function buildShowroomXml(locationId, starterOnly = false) {
   const targetLocationId = Number(locationId) || 100;
 
@@ -3294,27 +3452,43 @@ function buildShowroomXml(locationId, starterOnly = false) {
   const catId = locationToCatId[targetLocationId] || 1001;
 
   const selectedCarId = eligible.length > 0 ? eligible[0][0] : "0";
+  const showroomColors = [
+    { paintId: "5", colorCode: "C0C0C0" },
+    { paintId: "15", colorCode: "CC0000" },
+    { paintId: "3", colorCode: "000000" },
+    { paintId: "4", colorCode: "FFFFFF" },
+    { paintId: "16", colorCode: "0033FF" },
+    { paintId: "6", colorCode: "FFD700" },
+    { paintId: "7", colorCode: "00AA00" },
+    { paintId: "8", colorCode: "FF6600" },
+  ];
 
   const carNodes = eligible
     .map(([cid, name, price], index) => {
       const escapedName = escapeXml(name);
-      const colorCode = ["C0C0C0","CC0000","000000","FFFFFF","0033FF","FFD700","00AA00","FF6600"][index % 8];
-      const paintIds = ["5","15","3","4","16","6","7","8"]; // Corresponding paint IDs
-      const paintId = paintIds[index % 8];
       const spec = getShowroomCarSpec(cid);
+      const primarySwatch = showroomColors[index % showroomColors.length];
+      const wheelSize = String(Math.max(15, Math.min(19, 15 + (index % 5))));
+      const wheelId = String(1 + (index % 8));
+      const swatchNodes = showroomColors
+        .map(({ paintId, colorCode }) => `<p i='${paintId}' cd='${colorCode}'/>`)
+        .join("");
+      const purchasePrice = Number(price) || 0;
+      const pointPrice = getCatalogCarPointPrice(cid);
+
       return (
         `<c ai='0' id='${cid}' i='${cid}' ci='${cid}' ` +
         `sel='${index === 0 ? "1" : "0"}' pi='${catId}' pn='' ` +
         `l='${targetLocationId}' lid='${targetLocationId}' cid='${targetLocationId}' ` +
-        `b='0' n='${escapedName}' c='${escapedName}' p='${price}' pr='${price}' pp='0' cp='${price}' ` +
-        `lk='0' ae='0' cc='${colorCode}' g='' ` +
+        `b='0' n='${escapedName}' c='${escapedName}' p='${purchasePrice}' pr='${purchasePrice}' pp='${pointPrice}' cp='${purchasePrice}' ` +
+        `lk='0' ae='0' cc='${primarySwatch.colorCode}' g='' ii='0' ` +
+        `wid='${wheelId}' ws='${wheelSize}' rh='0' ts='0' mo='0' ` +
+        `cbl='0' cb='0' po='0' poc='0' led='' ` +
         `le='0' lea='999' les='0' lec='999' let='0' ` +
         `eo='${escapeXml(spec.eo)}' dt='${escapeXml(spec.dt)}' np='${escapeXml(spec.np)}' ct='${escapeXml(spec.ct)}' ` +
         `et='${escapeXml(spec.et)}' tt='${escapeXml(spec.tt)}' sw='${escapeXml(spec.sw)}' st='${escapeXml(spec.st)}' y='${escapeXml(spec.y)}' ` +
-        `wid='1' ws='17'>` +
-        `<ws><w wid='1' id='1001' ws='17'/></ws>` +
-        `<p i='1001' ci='14' n='Factory 17&quot;' in='1' cc='' pdi='1' di='1' pt='c' ps='17'/>` +
-        `<ps><p i='${paintId}' cd='${colorCode}'/></ps>` +
+        `>` +
+        swatchNodes +
         `</c>`
       );
     })
@@ -3326,106 +3500,27 @@ function buildShowroomXml(locationId, starterOnly = false) {
 async function handleMoveLocation(context) {
   const { supabase, params } = context;
   const locationId = Number(params.get("lid") || params.get("l") || params.get("id") || 0);
+  const paymentType = String(params.get("pt") || "m").toLowerCase(); // "p"=points, "m"=money
 
   if (supabase && locationId) {
     const caller = await resolveCallerSession(context, "supabase:movelocation");
     if (caller?.ok) {
       await updatePlayerLocation(supabase, caller.playerId, locationId);
-      
-      // Fetch updated player data to return to client
-      const updatedPlayer = await getPlayerById(supabase, caller.playerId);
-      if (updatedPlayer) {
-        return {
-          body: wrapSuccessData(renderUserSummary(updatedPlayer, { publicId: getPublicIdForPlayer(updatedPlayer) })),
-          source: "supabase:movelocation",
-        };
-      }
+      // s=1 means points payment, s=2 means money payment
+      // m = current balance (client sets its display to this value)
+      const player = await getPlayerById(supabase, caller.playerId);
+      const s = paymentType === "p" ? 1 : 2;
+      const balance = s === 1 ? Number(player?.points ?? 0) : Number(player?.money ?? 0);
+      return {
+        body: `"s", ${s}, "m", ${balance}`,
+        source: "supabase:movelocation",
+      };
     }
   }
 
-  return { body: `"s", 1`, source: `stub:movelocation:${locationId}` };
+  return { body: `"s", 2, "m", 0`, source: `stub:movelocation:${locationId}` };
 }
 
-function generateCarStats(carId) {
-  const spec = getShowroomCarSpec(carId);
-  const car = FULL_CAR_CATALOG.find(([cid]) => cid === carId);
-  const price = car ? car[2] : 0;
-
-  const stats = {
-    es: 1,
-    sl: 7200,
-    sg: 0,
-    rc: 0,
-    tmp: 0,
-    r: 2600,
-    v: 1.65,
-    a: 6800,
-    n: 7600,
-    o: 7800,
-    s: 0.815,
-    b: 0,
-    p: 0.15,
-    c: 11,
-    e: 0,
-    d: 'T',
-    f: 3.23,
-    g: 1.9,
-    h: 1.269,
-    i: 0.967,
-    j: 0.738,
-    k: 0,
-    l: 4.4,
-    q: spec.hp || 100,
-    m: spec.tq || 100,
-    t: 100,
-    u: 28,
-    w: 0.144,
-    x: 41.2,
-    y: spec.tq || 128,
-    z: spec.hp || 170,
-    aa: 4,
-    ab: carId,
-    ac: 9,
-    ad: 0,
-    ae: 100,
-    af: 100,
-    ag: 100,
-    ah: 100,
-    ai: 100,
-    aj: 0,
-    ak: 0,
-    al: 0,
-    am: 0,
-    an: 0,
-    ao: 100,
-    ap: 0,
-    aq: 0,
-    ar: 1,
-    as: 0,
-    at: 100,
-    au: 100,
-    av: 0,
-    aw: 100,
-    ax: 0,
-  };
-
-  return `<n2 ${Object.entries(stats).map(([key, value]) => `${key}='${value}'`).join(' ')}><r g1='${stats.f}' g2='${stats.g}' g3='${stats.h}' g4='${stats.i}' g5='${stats.j}' g6='0'/></n2>`;
-}
-
-function generateTimingArray(carId) {
-  const spec = getShowroomCarSpec(carId);
-  const power = Number(spec.hp) || 170;
-  const weight = Number(spec.sw) || 2800;
-  const pwr = power / weight;
-
-  const baseTime = 15.5;
-  const time = baseTime - (pwr - 0.06) * 20;
-
-  const baseTiming = [91,91,91,91,91,91,91,91,91,93,95,98,102,106,109,112,115,117,119,121,122,123,124,125,126,126,127,127,128,128,128,128,128,127,127,127,126,126,125,125,124,123,122,121,120,119,118,117,116,115,113,112,110,108,106,104,101,98,98,96,95,93,91,89,87,85,83,81,79,77,75,73,71,69,67,65,63,61,59,57,55,53,51,49,47,45,43,41,39,37,35,33,31,29,27,25,23,21,19,17,15,13];
-  const scale = time / baseTime;
-
-  return baseTiming.map(t => Math.round(t * scale));
-}
 
 async function handleListClassified(context) {
   // Empty classified ads list.
@@ -3534,29 +3629,48 @@ async function handleGetGearInfo(context) {
 }
 
 async function handlePractice(context) {
-  const { logger, params } = context;
-  
-  // Get the car ID from the request
-  const carId = params.get("acid");
-  const carStats = generateCarStats(carId);
-  const timing = generateTimingArray(carId);
-  
-  // Format: "s", 1, "d", "<xml/>", "t", [array]
-  const body = `"s", 1, "d", "${carStats}", "t", [${timing.join(', ')}]`;
-  
-  if (logger) {
-    logger.info("Practice response", {
-      carId,
-      bodyLength: body.length,
-      bodyPreview: body.substring(0, 200),
-      timingLength: timing.length
-    });
+  const { supabase, logger, params } = context;
+  const accountCarId = params.get("acid") || "";
+  let car = null;
+
+  // Read installed parts — only b (boost), e (NOS), es (sound) change per build
+  let boostType = "0";
+  let nosSize = 0;
+
+  if (supabase && accountCarId) {
+    car = await getCarById(supabase, accountCarId);
+    if (car?.parts_xml) {
+      const xml = car.parts_xml;
+      if (/<p[^>]*\bci=["']87["'][^>]*\/>/.test(xml)) boostType = "T";
+      else if (/<p[^>]*\bci=["']81["'][^>]*\/>/.test(xml)) boostType = "S";
+      const hasBottles = /<p[^>]*\bci=["']203["'][^>]*\/>/.test(xml);
+      const hasJets    = /<p[^>]*\bci=["']204["'][^>]*\/>/.test(xml);
+      if (hasBottles && hasJets) nosSize = 100;
+    }
   }
-  
-  return { 
-    body,
-    source: "generated:practice" 
-  };
+
+  const engineSound = boostType === "T" ? 2 : boostType === "S" ? 3 : 1;
+
+  // Look up per-car physics data based on catalog car ID
+  const catalogCarId = String(car?.catalog_car_id || "");
+  const eng = getCarEngineData(catalogCarId) || DEFAULT_ENGINE_DATA;
+  const timing = generateTimingArray(catalogCarId);
+
+  const carStats =
+    `<n2 es='${engineSound}' sl='7200' sg='0' rc='0' tmp='0' r='3257' v='2.2398523985239853' ` +
+    `a='6800' n='7600' o='7800' s='1.208' b='${boostType}' p='0.15' c='11' e='${nosSize}' d='T' ` +
+    `f='3.587' g='2.022' h='1.384' i='1' j='0.861' k='0' l='4.058' ` +
+    `q='${eng.q}' m='100' t='100' u='28' w='${eng.w}' x='${eng.x}' y='${eng.y}' z='${eng.z}' ` +
+    `aa='4' ab='${accountCarId}' ac='9' ad='0' ` +
+    `ae='100' af='100' ag='100' ah='100' ai='100' ` +
+    `aj='0' ak='0' al='0' am='0' an='0' ao='100' ap='0' aq='0' ar='1' as='0' ` +
+    `at='100' au='100' av='0' aw='100' ax='0'/>`;
+
+  const body = `"s", 1, "d", "${carStats}", "t", [${timing.join(', ')}]`;
+
+  logger?.info("Practice response", { carId: accountCarId, catalogCarId, boostType, nosSize, bodyLength: body.length });
+
+  return { body, source: "generated:practice" };
 }
 
 const COMPUTER_TOURNAMENTS = [
@@ -3661,11 +3775,12 @@ async function handleGetTeamAvatarAge(context) {
   };
 }
 
+async function handleGetLeaderboard(context) {
+  return handleGetLeaderboardImpl(context);
+}
+
 async function handleGetLeaderboardMenu(context) {
-  return {
-    body: wrapSuccessData(`<menu tc='10' ttc='3'/>`),
-    source: "generated:getleaderboardmenu",
-  };
+  return handleGetLeaderboardMenuImpl(context);
 }
 
 async function handleGetNews(context) {
@@ -3686,19 +3801,42 @@ async function handleGetSpotlightRacers(context) {
   };
 }
 
-async function handleGetLeaderboard(context) {
-  const reportType = String(context.params.get("n") || "sc").replace(/[^a-z]/gi, "") || "sc";
+
+async function handleGetRacerSearch(context) {
+  const { supabase, params, logger } = context;
+  const username = params.get("u") || params.get("un") || params.get("username") || "";
+
+  if (!supabase || !username) {
+    logger.warn("Racer search: no username provided");
+    return { body: wrapSuccessData(`<u></u>`), source: "racersearch:empty" };
+  }
+
+  const { data: players, error } = await supabase
+    .from("game_players")
+    .select("id, username, client_role")
+    .ilike("username", `%${username}%`)
+    .limit(20);
+
+  if (error) {
+    logger.error("Racer search error", { error: error.message });
+    return { body: wrapSuccessData(`<u></u>`), source: "supabase:racersearch:error" };
+  }
+
+  const nodes = (players || [])
+    .map((p) => `<r u='${escapeXml(p.username)}' i='${getPublicIdForPlayer(p)}' r='${p.client_role}' />`)
+    .join("");
 
   return {
-    body: wrapSuccessData(`<leaderboard id='${reportType}'><rows/></leaderboard>`),
-    source: "stub:getleaderboard",
+    body: wrapSuccessData(`<u>${nodes}</u>`),
+    source: "supabase:racersearch",
   };
 }
 
-async function handleGetRacerSearch(context) {
+async function handleGetSupport(context) {
+  // Support request handler for moderator tools and player reports
   return {
-    body: wrapSuccessData(`<u></u>`),
-    source: "stub:racersearch",
+    body: `"s", 1`,
+    source: "stub:getsupport",
   };
 }
 
@@ -3778,20 +3916,8 @@ const handlers = {
   gettworacerscars: handleGetTwoRacersCars,
   getallcars: handleGetAllCars,
   getonecar: handleGetAllCars, // same shape as getallcars, returns the player's car(s)
-  getallcats: async (context) => {
-    // For now, return a placeholder list of categories.
-    // In a full implementation, these would come from a database or a more detailed catalog.
-    const categoriesXml = `
-      <cats>
-        <c id='1' n='Engine'/>
-        <c id='2' n='Body'/>
-        <c id='3' n='Interior'/>
-        <c id='4' n='Wheels & Tires'/>
-        <c id='5' n='Performance'/>
-        <c id='6' n='Special'/>
-      </cats>
-    `;
-    return { body: `"s", 1, "d", "${categoriesXml}"`, source: "generated:getallcats" };
+  getallcats: async () => {
+    return { body: PARTS_CATEGORIES_BODY, source: "fixture:getallcats" };
   },
   updatedefaultcar: handleUpdateDefaultCar,
   getcarprice: handleGetCarPrice,
@@ -3868,6 +3994,7 @@ const handlers = {
   getnews: handleGetNews,
   getspotlightracers: handleGetSpotlightRacers,
   racersearch: handleGetRacerSearch,
+  getsupport: handleGetSupport,
   getdescription: handleGetDescription,
   getavatarage: handleGetAvatarAge,
   getteamavatarage: handleGetTeamAvatarAge,
@@ -3885,6 +4012,10 @@ const handlers = {
   uploadrequest: handleUploadRequest,
   // --- Race ---
   practice: handlePractice,
+  endpractice: async () => ({ body: `"s", 1`, source: "stub:endpractice" }),
+  leavepractice: async () => ({ body: `"s", 1`, source: "stub:leavepractice" }),
+  exitpractice: async () => ({ body: `"s", 1`, source: "stub:exitpractice" }),
+  practiceend: async () => ({ body: `"s", 1`, source: "stub:practiceend" }),
   // --- Computer Tournaments (10.0.03 source of truth) ---
   ctgr: async (context) => {
     const { params, logger } = context;
@@ -4110,7 +4241,7 @@ const handlers = {
 };
 
 export async function handleGameAction(context) {
-  const { action, rawQuery, decodedQuery, fixtureStore, logger } = context;
+  const { action, rawQuery, decodedQuery, logger } = context;
   const normalizedAction = String(action || "");
   const handler = handlers[normalizedAction] || handlers[normalizedAction.toLowerCase()];
 
@@ -4121,21 +4252,7 @@ export async function handleGameAction(context) {
     }
   }
 
-  const fixture = fixtureStore?.find(decodedQuery, action, rawQuery);
-  if (fixture) {
-    return {
-      body: fixture.body,
-      source: `fixture:${fixture.key}`,
-    };
-  }
-
-  logger.warn("No handler for action", {
-    action,
-    decodedQuery,
-    fixturesEnabled: Boolean(fixtureStore),
-  });
-  // Return success stub so the client doesn't show error 003 for unknown actions.
-  // Returning "s", 0 breaks the UI flow for many calls.
+  logger.warn("No handler for action", { action, decodedQuery });
   return {
     body: `"s", 1`,
     source: "unimplemented:stub",

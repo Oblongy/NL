@@ -1,6 +1,7 @@
 import { config } from "./config.js";
 import { logger } from "./logger.js";
 import { createGameSupabase } from "./supabase-client.js";
+import { purgeExpiredSessions } from "./session.js";
 import { createHttpServer } from "./http-server.js";
 import { RaceRoomRegistry } from "./race-room-registry.js";
 import { RaceManager } from "./race-manager.js";
@@ -9,13 +10,6 @@ import { TeamState } from "./team-state.js";
 import { TcpNotify } from "./tcp-notify.js";
 import { TcpProxy } from "./tcp-proxy.js";
 import { TcpServer } from "./tcp-server.js";
-
-const fixtureStore = config.useFixtures
-  ? new FixtureStore({
-      fixturesRoot: config.fixturesRoot,
-      logger,
-    })
-  : null;
 
 const supabase = await createGameSupabase(config, logger);
 const raceRoomRegistry = new RaceRoomRegistry();
@@ -57,6 +51,7 @@ const server = createHttpServer({
   supabase,
   services: {
     raceRoomRegistry,
+    raceManager,
     rivalsState,
     teamState,
     tcpNotify,

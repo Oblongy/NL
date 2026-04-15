@@ -6,7 +6,6 @@ BACKEND_DIR="$APP_DIR/backend"
 NGINX_SITE_NAME="nl"
 NGINX_AVAILABLE="/etc/nginx/sites-available/$NGINX_SITE_NAME"
 NGINX_ENABLED="/etc/nginx/sites-enabled/$NGINX_SITE_NAME"
-REPO_URL="https://github.com/Oblongy/NL.git"
 SERVER_IP="173.249.220.49"
 
 require_root() {
@@ -18,7 +17,7 @@ require_root() {
 
 install_base_packages() {
   apt update
-  apt install -y git nginx ufw curl
+  apt install -y nginx ufw curl unzip
 
   if ! command -v node >/dev/null 2>&1; then
     curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
@@ -30,18 +29,20 @@ install_base_packages() {
   fi
 }
 
-install_repo() {
-  if [[ ! -d "$APP_DIR/.git" ]]; then
-    git clone "$REPO_URL" "$APP_DIR"
-  else
-    git -C "$APP_DIR" fetch --all --prune
-    git -C "$APP_DIR" pull --ff-only
-  fi
+ensure_app_dir() {
+  mkdir -p "$APP_DIR"
+  mkdir -p "$BACKEND_DIR"
+  echo "Created $APP_DIR and $BACKEND_DIR"
+  echo "Upload your backend files to $BACKEND_DIR using deploy_direct.ps1 or deploy_direct.sh"
 }
 
 install_backend_deps() {
-  cd "$BACKEND_DIR"
-  npm install --omit=dev
+  if [[ -f "$BACKEND_DIR/package.json" ]]; then
+    cd "$BACKEND_DIR"
+    npm install --omit=dev
+  else
+    echo "No package.json found. Upload backend files first."
+  fi
 }
 
 ensure_env_file() {
@@ -105,7 +106,7 @@ EOF
 
 require_root
 install_base_packages
-install_repo
+ensure_app_dir
 install_backend_deps
 ensure_env_file
 configure_nginx

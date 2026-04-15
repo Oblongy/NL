@@ -7,6 +7,7 @@ import { handleGameAction } from "./game-actions.js";
 import { getSessionPlayerId } from "./session.js";
 import { getCarById, getPlayerById, listCarsForPlayer } from "./user-service.js";
 import { PARTS_CATALOG_XML } from "./parts-catalog.js";
+import { httpRequestsTotal } from "./metrics.js";
 
 const LOCAL_STATIC_ROUTES = new Map([
   [
@@ -68,6 +69,7 @@ const LOCAL_STATIC_ROUTES = new Map([
 ]);
 
 const pendingUploadsByRemote = new Map();
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25MB
 
 // Cleanup stale uploads every 10 minutes
 setInterval(() => {
@@ -235,7 +237,7 @@ async function resolveCompatSessionInfo(supabase, sessionKey) {
   };
 }
 
-export function createHttpServer({ config, logger, supabase, services = {} }) {
+export function createHttpServer({ config, logger, supabase, services = {}, fixtureStore = null }) {
   return createServer(async (req, res) => {
     try {
       const requestUrl = new URL(req.url, `http://${req.headers.host || `${config.host}:${config.port}`}`);
@@ -289,6 +291,12 @@ export function createHttpServer({ config, logger, supabase, services = {} }) {
       }
 
       if (requestUrl.pathname.toLowerCase().endsWith("upload.aspx")) {
+        // Skip empty preflight requests from Flash
+        if (bodyBytes.length === 0) {
+          sendText(res, 200, `<r s='1'/>`);
+          return;
+        }
+
         // --- File size limit ---
         if (bodyBytes.length > MAX_UPLOAD_BYTES) {
           logger.warn("Upload rejected (too large)", { bytes: bodyBytes.length, max: MAX_UPLOAD_BYTES });
@@ -299,6 +307,14 @@ export function createHttpServer({ config, logger, supabase, services = {} }) {
 
         const contentType = req.headers["content-type"] || "";
         const boundaryMatch = contentType.match(/boundary=(.+)$/);
+
+        logger.info("Upload received", {
+          bytes: bodyBytes.length,
+          contentType,
+          hasBoundary: !!boundaryMatch,
+          remoteAddress,
+          pendingUpload: pendingUploadsByRemote.get(remoteAddress) || null,
+        });
         
         if (boundaryMatch) {
           const boundary = boundaryMatch[1];
@@ -408,19 +424,6 @@ export function createHttpServer({ config, logger, supabase, services = {} }) {
           sendText(res, 200, localStaticRoute.body, {
             "Content-Type": localStaticRoute.contentType,
             "X-Nitto-Source": localStaticRoute.source,
-          });
-          return;
-        }
-
-        // Fall back to decoded capture fixtures for the remaining static routes.
-        const fixture = fixtureStore?.find(requestUrl.pathname);
-        if (fixture) {
-          logger.info("Serving static route from fixture", { 
-            path: requestUrl.pathname, 
-            source: fixture.key 
-          });
-          sendText(res, 200, fixture.body, {
-            "X-Nitto-Source": `fixture:${fixture.key}`,
           });
           return;
         }
