@@ -21,7 +21,29 @@ const STATIC_LOCATIONS_XML =
   "</n>";
 
 const STATIC_SCLEVELS_XML =
-  "<n id='sclevels'><s><x sc='999999999' id='' c='FFFFFF'/></s></n>";
+  "<n id='sclevels'><s>" +
+  "<x sc='500' id='Rookie' c='AAAAAA'>" +
+    "<x sc='100'/><x sc='200'/><x sc='300'/><x sc='400'/>" +
+  "</x>" +
+  "<x sc='2000' id='Street Racer' c='FFFFFF'>" +
+    "<x sc='700'/><x sc='1000'/><x sc='1300'/><x sc='1600'/>" +
+  "</x>" +
+  "<x sc='5000' id='Racer' c='00CC00'>" +
+    "<x sc='2500'/><x sc='3000'/><x sc='3500'/><x sc='4000'/>" +
+  "</x>" +
+  "<x sc='12000' id='Pro Racer' c='00AAFF'>" +
+    "<x sc='6000'/><x sc='7500'/><x sc='9000'/><x sc='10500'/>" +
+  "</x>" +
+  "<x sc='25000' id='Elite Racer' c='FF8800'>" +
+    "<x sc='14000'/><x sc='17000'/><x sc='20000'/><x sc='23000'/>" +
+  "</x>" +
+  "<x sc='50000' id='Street Legend' c='FF0000'>" +
+    "<x sc='28000'/><x sc='34000'/><x sc='40000'/><x sc='46000'/>" +
+  "</x>" +
+  "<x sc='999999999' id='Legend' c='FFD700'>" +
+    "<x sc='60000'/><x sc='75000'/><x sc='100000'/><x sc='150000'/>" +
+  "</x>" +
+  "</s></n>";
 
 const STATIC_LICENSE_PLATES_XML =
   "<n id='getlicenseplates'>" +
