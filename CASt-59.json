@@ -1,0 +1,21 @@
+{
+    "type": 11,
+    "infoLen": 147,
+    "specificDataLen": 2,
+    "info": {
+        "dataOffset": 20,
+        "unk1": 0,
+        "unk2": 0,
+        "flags": 512,
+        "scriptId": 0,
+        "scriptSrcText": "on RaceEngine\r  -- unk26\rend\r",
+        "name": "Race Engine",
+        "comment": "",
+        "fileFormatID": "",
+        "created": 1776433887,
+        "modified": 1776433887
+    },
+    "member": {
+        "scriptType": 3
+    }
+}

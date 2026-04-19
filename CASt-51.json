@@ -1,0 +1,19 @@
+{
+    "type": 15,
+    "infoLen": 224,
+    "specificDataLen": 233,
+    "info": {
+        "dataOffset": 20,
+        "unk1": 0,
+        "unk2": 0,
+        "flags": 580,
+        "scriptId": 0,
+        "scriptSrcText": "",
+        "name": "main",
+        "comment": "",
+        "fileFormatID": "",
+        "created": 0,
+        "modified": 0
+    },
+    "member": null
+}

@@ -1,0 +1,21 @@
+{
+    "type": 11,
+    "infoLen": 473,
+    "specificDataLen": 2,
+    "info": {
+        "dataOffset": 20,
+        "unk1": 0,
+        "unk2": 0,
+        "flags": 512,
+        "scriptId": 0,
+        "scriptSrcText": "on runEngineStart\r  -- unk26\rend\r\ron runEngineStop\r  -- unk26\rend\r\ron runEngine\r  -- unk26\rend\r\ron runEngineGaugeInit\r  -- unk26\rend\r\ron runEngineGearUp\r  -- unk26\rend\r\ron runEngineGearDown\r  -- unk26\rend\r\ron runEngineSetBrake\r  -- unk26\rend\r\ron runEngineSetClutch\r  -- unk26\rend\r\ron runEngineSetNOS\r  -- unk26\rend\r\ron runEngineDyno\r  -- unk26\rend\r",
+        "name": "Race Engine from C",
+        "comment": "",
+        "fileFormatID": "",
+        "created": 1776433887,
+        "modified": 1776433887
+    },
+    "member": {
+        "scriptType": 3
+    }
+}

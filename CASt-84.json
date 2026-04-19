@@ -1,0 +1,21 @@
+{
+    "type": 11,
+    "infoLen": 1154,
+    "specificDataLen": 2,
+    "info": {
+        "dataOffset": 20,
+        "unk1": 0,
+        "unk2": 0,
+        "flags": 512,
+        "scriptId": 0,
+        "scriptSrcText": "on initFileHandler\r  -- unk26\rend\r\ron getAvatar\r  -- unk26\rend\r\ron downloadAvatar\r  -- unk26\rend\r\ron compareAvatarAge\r  -- unk26\rend\r\ron loadLocalAvatar\r  -- unk26\rend\r\ron avatarIDtoPath\r  -- unk26\rend\r\ron downloadUgg\r  -- unk26\rend\r\ron loadLocalUgg\r  -- unk26\rend\r\ron fileBrowse\r  -- unk26\rend\r\ron uggUpload\r  -- unk26\rend\r\ron uggUploadSuccess\r  -- unk26\rend\r\ron uggUploadFail\r  -- unk26\rend\r\ron downloadNewInstaller\r  -- unk26\rend\r\ron downloadInstallerUpdateFlash\r  -- unk26\rend\r\ron runInstaller\r  -- unk26\rend\r\ron fetchCacheXML\r  -- unk26\rend\r\ron fetchCacheXMLDone\r  -- unk26\rend\r\ron createCacheFolders\r  -- unk26\rend\r\ron downloadCache\r  -- unk26\rend\r\ron downloadCacheInProgress\r  -- unk26\rend\r\ron downloadCacheDone\r  -- unk26\rend\r\ron downloadCacheUpdateFlash\r  -- unk26\rend\r\ron loadDyno\r  -- unk26\rend\r\ron saveDyno\r  -- unk26\rend\r\ron getTxtFileName\r  -- unk26\rend\r\ron saveFile\r  -- unk26\rend\r\ron openfile\r  -- unk26\rend\r\ron fileClearAllDecals\r  -- unk26\rend\r\ron fileClearADecal\r  -- unk26\rend\r\ron loadExternalValues\r  -- unk26\rend\r",
+        "name": "File Handler",
+        "comment": "",
+        "fileFormatID": "",
+        "created": 1776433887,
+        "modified": 1776433887
+    },
+    "member": {
+        "scriptType": 3
+    }
+}

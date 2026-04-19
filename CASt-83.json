@@ -1,0 +1,21 @@
+{
+    "type": 11,
+    "infoLen": 2085,
+    "specificDataLen": 2,
+    "info": {
+        "dataOffset": 20,
+        "unk1": 0,
+        "unk2": 0,
+        "flags": 0,
+        "scriptId": 9,
+        "scriptSrcText": "global gSimInet\r\ron lingoXtraNoDebug\r  the debugPlaybackEnabled = 0\r  myFile = new(xtra(\"fileio\"))\r  openfile(myFile, \"l\" & \"i\" & \"n\" & \"g\" & \"o\" & \".\" & \"i\" & \"n\" & \"i\", 1)\r  if status(myFile) = 0 then\r    quit()\r  end if\r  myFile = 0\rend\r\ron lingoXtraInit\r  the debugPlaybackEnabled = 1\r  caluMD5_register(\"I\", \"agree with the usage terms\")\r  set the timeoutLength to 216000\r  set the timeoutScript to \"setInactive\"\r  gSimInet = xtra(\"simInet\").new()\rend\r\ron getPCInfo\r  bdi = string(baDiskInfo(baSysFolder(\"windows\"), \"number\"))\r  if offset(\".\", bdi) > 0 then\r    bdi = bdi.char[1]\r  end if\r  qs = \"mid=\" & bdi & baCpuInfo(\"vendor\") & baCpuInfo(\"type\") & baCpuInfo(\"model\")\r  qs = qs & \"&nid=\" & To3GetMacAddress().char[1]\r  qs = qs & \"&prid=\" & baReadRegString(\"SOFTWARE\\\\Microsoft\\\\Windows\\\\CurrentVersion\", \"ProductId\", \"NoProductId\", \"HKEY_LOCAL_MACHINE\")\r  qs = qs & \"&cna=\" & baComputerName()\r  return qs\rend\r\ron baLingoFolderExists param1\r  return baFolderExists(param1)\rend\r\ron baLingoCreateFolder param1\r  return baCreateFolder(param1)\rend\r\ron baLingoFileList param1, param2\r  return baFileList(param1, param2)\rend\r\ron baLingoFileExists param1\r  return baFileExists(param1)\rend\r\ron baLingoTempFileName param1\r  return baTempFileName(param1)\rend\r\ron baLingoFileAge param1\r  return baFileAge(param1)\rend\r\ron baLingoDeleteFile param1\r  return baDeleteFile(param1)\rend\r\ron baLingoFileDateEx param1, param2, param3, param4\r  return baFileDateEx(param1, param2, param3, param4)\rend\r\ron baLingoSetFileDate param1, param2, param3, param4, param5, param6, param7\r  return baSetFileDate(param1, param2, param3, param4, param5, param6, param7)\rend\r\ron baLingoSysFolder param1\r  return baSysFolder(param1)\rend\r\ron baLingoRunProgram param1, param2, param3\r  return baRunProgram(param1, param2, param3)\rend\r\ron isCheatEngineRunning\r  ceHandle = baWindowList(\"\", \"ch\" & \"eat\" & \" en\" & \"gine\", 0)\r  if ceHandle.count > 0 then\r    return 1\r  else\r    return 0\r  end if\rend\r",
+        "name": "LingoXtra",
+        "comment": "",
+        "fileFormatID": "",
+        "created": 1776433887,
+        "modified": 1776433887
+    },
+    "member": {
+        "scriptType": 3
+    }
+}

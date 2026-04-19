@@ -1,0 +1,21 @@
+{
+    "type": 11,
+    "infoLen": 285,
+    "specificDataLen": 2,
+    "info": {
+        "dataOffset": 20,
+        "unk1": 0,
+        "unk2": 0,
+        "flags": 512,
+        "scriptId": 0,
+        "scriptSrcText": "on connectSocket\r  -- unk26\rend\r\ron sockConnTimeout\r  -- unk26\rend\r\ron socketMessageHandler\r  -- unk26\rend\r\ron executeCall\r  -- unk26\rend\r\ron ssm\r  -- unk26\rend\r",
+        "name": "Connection Script",
+        "comment": "",
+        "fileFormatID": "",
+        "created": 1776433887,
+        "modified": 1776433887
+    },
+    "member": {
+        "scriptType": 3
+    }
+}

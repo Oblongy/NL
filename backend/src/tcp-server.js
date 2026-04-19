@@ -376,6 +376,14 @@ export class TcpServer {
         const playerId = conn.playerId || 0;
         const username = conn.username || "Player";
         const roomId = this.resolveRoomIdForJoin(conn, parts);
+
+        // Skip if player is not authenticated — SRC connections have no playerId
+        if (!playerId) {
+          this.logger.warn("TCP JRC ignored (no playerId)", { connId: conn.id });
+          this.sendMessage(conn, '"ac", "JR", "s", 1');
+          return;
+        }
+
         this.leaveRoom(conn);
         conn.roomId = roomId;
 
@@ -1229,7 +1237,9 @@ export class TcpServer {
   }
 
   buildRoomUsersXml(roomPlayers) {
-    const usersXml = roomPlayers.map((player) => {
+    const usersXml = roomPlayers
+      .filter((player) => Number(player.playerId || 0) > 0 && player.username)
+      .map((player) => {
       let color = "7D7D7D"; // Default user grey
       if (player.clientRole === 1) color = "FF0000"; // Admin
       else if (player.clientRole === 2) color = "66CCFF"; // Mod

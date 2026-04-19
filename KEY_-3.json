@@ -1,0 +1,108 @@
+{
+    "entrySize": 12,
+    "entrySize2": 12,
+    "entryCount": 20,
+    "usedCount": 13,
+    "entries": [
+        {
+            "sectionID": 102,
+            "castID": 51,
+            "fourCC": "XMED"
+        },
+        {
+            "sectionID": 103,
+            "castID": 1024,
+            "fourCC": "DRCF"
+        },
+        {
+            "sectionID": 104,
+            "castID": 1024,
+            "fourCC": "FXmp"
+        },
+        {
+            "sectionID": 105,
+            "castID": 1024,
+            "fourCC": "MCsL"
+        },
+        {
+            "sectionID": 106,
+            "castID": 1024,
+            "fourCC": "Sord"
+        },
+        {
+            "sectionID": 107,
+            "castID": 1024,
+            "fourCC": "VWFI"
+        },
+        {
+            "sectionID": 110,
+            "castID": 1024,
+            "fourCC": "VWLB"
+        },
+        {
+            "sectionID": 108,
+            "castID": 1024,
+            "fourCC": "VWSC"
+        },
+        {
+            "sectionID": 113,
+            "castID": 1024,
+            "fourCC": "XTRl"
+        },
+        {
+            "sectionID": 95,
+            "castID": 66560,
+            "fourCC": "CAS*"
+        },
+        {
+            "sectionID": 99,
+            "castID": 66560,
+            "fourCC": "Cinf"
+        },
+        {
+            "sectionID": 97,
+            "castID": 66560,
+            "fourCC": "Fmap"
+        },
+        {
+            "sectionID": 96,
+            "castID": 66560,
+            "fourCC": "LctX"
+        },
+        {
+            "sectionID": 96,
+            "castID": 66560,
+            "fourCC": "LctX"
+        },
+        {
+            "sectionID": 96,
+            "castID": 66560,
+            "fourCC": "LctX"
+        },
+        {
+            "sectionID": 96,
+            "castID": 66560,
+            "fourCC": "LctX"
+        },
+        {
+            "sectionID": 96,
+            "castID": 66560,
+            "fourCC": "LctX"
+        },
+        {
+            "sectionID": 96,
+            "castID": 66560,
+            "fourCC": "LctX"
+        },
+        {
+            "sectionID": 98,
+            "castID": 66560,
+            "fourCC": "ccl "
+        },
+        {
+            "sectionID": 0,
+            "castID": 0,
+            "fourCC": ""
+        }
+    ]
+}

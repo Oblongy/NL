@@ -2292,17 +2292,16 @@ async function handleGetOneCarEngine(context) {
 
   const engineSound = boostType === "T" ? 2 : boostType === "S" ? 3 : 1;
 
-  // Look up per-car physics data based on catalog car ID
   const catalogCarId = String(car?.catalog_car_id || "");
-  const eng = getCarEngineData(catalogCarId) || DEFAULT_ENGINE_DATA;
+  const n2 = buildN2Fields(catalogCarId);
   const timing = generateTimingArray(catalogCarId);
 
   const engineXml =
-    `<n2 es='${engineSound}' sl='7200' sg='0' rc='0' tmp='0' r='3257' v='2.2398523985239853' ` +
-    `a='6800' n='7600' o='7800' s='1.208' b='${boostType}' p='0.15' c='11' e='${nosSize}' d='T' ` +
-    `f='3.587' g='2.022' h='1.384' i='1' j='0.861' k='0' l='4.058' ` +
-    `q='${eng.q}' m='100' t='100' u='28' w='${eng.w}' x='${eng.x}' y='${eng.y}' z='${eng.z}' ` +
-    `aa='4' ab='${accountCarId}' ac='9' ad='0' ae='100' af='100' ag='100' ah='100' ai='100' ` +
+    `<n2 es='${engineSound}' sl='${n2.sl}' sg='0' rc='0' tmp='0' r='${n2.r}' v='0' ` +
+    `a='${n2.a}' n='${n2.n}' o='${n2.o}' s='0.854' b='${boostType}' p='1.8' c='0' e='${nosSize}' d='N' ` +
+    `f='${n2.f}' g='${n2.g}' h='${n2.h}' i='${n2.i}' j='${n2.j}' k='0' l='${n2.l}' ` +
+    `q='0' m='0' t='0' u='10' w='0' x='${n2.x}' y='${n2.y}' z='${n2.z}' ` +
+    `aa='${n2.aa}' ab='${accountCarId}' ac='0' ad='0' ae='100' af='100' ag='100' ah='100' ai='100' ` +
     `aj='0' ak='0' al='0' am='0' an='0' ao='100' ap='0' aq='0' ar='1' as='0' ` +
     `at='100' au='100' av='0' aw='100' ax='0'/>`;
 
@@ -3245,189 +3244,155 @@ function getShowroomCarSpec(carId) {
   return SHOWROOM_CAR_SPEC_OVERRIDES.get(String(carId || "")) || DEFAULT_SHOWROOM_CAR_SPEC;
 }
 
-const BASE_TIMING_CURVE = Object.freeze([
-  91, 91, 91, 91, 91, 91, 91, 91, 91, 93, 95, 98, 102, 106, 109, 112, 115,
-  117, 119, 121, 122, 123, 124, 125, 126, 126, 127, 127, 128, 128, 128, 128,
-  128, 127, 127, 127, 126, 126, 125, 125, 124, 123, 122, 121, 120, 119, 118,
-  117, 116, 115, 113, 112, 110, 108, 106, 104, 101, 98, 98, 96, 95, 93, 91,
-  89, 87, 85, 83, 81, 79, 77, 75, 73, 71, 69, 67, 65, 63, 61, 59, 57, 55, 53,
-  51, 49, 47, 45, 43, 41, 39, 37, 35, 33, 31, 29, 27, 25, 23, 21, 19, 17, 15,
-  13,
+// ── Physics-based timing array generation ────────────────────────────────────
+// Base curve captured from live server (stock car, 2026-04-17, frame 116).
+// This is the real timing array the live server sends for a stock ~15s car.
+// Source: practice response, ab='16', B18C1 1.8L VTEC engine.
+const LIVE_BASE_TIMING_CURVE = Object.freeze([
+  51, 51, 51, 51, 51, 51, 51, 51, 51, 70, 72, 74, 75, 77, 79, 80, 82, 84,
+  85, 87, 89, 90, 92, 93, 95, 97, 98, 100, 102, 103, 105, 107, 108, 110,
+  112, 113, 115, 116, 116, 117, 117, 118, 118, 119, 119, 120, 120, 121, 121,
+  122, 122, 123, 123, 124, 124, 125, 125, 126, 126, 127, 127, 128, 127, 126,
+  126, 125, 124, 123, 123, 122, 121, 120, 120, 119, 118, 117, 97, 95, 93, 92,
+  90, 89, 87, 85, 84, 82, 81, 79, 77, 76, 74, 73, 71, 69, 68, 66, 65, 63,
+  61, 60,
 ]);
 
+import { buildCarRaceSpec, simulateRun, getRedLine } from "./engine-physics.js";
+import { buildWheelsTiresCatalogXml } from "./wheels-catalog.js";
+
+/**
+ * Build a CarRaceSpec from a car's showroom spec entry.
+ */
+function buildSpecFromShowroomSpec(catalogCarId) {
+  const spec = getShowroomCarSpec(catalogCarId);
+  const hp = Number(spec.hp) || 170;
+  const weight = Number(spec.sw) || 2800;
+  const etMatch = String(spec.et || "").match(/^([\d.]+)/);
+  const estimatedEt = etMatch ? Number(etMatch[1]) : 0;
+
+  return buildCarRaceSpec({
+    horsepower: hp,
+    weightLbs: weight,
+    engineStr: spec.eo || "",
+    drivetrainStr: spec.dt || "FWD",
+    transmissionStr: spec.tt || "5-speed manual",
+    bodyTypeStr: spec.ct || "Coupe",
+    estimatedEt,
+  });
+}
+
+/**
+ * Generate the timing array for a catalog car.
+ *
+ * For cars with a known ET (from SHOWROOM_CAR_SPEC_OVERRIDES), we scale the
+ * real captured base curve proportionally. For cars without an ET override,
+ * we use the physics simulation to produce a run-derived array.
+ *
+ * The base curve was captured from the live server for a stock ~15s car
+ * (B18C1 1.8L VTEC, 2026-04-17). It is the authoritative reference shape.
+ */
 function generateTimingArray(catalogCarId) {
   const spec = getShowroomCarSpec(catalogCarId);
-  const power = Number(spec.hp) || 170;
+  const etMatch = String(spec.et || "").match(/^([\d.]+)/);
+
+  if (etMatch) {
+    // Scale the real captured curve to match this car's ET
+    const targetEt = Number(etMatch[1]);
+    const baseEt = 15.0; // ET the base curve was captured at
+    const scale = baseEt / targetEt;
+    return LIVE_BASE_TIMING_CURVE.map((v) => Math.max(1, Math.round(v * scale)));
+  }
+
+  // No ET override — use physics simulation
+  const raceSpec = buildSpecFromShowroomSpec(catalogCarId);
+  return simulateRun(raceSpec);
+}
+
+/**
+ * Get the redline RPM for a catalog car (used in n2 sl= and a= attributes).
+ */
+function getCarRedLine(catalogCarId) {
+  const spec = getShowroomCarSpec(catalogCarId);
+  return getRedLine(spec.eo || "", spec.tt || "");
+}
+
+/**
+ * Build the per-car n2 physics fields from captured live server data.
+ *
+ * Formulas reverse-engineered from two live captures (2026-04-17):
+ *   Car ab=16 (I4 FWD, 170hp, 2661lbs): x=4.86, y=26.73, z=4.86, r=2679, aa=4
+ *   Car ab=32 (V8 RWD, 300hp, 3356lbs): x=8.57, y=47.135, z=8.57, r=3374, aa=8
+ *
+ * Confirmed formulas:
+ *   x = z = hp * 0.02859
+ *   y = x * 5.5
+ *   r = weightLbs + 18
+ *   aa = cylinder count from engine string
+ *   sl = redline RPM (from engine type)
+ *   a = power peak RPM (≈ redline for high-revving engines, lower for V8/V6)
+ *   n = torque peak RPM (≈ 0.82 * redline for V8, ≈ redline for I4)
+ *   o = rev limiter (redline + 100-200)
+ *   f/g/h/i/j/l = gear ratios from gearbox profile
+ */
+function buildN2Fields(catalogCarId) {
+  const spec = getShowroomCarSpec(catalogCarId);
+  const hp = Number(spec.hp) || 170;
   const weight = Number(spec.sw) || 2800;
-  const powerToWeight = power / weight;
-  const baseTime = 15.5;
-  const estimatedTime = baseTime - (powerToWeight - 0.06) * 20;
-  const scale = estimatedTime / baseTime;
+  const engineStr = (spec.eo || "").toLowerCase();
+  const drivetrainStr = (spec.dt || "FWD").toUpperCase();
+  const transmissionStr = (spec.tt || "5-speed manual").toLowerCase();
 
-  return BASE_TIMING_CURVE.map((value) => Math.max(1, Math.round(value * scale)));
+  // x, y, z — physics power params
+  const x = parseFloat((hp * 0.02859).toFixed(3));
+  const z = x;
+  const y = parseFloat((x * 5.5).toFixed(3));
+
+  // r — weight-derived field
+  const r = weight + 18;
+
+  // aa — cylinder count
+  let aa = 4;
+  if (engineStr.includes("v10") || engineStr.includes("10-cyl")) aa = 10;
+  else if (engineStr.includes("v8") || engineStr.includes("8-cyl") || engineStr.includes("hemi")) aa = 8;
+  else if (engineStr.includes("v6") || engineStr.includes("6-cyl") || engineStr.includes("i6") || engineStr.includes("h6")) aa = 6;
+  else if (engineStr.includes("rotary")) aa = 2;
+  else if (engineStr.includes("3-cyl") || engineStr.includes("i3")) aa = 3;
+
+  // RPM fields
+  const sl = getRedLine(spec.eo || "", spec.tt || "");
+  const o = sl + (engineStr.includes("vtec") || engineStr.includes("i4") ? 200 : 100);
+
+  // Power peak RPM (a) and torque peak RPM (n)
+  let a = sl;
+  let n = sl;
+  if (engineStr.includes("v8") || engineStr.includes("hemi")) {
+    a = Math.round(sl * 0.92);
+    n = Math.round(sl * 0.985);
+  } else if (engineStr.includes("v6")) {
+    a = Math.round(sl * 0.94);
+    n = Math.round(sl * 0.985);
+  } else if (engineStr.includes("turbo")) {
+    a = Math.round(sl * 0.88);
+    n = Math.round(sl * 0.68);
+  }
+
+  // Gear ratios from gearbox profile
+  const raceSpec = buildCarRaceSpec({
+    horsepower: hp, weightLbs: weight,
+    engineStr: spec.eo || "", drivetrainStr,
+    transmissionStr, bodyTypeStr: spec.ct || "Coupe",
+  });
+  const ratios = raceSpec.gearbox.forwardRatios;
+  const f = ratios[0] ?? 3.587;
+  const g = ratios[1] ?? 2.022;
+  const h = ratios[2] ?? 1.384;
+  const i = ratios[3] ?? 1.000;
+  const j = ratios[4] ?? 0.861;
+  const l = raceSpec.gearbox.finalDrive;
+
+  return { x, y, z, r, aa, sl, a, n, o, f, g, h, i, j, l };
 }
-
-// PLACEHOLDER — per-car n2 physics values. These are approximations until real
-// capture data is available for each car. The only confirmed data is from a
-// fully-built car (acid=39) which ran ~5s with NOS.
-// Values scaled from that reference: q/z/y/x/w control power output.
-// TODO: replace with real getonecarengine capture data per car.
-const CAR_ENGINE_DATA = new Map([
-  // PLACEHOLDER — scaled from one known data point (built car ~5s).
-  // Formula: q = 300*(5/et)^2, others proportional. ET from SHOWROOM_CAR_SPEC_OVERRIDES or price tier.
-  // TODO: replace with real getonecarengine capture data per car.
-  ["1", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
-  ["2", { q: "48", z: "14.74", y: "81.07", x: "10.24", w: "0.0737" }],
-  ["3", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["4", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["5", { q: "55.74", z: "17.12", y: "94.14", x: "11.89", w: "0.0856" }],
-  ["6", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
-  ["7", { q: "48", z: "14.74", y: "81.07", x: "10.24", w: "0.0737" }],
-  ["8", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
-  ["9", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["10", { q: "52.96", z: "16.26", y: "89.46", x: "11.3", w: "0.0813" }],
-  ["11", { q: "43.7", z: "13.42", y: "73.82", x: "9.32", w: "0.0671" }],
-  ["13", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
-  ["14", { q: "45.07", z: "13.84", y: "76.12", x: "9.61", w: "0.0692" }],
-  ["15", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
-  ["16", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["17", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
-  ["18", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["19", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
-  ["20", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["21", { q: "53.86", z: "16.54", y: "90.98", x: "11.49", w: "0.0827" }],
-  ["22", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
-  ["23", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["24", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["25", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["26", { q: "48", z: "14.74", y: "81.07", x: "10.24", w: "0.0737" }],
-  ["28", { q: "45.07", z: "13.84", y: "76.12", x: "9.61", w: "0.0692" }],
-  ["29", { q: "56.71", z: "17.42", y: "95.79", x: "12.09", w: "0.0871" }],
-  ["30", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
-  ["31", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
-  ["33", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
-  ["35", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["37", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
-  ["38", { q: "43.7", z: "13.42", y: "73.82", x: "9.32", w: "0.0671" }],
-  ["39", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
-  ["40", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["41", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
-  ["42", { q: "48", z: "14.74", y: "81.07", x: "10.24", w: "0.0737" }],
-  ["43", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["44", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
-  ["45", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["46", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["47", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
-  ["48", { q: "44.38", z: "13.63", y: "74.96", x: "9.46", w: "0.0682" }],
-  ["49", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["50", { q: "48", z: "14.74", y: "81.07", x: "10.24", w: "0.0737" }],
-  ["51", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["52", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
-  ["55", { q: "42.4", z: "13.02", y: "71.61", x: "9.04", w: "0.0651" }],
-  ["56", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["57", { q: "78.09", z: "23.98", y: "131.9", x: "16.65", w: "0.1199" }],
-  ["58", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["59", { q: "43.7", z: "13.42", y: "73.82", x: "9.32", w: "0.0671" }],
-  ["60", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["61", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
-  ["62", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
-  ["63", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["64", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
-  ["65", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
-  ["66", { q: "56.71", z: "17.42", y: "95.79", x: "12.09", w: "0.0871" }],
-  ["67", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
-  ["68", { q: "48.78", z: "14.98", y: "82.39", x: "10.4", w: "0.0749" }],
-  ["69", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
-  ["70", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
-  ["71", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["72", { q: "40.55", z: "12.45", y: "68.49", x: "8.65", w: "0.0623" }],
-  ["73", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
-  ["74", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
-  ["75", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["76", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
-  ["77", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
-  ["78", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["79", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["80", { q: "48", z: "14.74", y: "81.07", x: "10.24", w: "0.0737" }],
-  ["81", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["82", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
-  ["83", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
-  ["84", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
-  ["85", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["86", { q: "47.24", z: "14.51", y: "79.79", x: "10.07", w: "0.0725" }],
-  ["87", { q: "42.4", z: "13.02", y: "71.61", x: "9.04", w: "0.0651" }],
-  ["88", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
-  ["89", { q: "42.4", z: "13.02", y: "71.61", x: "9.04", w: "0.0651" }],
-  ["90", { q: "61.98", z: "19.04", y: "104.69", x: "13.22", w: "0.0952" }],
-  ["91", { q: "43.04", z: "13.22", y: "72.7", x: "9.18", w: "0.0661" }],
-  ["92", { q: "43.7", z: "13.42", y: "73.82", x: "9.32", w: "0.0671" }],
-  ["94", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
-  ["95", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
-  ["97", { q: "48", z: "14.74", y: "81.07", x: "10.24", w: "0.0737" }],
-  ["98", { q: "47.24", z: "14.51", y: "79.79", x: "10.07", w: "0.0725" }],
-  ["99", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
-  ["100", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["101", { q: "55.74", z: "17.12", y: "94.14", x: "11.89", w: "0.0856" }],
-  ["102", { q: "48", z: "14.74", y: "81.07", x: "10.24", w: "0.0737" }],
-  ["104", { q: "56.71", z: "17.42", y: "95.79", x: "12.09", w: "0.0871" }],
-  ["105", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
-  ["106", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
-  ["107", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
-  ["109", { q: "60.87", z: "18.69", y: "102.81", x: "12.98", w: "0.0935" }],
-  ["110", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["111", { q: "48", z: "14.74", y: "81.07", x: "10.24", w: "0.0737" }],
-  ["112", { q: "56.71", z: "17.42", y: "95.79", x: "12.09", w: "0.0871" }],
-  ["113", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["114", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
-  ["115", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
-  ["116", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
-  ["117", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["118", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
-  ["119", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["120", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["121", { q: "48", z: "14.74", y: "81.07", x: "10.24", w: "0.0737" }],
-  ["122", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
-  ["123", { q: "56.71", z: "17.42", y: "95.79", x: "12.09", w: "0.0871" }],
-  ["124", { q: "56.71", z: "17.42", y: "95.79", x: "12.09", w: "0.0871" }],
-  ["125", { q: "48", z: "14.74", y: "81.07", x: "10.24", w: "0.0737" }],
-  ["126", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
-  ["127", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["128", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["129", { q: "48", z: "14.74", y: "81.07", x: "10.24", w: "0.0737" }],
-  ["133", { q: "56.71", z: "17.42", y: "95.79", x: "12.09", w: "0.0871" }],
-  ["134", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
-  ["135", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
-  ["136", { q: "56.71", z: "17.42", y: "95.79", x: "12.09", w: "0.0871" }],
-  ["137", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
-  ["138", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
-  ["139", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["140", { q: "56.71", z: "17.42", y: "95.79", x: "12.09", w: "0.0871" }],
-  ["141", { q: "56.71", z: "17.42", y: "95.79", x: "12.09", w: "0.0871" }],
-  ["142", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["143", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["144", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
-  ["145", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
-  ["146", { q: "48", z: "14.74", y: "81.07", x: "10.24", w: "0.0737" }],
-  ["147", { q: "56.71", z: "17.42", y: "95.79", x: "12.09", w: "0.0871" }],
-  ["148", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
-  ["149", { q: "48", z: "14.74", y: "81.07", x: "10.24", w: "0.0737" }],
-  ["150", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
-  ["153", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
-  ["155", { q: "41.15", z: "12.64", y: "69.51", x: "8.78", w: "0.0632" }],
-  ["156", { q: "48", z: "14.74", y: "81.07", x: "10.24", w: "0.0737" }],
-  ["158", { q: "56.71", z: "17.42", y: "95.79", x: "12.09", w: "0.0871" }],
-  ["159", { q: "31.22", z: "9.59", y: "52.73", x: "6.66", w: "0.0479" }],
-  ["160", { q: "35.67", z: "10.95", y: "60.25", x: "7.61", w: "0.0548" }],
-]);
-
-function getCarEngineData(catalogCarId) {
-  return CAR_ENGINE_DATA.get(String(catalogCarId || "")) || null;
-}
-
-// Default stock physics — used for any car without a specific entry.
-// Approximated from the one known data point (built car ~5s).
-// TODO: replace with real capture data.
-const DEFAULT_ENGINE_DATA = { q: "100", z: "30.71", y: "168.90", x: "21.33", w: "0.1536" };
 
 function buildShowroomXml(locationId, starterOnly = false) {
   const targetLocationId = Number(locationId) || 100;
@@ -3651,17 +3616,16 @@ async function handlePractice(context) {
 
   const engineSound = boostType === "T" ? 2 : boostType === "S" ? 3 : 1;
 
-  // Look up per-car physics data based on catalog car ID
   const catalogCarId = String(car?.catalog_car_id || "");
-  const eng = getCarEngineData(catalogCarId) || DEFAULT_ENGINE_DATA;
+  const n2 = buildN2Fields(catalogCarId);
   const timing = generateTimingArray(catalogCarId);
 
   const carStats =
-    `<n2 es='${engineSound}' sl='7200' sg='0' rc='0' tmp='0' r='3257' v='2.2398523985239853' ` +
-    `a='6800' n='7600' o='7800' s='1.208' b='${boostType}' p='0.15' c='11' e='${nosSize}' d='T' ` +
-    `f='3.587' g='2.022' h='1.384' i='1' j='0.861' k='0' l='4.058' ` +
-    `q='${eng.q}' m='100' t='100' u='28' w='${eng.w}' x='${eng.x}' y='${eng.y}' z='${eng.z}' ` +
-    `aa='4' ab='${accountCarId}' ac='9' ad='0' ` +
+    `<n2 es='${engineSound}' sl='${n2.sl}' sg='0' rc='0' tmp='0' r='${n2.r}' v='0' ` +
+    `a='${n2.a}' n='${n2.n}' o='${n2.o}' s='0.854' b='${boostType}' p='1.8' c='0' e='${nosSize}' d='N' ` +
+    `f='${n2.f}' g='${n2.g}' h='${n2.h}' i='${n2.i}' j='${n2.j}' k='0' l='${n2.l}' ` +
+    `q='0' m='0' t='0' u='10' w='0' x='${n2.x}' y='${n2.y}' z='${n2.z}' ` +
+    `aa='${n2.aa}' ab='${accountCarId}' ac='0' ad='0' ` +
     `ae='100' af='100' ag='100' ah='100' ai='100' ` +
     `aj='0' ak='0' al='0' am='0' an='0' ao='100' ap='0' aq='0' ar='1' as='0' ` +
     `at='100' au='100' av='0' aw='100' ax='0'/>`;
@@ -3924,18 +3888,8 @@ const handlers = {
   sellcar: handleSellCar,
   // --- Parts & Engine ---
   getallparts: handleGetAllParts,
-  getallwheelstires: async (context) => {
-    // For now, return a placeholder list of wheels and tires.
-    // In a full implementation, these would come from a database or a more detailed catalog.
-    const wheelsTiresXml = `
-      <wt>
-        <w id='1' n='Street Wheels'/>
-        <w id='2' n='Racing Slicks'/>
-        <t id='1' n='All-Season Tires'/>
-        <t id='2' n='Performance Tires'/>
-      </wt>
-    `;
-    return { body: `"s", 1, "d", "${wheelsTiresXml}"`, source: "generated:getallwheelstires" };
+  getallwheelstires: async () => {
+    return { body: wrapSuccessData(PARTS_CATALOG_XML), source: "static:getallwheelstires" };
   },
   getonecarengine: handleGetOneCarEngine,
   getgearinfo: handleGetGearInfo,

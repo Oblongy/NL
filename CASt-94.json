@@ -1,0 +1,21 @@
+{
+    "type": 11,
+    "infoLen": 2355,
+    "specificDataLen": 2,
+    "info": {
+        "dataOffset": 20,
+        "unk1": 0,
+        "unk2": 0,
+        "flags": 512,
+        "scriptId": 0,
+        "scriptSrcText": "on LOGIN\r  -- unk26\rend\r\ron SENDNIMMESSAGE\r  -- unk26\rend\r\ron UPDATENIMUSER\r  -- unk26\rend\r\ron DELETENIMUSER\r  -- unk26\rend\r\ron BLOCKNIMUSER\r  -- unk26\rend\r\ron UNBLOCKNIMUSER\r  -- unk26\rend\r\ron INQUIRYNIMUSER\r  -- unk26\rend\r\ron ALLOWNIMUSER\r  -- unk26\rend\r\ron NIMOKRESPONSE\r  -- unk26\rend\r\ron DELETENIMINQUIREDUSER\r  -- unk26\rend\r\ron GETNIMINREQUESTS\r  -- unk26\rend\r\ron GETNIMOUTREQUESTS\r  -- unk26\rend\r\ron LISTRACECHATROOMS2\r  -- unk26\rend\r\ron CREATECHATROOM\r  -- unk26\rend\r\ron JOINRACECHAT\r  -- unk26\rend\r\ron LEAVERACECHAT\r  -- unk26\rend\r\ron LISTRACECHATUSERS\r  -- unk26\rend\r\ron SENDRACECHAT\r  -- unk26\rend\r\ron TEAMKICK\r  -- unk26\rend\r\ron TEAMCHANGEROLE\r  -- unk26\rend\r\ron TEAMUPDATEMAXBET\r  -- unk26\rend\r\ron TEAMDEPOSIT\r  -- unk26\rend\r\ron TEAMWITHDRAW\r  -- unk26\rend\r\ron TEAMQUIT\r  -- unk26\rend\r\ron TEAMACCEPT\r  -- unk26\rend\r\ron TEAMDISPERSE\r  -- unk26\rend\r\ron TEAMCREATE\r  -- unk26\rend\r\ron TEAMSTEPDOWN\r  -- unk26\rend\r\ron GETKOTH\r  -- unk26\rend\r\ron JOINKOTH\r  -- unk26\rend\r\ron LEAVEKOTH\r  -- unk26\rend\r\ron KCNT\r  -- unk26\rend\r\ron SENDVOTE\r  -- unk26\rend\r\ron KDONE\r  -- unk26\rend\r\ron KRT\r  -- unk26\rend\r\ron STG\r  -- unk26\rend\r\ron int\r  -- unk26\rend\r\ron KOK\r  -- unk26\rend\r\ron KREADY\r  -- unk26\rend\r\ron GETRIVALS\r  -- unk26\rend\r\ron RREQ\r  -- unk26\rend\r\ron RRSP\r  -- unk26\rend\r\ron RLVE\r  -- unk26\rend\r\ron RIVOK\r  -- unk26\rend\r\ron RIVREADY\r  -- unk26\rend\r\ron RIVRT\r  -- unk26\rend\r\ron RIVDONE\r  -- unk26\rend\r\ron HTJOIN\r  -- unk26\rend\r\ron HQOK\r  -- unk26\rend\r\ron HTGET32\r  -- unk26\rend\r\ron HTGETTREE\r  -- unk26\rend\r\ron HTSPECTATE\r  -- unk26\rend\r\ron HTQUIT\r  -- unk26\rend\r\ron HTINFO\r  -- unk26\rend\r\ron HTQREADY\r  -- unk26\rend\r\ron HTQD\r  -- unk26\rend\r\ron HTQRT\r  -- unk26\rend\r\ron HTREADY\r  -- unk26\rend\r\ron HTD\r  -- unk26\rend\r\ron HTRT\r  -- unk26\rend\r\ron TRGETRACERS\r  -- unk26\rend\r\ron TRGETTEAMS\r  -- unk26\rend\r\ron TRPREREQUEST\r  -- unk26\rend\r\ron TRREQUEST\r  -- unk26\rend\r\ron TRCOUNTER\r  -- unk26\rend\r\ron TRRESPONSE\r  -- unk26\rend\r\ron TROK\r  -- unk26\rend\r\ron TRIVREADY\r  -- unk26\rend\r\ron JOINELECTION\r  -- unk26\rend\r\ron ELECTIONINTERVIEWLIST\r  -- unk26\rend\r\ron m\r  -- unk26\rend\r\ron CLOSEGAME\r  -- unk26\rend\r\ron IsMyProcessNameCorrect\r  -- unk26\rend\r\ron CheckNittoProcesses\r  -- unk26\rend\r\ron CheckNittoProcessesCB\r  -- unk26\rend\r",
+        "name": "Socket Client to Server",
+        "comment": "",
+        "fileFormatID": "",
+        "created": 1776433887,
+        "modified": 1776433887
+    },
+    "member": {
+        "scriptType": 3
+    }
+}

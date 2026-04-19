@@ -1,0 +1,21 @@
+{
+    "type": 11,
+    "infoLen": 435,
+    "specificDataLen": 2,
+    "info": {
+        "dataOffset": 20,
+        "unk1": 0,
+        "unk2": 0,
+        "flags": 512,
+        "scriptId": 0,
+        "scriptSrcText": "on prepareMovie\r  -- unk26\rend\r\ron startMovie\r  -- unk26\rend\r\ron stopMovie\r  -- unk26\rend\r\ron resizeWindow\r  -- unk26\rend\r\ron zoomWindow\r  -- unk26\rend\r\ron resizeFlashSprite\r  -- unk26\rend\r\ron setInactive\r  -- unk26\rend\r\ron sendHeartbeat\r  -- unk26\rend\r\ron openURL\r  -- unk26\rend\r\ron clearFB\r  -- unk26\rend\r",
+        "name": "Initialization Script",
+        "comment": "",
+        "fileFormatID": "",
+        "created": 1776433887,
+        "modified": 1776433887
+    },
+    "member": {
+        "scriptType": 3
+    }
+}
