@@ -1476,14 +1476,27 @@ export class TcpServer {
     }
 
     const numericPlayerId = Number(playerId);
-    const playerResult = await this.supabase
+    let playerResult = await this.supabase
       .from("game_players")
       .select("username, default_car_game_id, team_id, role")
       .eq("id", numericPlayerId)
       .maybeSingle();
 
     if (playerResult.error) {
-      throw playerResult.error;
+      const msg = String(playerResult.error?.message || "");
+      if (/role/i.test(msg) && /does not exist|unknown column|column/i.test(msg)) {
+        // schema doesn't have role column — retry without it
+        playerResult = await this.supabase
+          .from("game_players")
+          .select("username, default_car_game_id, team_id")
+          .eq("id", numericPlayerId)
+          .maybeSingle();
+        if (playerResult.error) {
+          throw playerResult.error;
+        }
+      } else {
+        throw playerResult.error;
+      }
     }
 
     const player = playerResult.data;
@@ -1681,15 +1694,15 @@ export class TcpServer {
     );
   }
 
-  buildRraXml({ challengerPlayerId, challengerCarId, challengedPlayerId, challengedCarId, trackId }) {
+  buildRraXml({ challengerPlayerId, challengerCarId, challengedPlayerId, challengedCarId, trackId, sc1 = 0, sc2 = 0 }) {
     return (
       `<r r1id='${Number(challengerPlayerId)}' r2id='${Number(challengedPlayerId)}' ` +
       `r1cid='${Number(challengerCarId)}' r2cid='${Number(challengedCarId)}' ` +
-      `b1='-1' b2='-1' bt='0' sc1='0' sc2='0' t='${Number(trackId)}'/>`
+      `b1='-1' b2='-1' bt='0' sc1='${Number(sc1)}' sc2='${Number(sc2)}' t='${Number(trackId)}'/>`
     );
   }
 
-  createRaceSession(requestA, requestB) {
+  async createRaceSession(requestA, requestB) {
     const connA = this.connections.get(requestA.connId);
     const connB = this.connections.get(requestB.connId);
     if (!connA || !connB) {
@@ -1698,6 +1711,21 @@ export class TcpServer {
         requestBConnId: requestB.connId,
       });
       return;
+    }
+
+    // Fetch SC for both players
+    let scA = 0, scB = 0;
+    if (this.supabase) {
+      try {
+        const [resA, resB] = await Promise.all([
+          this.supabase.from("game_players").select("score").eq("id", requestA.requesterPlayerId).maybeSingle(),
+          this.supabase.from("game_players").select("score").eq("id", requestB.requesterPlayerId).maybeSingle(),
+        ]);
+        scA = Number(resA.data?.score ?? 0);
+        scB = Number(resB.data?.score ?? 0);
+      } catch (err) {
+        this.logger.warn("Failed to fetch SC for race session", { error: err.message });
+      }
     }
 
     const raceId = randomUUID();
@@ -1711,6 +1739,7 @@ export class TcpServer {
           carId: requestA.requesterCarId,
           lane: requestA.lane,
           bet: requestA.bet,
+          sc: scA,
           ready: false,
           opened: false,
         },
@@ -1720,6 +1749,7 @@ export class TcpServer {
           carId: requestB.requesterCarId,
           lane: requestB.lane,
           bet: requestB.bet,
+          sc: scB,
           ready: false,
           opened: false,
         },
@@ -1950,9 +1980,68 @@ export class TcpServer {
       race.engineWearApplied = true;
     }
 
+    // Award SC based on race result
+    // parts[1] = winner player ID (sent by client in RR message)
+    const winnerPlayerId = Number(parts[1] || 0);
+    const SC_WIN = 50;
+    const SC_LOSS = 10;
+
+    if (winnerPlayerId && this.supabase && !race.scAwarded) {
+      race.scAwarded = true;
+
+      for (const participant of race.players) {
+        const isWinner = Number(participant.playerId) === winnerPlayerId;
+        const scGain = isWinner ? SC_WIN : SC_LOSS;
+        const currentSc = Number(participant.sc ?? 0);
+
+        // Fetch current wins/losses then increment
+        this.supabase
+          .from("game_players")
+          .select("wins, losses")
+          .eq("id", participant.playerId)
+          .maybeSingle()
+          .then(({ data, error }) => {
+            if (error || !data) return;
+            return this.supabase.from("game_players").update({
+              score: currentSc + scGain,
+              wins: (data.wins ?? 0) + (isWinner ? 1 : 0),
+              losses: (data.losses ?? 0) + (isWinner ? 0 : 1),
+            }).eq("id", participant.playerId);
+          })
+          .then((res) => {
+            if (res?.error) this.logger.warn("Failed to update SC/wins/losses", { playerId: participant.playerId, error: res.error.message });
+          });
+      }
+
+      this.logger.info("TCP RR SC awarded", {
+        raceId: race.id,
+        winnerPlayerId,
+        scWin: SC_WIN,
+        scLoss: SC_LOSS,
+      });
+    }
+
     this.sendMessage(conn, '"ac", "RR", "s", 1');
-    this.sendMessage(conn, '"ac", "UR", "s", 1');
-    this.sendMessage(conn, '"ac", "OR", "s", 1');
+
+    // Build and broadcast the race result XML to both players
+    // Format from decompiled Flash: <r wid='' r1id='' r2id='' rt1='' et1='' ts1='' rt2='' et2='' ts2='' c1='' c2='' h1='0' h2='0' td='0'/>
+    if (race) {
+      const [p1, p2] = race.players;
+      const sc1Gain = winnerPlayerId && Number(p1.playerId) === winnerPlayerId ? SC_WIN : SC_LOSS;
+      const sc2Gain = winnerPlayerId && Number(p2.playerId) === winnerPlayerId ? SC_WIN : SC_LOSS;
+      const resultXml = `<r wid='${winnerPlayerId || 0}' r1id='${p1.playerId}' r2id='${p2.playerId}' rt1='-1' et1='-1' ts1='-1' rt2='-1' et2='-1' ts2='-1' c1='${sc1Gain}' c2='${sc2Gain}' h1='0' h2='0' td='0'/>`;
+      const escapedXml = this.escapeForTcp(resultXml);
+      for (const participant of race.players) {
+        const participantConn = this.connections.get(participant.connId) || this.connections.get(participant.raceConnId);
+        if (participantConn) {
+          this.sendMessage(participantConn, `"ac", "UR", "d", "${escapedXml}"`);
+          this.sendMessage(participantConn, '"ac", "OR", "s", 1');
+        }
+      }
+    } else {
+      this.sendMessage(conn, '"ac", "UR", "s", 1');
+      this.sendMessage(conn, '"ac", "OR", "s", 1');
+    }
   }
 
   sendRaceCreate(race) {
@@ -1969,7 +2058,9 @@ export class TcpServer {
 
   buildRraMessage(race) {
     const [playerOne, playerTwo] = race.players;
-    return `"ac", "RRA", "d", "<r r1id='${playerOne.playerId}' r2id='${playerTwo.playerId}' r1cid='${playerOne.carId}' r2cid='${playerTwo.carId}' b1='-1' b2='-1' bt='0' sc1='0' sc2='0' t='32'/>"`;
+    const sc1 = playerOne.sc ?? 0;
+    const sc2 = playerTwo.sc ?? 0;
+    return `"ac", "RRA", "d", "<r r1id='${playerOne.playerId}' r2id='${playerTwo.playerId}' r1cid='${playerOne.carId}' r2cid='${playerTwo.carId}' b1='-1' b2='-1' bt='0' sc1='${sc1}' sc2='${sc2}' t='32'/>"`;
   }
 
   sendInitialIoFrames(conn) {

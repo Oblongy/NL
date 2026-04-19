@@ -22,26 +22,25 @@ const STATIC_LOCATIONS_XML =
 
 const STATIC_SCLEVELS_XML =
   "<n id='sclevels'><s>" +
-  "<x sc='500' id='Rookie' c='AAAAAA'>" +
-    "<x sc='100'/><x sc='200'/><x sc='300'/><x sc='400'/>" +
+  // Toreno: 0–499 SC (4 sub-stages at 125, 250, 375, 499)
+  "<x sc='500' id='Toreno' c='AAAAAA'>" +
+    "<x sc='125'/><x sc='250'/><x sc='375'/><x sc='499'/>" +
   "</x>" +
-  "<x sc='2000' id='Street Racer' c='FFFFFF'>" +
-    "<x sc='700'/><x sc='1000'/><x sc='1300'/><x sc='1600'/>" +
+  // Newburge: 500–1999 SC (4 sub-stages evenly spaced)
+  "<x sc='2000' id='Newburge' c='66CCFF'>" +
+    "<x sc='875'/><x sc='1250'/><x sc='1625'/><x sc='1999'/>" +
   "</x>" +
-  "<x sc='5000' id='Racer' c='00CC00'>" +
-    "<x sc='2500'/><x sc='3000'/><x sc='3500'/><x sc='4000'/>" +
+  // Creek Side: 2000–4999 SC
+  "<x sc='5000' id='Creek Side' c='00CC00'>" +
+    "<x sc='2750'/><x sc='3500'/><x sc='4250'/><x sc='4999'/>" +
   "</x>" +
-  "<x sc='12000' id='Pro Racer' c='00AAFF'>" +
-    "<x sc='6000'/><x sc='7500'/><x sc='9000'/><x sc='10500'/>" +
+  // Vista Heights: 5000–9999 SC
+  "<x sc='10000' id='Vista Heights' c='FF8800'>" +
+    "<x sc='6250'/><x sc='7500'/><x sc='8750'/><x sc='9999'/>" +
   "</x>" +
-  "<x sc='25000' id='Elite Racer' c='FF8800'>" +
-    "<x sc='14000'/><x sc='17000'/><x sc='20000'/><x sc='23000'/>" +
-  "</x>" +
-  "<x sc='50000' id='Street Legend' c='FF0000'>" +
-    "<x sc='28000'/><x sc='34000'/><x sc='40000'/><x sc='46000'/>" +
-  "</x>" +
-  "<x sc='999999999' id='Legend' c='FFD700'>" +
-    "<x sc='60000'/><x sc='75000'/><x sc='100000'/><x sc='150000'/>" +
+  // Diamond Point: 10000+ SC (no upper bound)
+  "<x sc='999999999' id='Diamond Point' c='FFD700'>" +
+    "<x sc='20000'/><x sc='40000'/><x sc='70000'/><x sc='100000'/>" +
   "</x>" +
   "</s></n>";
 

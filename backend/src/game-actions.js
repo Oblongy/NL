@@ -2663,6 +2663,19 @@ async function handleGetWinsAndLosses(context) {
         source: caller?.source || "supabase:getwinsandlosses:bad-session",
       };
     }
+
+    const { data, error } = await supabase
+      .from("game_players")
+      .select("wins, losses")
+      .eq("id", caller.playerId)
+      .maybeSingle();
+
+    if (!error && data) {
+      return {
+        body: wrapSuccessData(`<wl w='${data.wins ?? 0}' l='${data.losses ?? 0}'/>`),
+        source: "supabase:getwinsandlosses",
+      };
+    }
   }
 
   return {
