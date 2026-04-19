@@ -3092,6 +3092,7 @@ const SHOWROOM_CAR_SPEC_OVERRIDES = new Map([
   ["98", { eo: "2.6L I6 TT", dt: "AWD", np: "2", ct: "Coupe", et: "12.6 sec 1/4", tt: "156 mph top speed", sw: "3150", st: "4.6", y: "1994" }],
   ["101", { eo: "3.8L V6 TT", dt: "AWD", np: "2", ct: "Coupe", et: "11.6 sec 1/4", tt: "193 mph top speed", sw: "3840", st: "3.4", y: "2012" }],
   ["109", { eo: "8.4L V10", dt: "RWD", np: "2", ct: "Coupe", et: "11.1 sec 1/4", tt: "184 mph top speed", sw: "3350", st: "3.2", y: "2010" }],
+  ["124", { eo: "8.0L V10", dt: "RWD", np: "2", ct: "Roadster", et: "11.0 sec 1/4", tt: "202 mph top speed", sw: "3380", st: "3.5", y: "2008" }],
 ]);
 
 function getShowroomLocationForCarPrice(price) {
