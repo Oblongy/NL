@@ -1,36 +1,95 @@
+import { getStaticPartsCatalogXml } from "./catalog-data-source.js";
+import { getShowroomCarInduction } from "./showroom-car-specs.js";
+
 export const DEFAULT_STARTER_CATALOG_CAR_ID = 1; // Acura Integra GSR
 export const DEFAULT_PAINT_INDEX = 4;
 export const DEFAULT_COLOR_CODE = "C0C0C0";
 export const DEFAULT_STOCK_PARTS_XML = "";
 export const DEFAULT_OWNED_STOCK_WHEEL_XML = "<ws><w wid='1' id='1000' ws='17'/></ws>";
 
-// Catalog car IDs that come with a factory turbo pre-installed.
-// Part i=10005 = Blowfish Beast 40 PSI Turbo (pi=87, free, grade C)
-const TURBO_CAR_IDS = new Set([
-  2, 10, 11, 14, 15, 16, 17, 19, 21, 23, 29, 33, 35, 38, 40, 52, 55, 57,
-  87, 88, 89, 91, 92, 109, 111, 112, 123, 124, 125, 127, 128, 137, 138,
-  140, 142, 155, 156,
-]);
+const PART_XML_ENTRY_REGEX = /<p\b[^>]*\/>/g;
+const PART_XML_ATTR_REGEX = /(\w+)='([^']*)'/g;
+const FACTORY_INDUCTION_PART_ID_BY_KIND = Object.freeze({
+  T: 10005,
+  TT: 269,
+  S: 208,
+});
 
-// Part i=81 = Supercharger (pi=81) — cars that come with a factory supercharger
-const SUPERCHARGER_CAR_IDS = new Set([
-  7, 45, 68, 90, 98, 101, 102, 104, 133,
-]);
+let partsCatalogById = null;
 
-function makeInstalledPart(i, pi, n, b, bn, mn) {
-  const ai = `default${i}`;
-  return `<p ai='${ai}' i='${i}' pi='${pi}' t='e' n='${n}' p='0' pp='0' g='C' di='1' pdi='1' b='${b}' bn='${bn}' mn='${mn}' l='100' in='1' mo='0' hp='0' tq='0' wt='0' cc='0' ps=''/>`;
+function parsePartXmlAttributes(rawEntry) {
+  const attrs = {};
+  let match;
+  while ((match = PART_XML_ATTR_REGEX.exec(rawEntry)) !== null) {
+    attrs[match[1]] = match[2];
+  }
+  PART_XML_ATTR_REGEX.lastIndex = 0;
+  return attrs;
+}
+
+function getPartsCatalogById() {
+  if (partsCatalogById) {
+    return partsCatalogById;
+  }
+
+  partsCatalogById = new Map();
+  let match;
+  while ((match = PART_XML_ENTRY_REGEX.exec(getStaticPartsCatalogXml())) !== null) {
+    const attrs = parsePartXmlAttributes(match[0]);
+    const id = Number(attrs.i || 0);
+    if (id > 0) {
+      partsCatalogById.set(id, attrs);
+    }
+  }
+  PART_XML_ENTRY_REGEX.lastIndex = 0;
+  return partsCatalogById;
+}
+
+function buildInstalledCatalogPartXml(catalogPart) {
+  if (!catalogPart?.i) {
+    return DEFAULT_STOCK_PARTS_XML;
+  }
+
+  const attrs = {
+    ai: `default${catalogPart.i}`,
+    i: catalogPart.i,
+    pi: catalogPart.pi || "",
+    t: catalogPart.t || "",
+    n: catalogPart.n || "",
+    p: "0",
+    pp: "0",
+    g: catalogPart.g || "",
+    di: catalogPart.di || "",
+    pdi: catalogPart.pdi || catalogPart.di || "",
+    b: catalogPart.b || "",
+    bn: catalogPart.bn || "",
+    mn: catalogPart.mn || "",
+    l: catalogPart.l || "100",
+    in: "1",
+    mo: catalogPart.mo || "0",
+    hp: catalogPart.hp || "0",
+    tq: catalogPart.tq || "0",
+    wt: catalogPart.wt || "0",
+    cc: catalogPart.cc || "0",
+    ps: catalogPart.ps || "",
+  };
+
+  const orderedKeys = ["ai", "i", "pi", "t", "n", "p", "pp", "g", "di", "pdi", "b", "bn", "mn", "l", "in", "mo", "hp", "tq", "wt", "cc", "ps"];
+  const serialized = orderedKeys
+    .filter((key) => attrs[key] !== "" && attrs[key] !== undefined)
+    .map((key) => `${key}='${attrs[key]}'`)
+    .join(" ");
+  return `<p ${serialized}/>`;
 }
 
 export function getDefaultPartsXmlForCar(catalogCarId) {
-  const id = Number(catalogCarId || 0);
-  if (TURBO_CAR_IDS.has(id)) {
-    return makeInstalledPart(10005, 87, 'Blowfish Beast 40 PSI Turbo', 'blowfish', 'Blowfish', 'Beast 40 PSI Turbo');
+  const inductionKind = getShowroomCarInduction(catalogCarId);
+  const partId = FACTORY_INDUCTION_PART_ID_BY_KIND[inductionKind];
+  if (!partId) {
+    return DEFAULT_STOCK_PARTS_XML;
   }
-  if (SUPERCHARGER_CAR_IDS.has(id)) {
-    return makeInstalledPart(10005, 87, 'Blowfish Beast 40 PSI Turbo', 'blowfish', 'Blowfish', 'Beast 40 PSI Turbo');
-  }
-  return DEFAULT_STOCK_PARTS_XML;
+
+  return buildInstalledCatalogPartXml(getPartsCatalogById().get(partId));
 }
 
 const LEGACY_BAD_OWNED_WHEEL_PATTERNS = [

@@ -4,8 +4,10 @@ import {
   DEFAULT_PAINT_INDEX,
   DEFAULT_STARTER_CATALOG_CAR_ID,
   DEFAULT_STOCK_PARTS_XML,
+  getDefaultPartsXmlForCar,
   normalizeOwnedWheelXmlValue,
 } from "./car-defaults.js";
+import { normalizeOwnedPartsXmlValue } from "./parts-xml.js";
 
 async function maybeSingle(query) {
   const { data, error } = await query.maybeSingle();
@@ -78,28 +80,23 @@ function normalizeWheelXmlValue(value) {
   return normalizeOwnedWheelXmlValue(value);
 }
 
-function normalizePartsXmlValue(value) {
+function hasForcedInductionSlot(partsXml) {
+  return /<p[^>]*\b(?:ci|pi)=["'](?:81|87)["'][^>]*\/>/i.test(String(partsXml || ""));
+}
+
+function normalizePartsXmlValue(value, catalogCarId = 0) {
   const partsXml = String(value || "").trim();
+  const normalizedFactoryPartsXml = normalizeOwnedPartsXmlValue(getDefaultPartsXmlForCar(catalogCarId));
   if (!partsXml) {
-    return "";
+    return normalizedFactoryPartsXml;
   }
 
-  // Stored part fragments sometimes come from shop payloads (`pi` / `t`) rather
-  // than owned-car payloads (`ci` / `pt`). The 10.0.03 garage/client code reads
-  // owned-car nodes, so normalize the legacy shop shape into the canonical form.
-  return partsXml.replace(/<p\b([^>]*)\/>/gi, (fullMatch, rawAttrs) => {
-    let attrs = String(rawAttrs || "");
+  const normalizedPartsXml = normalizeOwnedPartsXmlValue(partsXml);
+  if (!normalizedFactoryPartsXml || hasForcedInductionSlot(normalizedPartsXml)) {
+    return normalizedPartsXml;
+  }
 
-    if (!/\bci=/.test(attrs) && /\bpi=/.test(attrs)) {
-      attrs = attrs.replace(/\bpi=/, "ci=");
-    }
-
-    if (!/\bpt=/.test(attrs) && /\bt=/.test(attrs)) {
-      attrs = attrs.replace(/\bt=/, "pt=");
-    }
-
-    return `<p${attrs}/>`;
-  });
+  return `${normalizedPartsXml}${normalizedFactoryPartsXml}`;
 }
 
 function isMissingPartsInventoryTableError(error) {
@@ -145,7 +142,7 @@ export function normalizeOwnedCarRecord(car) {
     ...car,
     catalog_car_id: normalizeCatalogCarIdValue(car.catalog_car_id),
     wheel_xml: normalizeWheelXmlValue(car.wheel_xml),
-    parts_xml: normalizePartsXmlValue(car.parts_xml),
+    parts_xml: normalizePartsXmlValue(car.parts_xml, car.catalog_car_id),
     test_drive_active: testDriveState?.active,
     test_drive_expired: testDriveState?.expired,
     test_drive_hours_remaining: testDriveState?.hoursRemaining,
@@ -165,7 +162,7 @@ function getLegacyCarPatch(car) {
     patch.wheel_xml = normalizedWheelXml;
   }
 
-  const normalizedPartsXml = normalizePartsXmlValue(car.parts_xml);
+  const normalizedPartsXml = normalizePartsXmlValue(car.parts_xml, normalizedCatalogCarId);
   if (normalizedPartsXml !== String(car.parts_xml || "")) {
     patch.parts_xml = normalizedPartsXml;
   }
@@ -421,7 +418,7 @@ export async function createStarterCar(
     paint_index: Number(paintIndex) || DEFAULT_PAINT_INDEX,
     plate_name: String(plateName || ""),
     color_code: String(colorCode || DEFAULT_COLOR_CODE),
-    parts_xml: String(partsXml || ""),
+    parts_xml: normalizePartsXmlValue(partsXml, catalogCarId),
     wheel_xml: normalizeWheelXmlValue(wheelXml),
   };
 
@@ -465,7 +462,7 @@ export async function createOwnedCar(
     paint_index: Number(paintIndex) || DEFAULT_PAINT_INDEX,
     plate_name: String(plateName || ""),
     color_code: String(colorCode || DEFAULT_COLOR_CODE),
-    parts_xml: String(partsXml || ""),
+    parts_xml: normalizePartsXmlValue(partsXml, catalogCarId),
     wheel_xml: normalizeWheelXmlValue(wheelXml),
   };
 

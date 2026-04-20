@@ -51,6 +51,7 @@ import {
   clearCarTestDriveState,
 } from "./user-service.js";
 import { getDefaultPartsXmlForCar } from "./car-defaults.js";
+import { getShowroomCarSpec, hasShowroomCarSpec } from "./showroom-car-specs.js";
 
 const DEFAULT_STARTER_CATALOG_CAR_ID = 1; // Acura Integra GSR
 const DEFAULT_STOCK_WHEEL_XML = "<ws><w wid='1' id='1001' ws='17'/></ws>";
@@ -2115,7 +2116,7 @@ async function handleCreateAccount(context) {
       paintIndex: 4,
       plateName: "",
       colorCode: starterColor,
-      partsXml: DEFAULT_STOCK_PARTS_XML,
+      partsXml: getDefaultPartsXmlForCar(starterCatalogCarId),
       wheelXml: DEFAULT_STOCK_WHEEL_XML,
     });
   } catch (error) {
@@ -2358,6 +2359,13 @@ async function handleGetOneCarEngine(context) {
     }
   }
 
+  if (!car) {
+    return {
+      body: failureBody(),
+      source: "generated:getonecarengine:no-car",
+    };
+  }
+
   // Read the car's installed parts — only b (boost), e (NOS), es (sound) change per build
   let boostType = "0";
   let nosSize = 0;
@@ -2372,19 +2380,15 @@ async function handleGetOneCarEngine(context) {
     if (hasBottles && hasJets) nosSize = 100;
   }
 
-  // Fallback: if the car is a factory turbocharged model but has no turbo in parts_xml,
-  // treat it as turbocharged (covers existing cars created before default parts were added)
-  if (boostType === "0" && car?.catalog_car_id) {
-    const { getDefaultPartsXmlForCar: getDefaults } = await import("./car-defaults.js");
-    const defaultParts = getDefaults(car.catalog_car_id);
-    if (defaultParts && /<p[^>]*\bpi=["']87["'][^>]*\/>/.test(defaultParts)) {
-      boostType = "T";
-    }
-  }
-
   const engineSound = boostType === "T" ? 2 : boostType === "S" ? 3 : 1;
 
   const catalogCarId = String(car?.catalog_car_id || "");
+  if (!hasShowroomCarSpec(catalogCarId)) {
+    return {
+      body: failureBody(),
+      source: "generated:getonecarengine:unsupported-car",
+    };
+  }
   const n2 = buildN2Fields(catalogCarId);
   const timing = generateTimingArray(catalogCarId);
 
@@ -2652,6 +2656,9 @@ async function handleBuyCar(context) {
   if (!catalogCarId) {
     return { body: failureBody(), source: "supabase:buycar:missing-car" };
   }
+  if (!hasShowroomCarSpec(catalogCarId)) {
+    return { body: failureBody(), source: "supabase:buycar:unsupported-car" };
+  }
 
   const player = await getPlayerById(supabase, caller.playerId);
   if (!player) {
@@ -2913,7 +2920,7 @@ async function handleGetBlackCardProgress(context) {
 }
 
 async function handleCheckTestDrive(context) {
-  const { supabase, params } = context;
+  const { supabase } = context;
   let caller = null;
 
   if (supabase) {
@@ -2927,12 +2934,13 @@ async function handleCheckTestDrive(context) {
   }
 
   const player = caller?.player || null;
-  const offer = player ? createTestDriveInvitation(player) : {
-    invitationId: Date.now(),
-    catalogCarId: DEFAULT_STARTER_CATALOG_CAR_ID,
-    colorCode: "C0C0C0",
-    locationId: 100,
-  };
+  const offer = player ? createTestDriveInvitation(player) : buildGuestTestDriveOffer(100);
+  if (!offer) {
+    return {
+      body: failureBody(),
+      source: "checktestdrive:no-supported-cars",
+    };
+  }
   const xml = `<t ci='${offer.catalogCarId}' c='${offer.colorCode}' tid='${offer.invitationId}' lod='${offer.locationId}'/>`;
 
   return {
@@ -2968,7 +2976,7 @@ async function handleAcceptTestDrive(context) {
     paintIndex: 4,
     plateName: "",
     colorCode: String(params.get("c") || pendingInvitation.colorCode || "C0C0C0"),
-    partsXml: DEFAULT_STOCK_PARTS_XML,
+    partsXml: getDefaultPartsXmlForCar(pendingInvitation.catalogCarId),
     wheelXml: DEFAULT_STOCK_WHEEL_XML,
     testDriveInvitationId: invitationId,
     testDriveName: getCatalogCarName(pendingInvitation.catalogCarId),
@@ -3166,49 +3174,6 @@ const DEALER_CATEGORIES = [
   { i: "1005", pi: "0", n: "Diamond Point Showroom",cl: "CC55CC", l: "500" },
 ];
 
-const DEFAULT_SHOWROOM_CAR_SPEC = {
-  eo: "2.0L I4",
-  dt: "FWD",
-  np: "4",
-  ct: "Coupe",
-  et: "15.00 sec 1/4",
-  tt: "140 mph top speed",
-  sw: "2800",
-  st: "7.0",
-  y: "2005",
-};
-
-const SHOWROOM_CAR_SPEC_OVERRIDES = new Map([
-  ["1", { eo: "1.8L I4 VTEC", dt: "FWD", np: "4", ct: "Coupe", et: "14.5 sec 1/4", tt: "130 mph top speed", sw: "2600", st: "6.5", y: "1999", hp: 170, tq: 128 }],
-  ["5", { eo: "5.4L V8 SC", dt: "RWD", np: "2", ct: "Coupe", et: "11.6 sec 1/4", tt: "205 mph top speed", sw: "3480", st: "3.6", y: "2005", hp: 500, tq: 480 }],
-  ["7", { eo: "6.0L V8", dt: "RWD", np: "2", ct: "Coupe", et: "12.5 sec 1/4", tt: "186 mph top speed", sw: "3210", st: "4.2", y: "2005", hp: 400, tq: 400 }],
-  ["10", { eo: "8.3L V10", dt: "RWD", np: "2", ct: "Roadster", et: "11.9 sec 1/4", tt: "190 mph top speed", sw: "3410", st: "3.9", y: "2005", hp: 500, tq: 525 }],
-  ["11", { eo: "3.2L I6", dt: "RWD", np: "2", ct: "Coupe", et: "13.1 sec 1/4", tt: "155 mph top speed", sw: "3415", st: "4.9", y: "2005", hp: 240, tq: 232 }],
-  ["14", { eo: "3.0L I6 TT", dt: "RWD", np: "2", ct: "Coupe", et: "12.9 sec 1/4", tt: "177 mph top speed", sw: "3460", st: "4.6", y: "1998", hp: 276, tq: 282 }],
-  ["21", { eo: "3.8L V6 TT", dt: "AWD", np: "2", ct: "Coupe", et: "11.8 sec 1/4", tt: "193 mph top speed", sw: "3830", st: "3.5", y: "2009", hp: 485, tq: 398 }],
-  ["25", { eo: "3.5L V6", dt: "RWD", np: "2", ct: "Coupe", et: "13.5 sec 1/4", tt: "155 mph top speed", sw: "3350", st: "5.1", y: "2003", hp: 287, tq: 274 }],
-  ["28", { eo: "3.2L V6", dt: "RWD", np: "2", ct: "Coupe", et: "12.9 sec 1/4", tt: "175 mph top speed", sw: "3150", st: "4.8", y: "2005", hp: 240, tq: 216 }],
-  ["34", { eo: "7.0L V8", dt: "RWD", np: "2", ct: "Coupe", et: "11.7 sec 1/4", tt: "198 mph top speed", sw: "3130", st: "3.6", y: "2006", hp: 505, tq: 470 }],
-  ["38", { eo: "2.6L I6 TT", dt: "AWD", np: "2", ct: "Coupe", et: "13.1 sec 1/4", tt: "156 mph top speed", sw: "3420", st: "4.9", y: "1999", hp: 276, tq: 260 }],
-  ["48", { eo: "6.2L V8", dt: "RWD", np: "2", ct: "Coupe", et: "13.0 sec 1/4", tt: "155 mph top speed", sw: "3860", st: "4.6", y: "2010", hp: 426, tq: 420 }],
-  ["51", { eo: "3.7L V6", dt: "RWD", np: "2", ct: "Coupe", et: "13.5 sec 1/4", tt: "155 mph top speed", sw: "3740", st: "5.0", y: "2009", hp: 305, tq: 268 }],
-  ["55", { eo: "3.7L V6", dt: "RWD", np: "2", ct: "Coupe", et: "13.3 sec 1/4", tt: "155 mph top speed", sw: "3330", st: "4.7", y: "2009", hp: 332, tq: 270 }],
-  ["57", { eo: "2.0L 4-Rotor", dt: "RWD", np: "1", ct: "Prototype", et: "9.8 sec 1/4", tt: "220 mph top speed", sw: "2200", st: "2.8", y: "2008", hp: 700, tq: 500 }],
-  ["59", { eo: "6.1L V8", dt: "RWD", np: "2", ct: "Coupe", et: "13.1 sec 1/4", tt: "173 mph top speed", sw: "4140", st: "4.9", y: "2008", hp: 425, tq: 420 }],
-  ["68", { eo: "5.4L V8 SC", dt: "RWD", np: "2", ct: "Coupe", et: "12.4 sec 1/4", tt: "180 mph top speed", sw: "3920", st: "4.3", y: "2011", hp: 550, tq: 510 }],
-  ["72", { eo: "3.8L V6 T", dt: "RWD", np: "2", ct: "Coupe", et: "13.6 sec 1/4", tt: "124 mph top speed", sw: "3550", st: "5.0", y: "1987", hp: 245, tq: 273 }],
-  ["86", { eo: "1.3L Twin-Rotor TT", dt: "RWD", np: "2", ct: "Coupe", et: "12.6 sec 1/4", tt: "165 mph top speed", sw: "2800", st: "4.7", y: "2002", hp: 247, tq: 217 }],
-  ["87", { eo: "2.0L I4 T", dt: "AWD", np: "4", ct: "Sedan", et: "13.3 sec 1/4", tt: "152 mph top speed", sw: "3510", st: "5.0", y: "2008", hp: 291, tq: 300 }],
-  ["89", { eo: "2.5L H4 T", dt: "AWD", np: "4", ct: "Sedan", et: "13.3 sec 1/4", tt: "155 mph top speed", sw: "3380", st: "4.8", y: "2008", hp: 265, tq: 258 }],
-  ["90", { eo: "3.8L V8 TT", dt: "RWD", np: "2", ct: "Coupe", et: "11.0 sec 1/4", tt: "205 mph top speed", sw: "3190", st: "3.1", y: "2012", hp: 560, tq: 502 }],
-  ["91", { eo: "2.5L H4 T", dt: "AWD", np: "4", ct: "Sedan", et: "13.2 sec 1/4", tt: "155 mph top speed", sw: "3380", st: "4.7", y: "2011", hp: 265, tq: 258 }],
-  ["92", { eo: "2.5L H4 T", dt: "AWD", np: "4", ct: "Sedan", et: "13.1 sec 1/4", tt: "158 mph top speed", sw: "3390", st: "4.6", y: "2015", hp: 268, tq: 258 }],
-  ["98", { eo: "2.6L I6 TT", dt: "AWD", np: "2", ct: "Coupe", et: "12.6 sec 1/4", tt: "156 mph top speed", sw: "3150", st: "4.6", y: "1994", hp: 276, tq: 260 }],
-  ["101", { eo: "3.8L V6 TT", dt: "AWD", np: "2", ct: "Coupe", et: "11.6 sec 1/4", tt: "193 mph top speed", sw: "3840", st: "3.4", y: "2012", hp: 530, tq: 425 }],
-  ["109", { eo: "8.4L V10", dt: "RWD", np: "2", ct: "Coupe", et: "11.1 sec 1/4", tt: "184 mph top speed", sw: "3350", st: "3.2", y: "2010", hp: 600, tq: 560 }],
-  ["124", { eo: "8.0L V10", dt: "RWD", np: "2", ct: "Roadster", et: "11.0 sec 1/4", tt: "202 mph top speed", sw: "3380", st: "3.5", y: "2008", hp: 500, tq: 490 }],
-]);
-
 function getShowroomLocationForCarPrice(price) {
   const locationTiers = Object.entries(LOCATION_MAX_PRICE).sort((a, b) => Number(a[0]) - Number(b[0]));
   for (const [locationId, maxPrice] of locationTiers) {
@@ -3221,7 +3186,24 @@ function getShowroomLocationForCarPrice(price) {
 
 function listShowroomCatalogCarsForLocation(locationId) {
   const targetLocationId = Number(locationId) || 100;
-  return FULL_CAR_CATALOG.filter(([, , price]) => getShowroomLocationForCarPrice(price) === targetLocationId);
+  return FULL_CAR_CATALOG.filter(([catalogCarId, , price]) => (
+    hasShowroomCarSpec(catalogCarId) &&
+    getShowroomLocationForCarPrice(price) === targetLocationId
+  ));
+}
+
+function buildGuestTestDriveOffer(locationId = 100) {
+  const [catalogCarId] = listShowroomCatalogCarsForLocation(locationId)[0] || [];
+  if (!catalogCarId) {
+    return null;
+  }
+
+  return {
+    invitationId: Date.now(),
+    catalogCarId: Number(catalogCarId),
+    colorCode: "C0C0C0",
+    locationId: Number(locationId) || 100,
+  };
 }
 
 function createTestDriveInvitation(player) {
@@ -3230,12 +3212,16 @@ function createTestDriveInvitation(player) {
     pendingTestDriveInvitationsById.delete(Number(existingInvitation.invitationId));
   }
   const showroomCars = listShowroomCatalogCarsForLocation(player?.location_id || 100);
-  const [catalogCarId = DEFAULT_STARTER_CATALOG_CAR_ID] = showroomCars[0] || [];
+  const [catalogCarId] = showroomCars[0] || [];
+  if (!catalogCarId) {
+    pendingTestDriveInvitationsByPlayerId.delete(Number(player?.id || 0));
+    return null;
+  }
   const invitationId = Date.now() + Math.floor(Math.random() * 1000);
   const offer = {
     invitationId,
     playerId: Number(player?.id || 0),
-    catalogCarId: Number(catalogCarId) || DEFAULT_STARTER_CATALOG_CAR_ID,
+    catalogCarId: Number(catalogCarId),
     colorCode: "C0C0C0",
     locationId: Number(player?.location_id || 100) || 100,
     moneyPrice: getCatalogCarPrice(catalogCarId),
@@ -3368,44 +3354,61 @@ function buildTestDriveLoginState(playerId, cars = []) {
   };
 }
 
-function getShowroomCarSpec(carId) {
-  return SHOWROOM_CAR_SPEC_OVERRIDES.get(String(carId || "")) || DEFAULT_SHOWROOM_CAR_SPEC;
-}
-
 // ── Physics-based timing array generation ────────────────────────────────────
-// Base curve captured from live server (stock car, 2026-04-17, frame 116).
-// This is the real timing array the live server sends for a stock ~15s car.
-// Source: practice response, ab='16', B18C1 1.8L VTEC engine.
-const LIVE_BASE_TIMING_CURVE = Object.freeze([
-  51, 51, 51, 51, 51, 51, 51, 51, 51, 70, 72, 74, 75, 77, 79, 80, 82, 84,
-  85, 87, 89, 90, 92, 93, 95, 97, 98, 100, 102, 103, 105, 107, 108, 110,
-  112, 113, 115, 116, 116, 117, 117, 118, 118, 119, 119, 120, 120, 121, 121,
-  122, 122, 123, 123, 124, 124, 125, 125, 126, 126, 127, 127, 128, 127, 126,
-  126, 125, 124, 123, 123, 122, 121, 120, 120, 119, 118, 117, 97, 95, 93, 92,
-  90, 89, 87, 85, 84, 82, 81, 79, 77, 76, 74, 73, 71, 69, 68, 66, 65, 63,
-  61, 60,
-]);
 
 /**
  * Build a CarRaceSpec from a car's showroom spec entry.
  */
+function getShowroomSpecHorsepower(spec, catalogCarId) {
+  const directHp = Number(spec.hp);
+  if (Number.isFinite(directHp) && directHp > 0) {
+    return directHp;
+  }
+
+  const hpMatch = String(spec.et || "").match(/^([\d.]+)/);
+  if (hpMatch) {
+    return Number(hpMatch[1]);
+  }
+
+  throw new Error(`Missing showroom horsepower for catalog car ${catalogCarId}`);
+}
+
+function getShowroomSpecWeight(spec, catalogCarId) {
+  const weight = Number(spec.sw);
+  if (Number.isFinite(weight) && weight > 0) {
+    return weight;
+  }
+
+  throw new Error(`Missing showroom weight for catalog car ${catalogCarId}`);
+}
+
+function getShowroomSpecEstimatedEt(spec, catalogCarId) {
+  const etMatch = String(spec.st || "").match(/^([\d.]+)/);
+  if (etMatch) {
+    return Number(etMatch[1]);
+  }
+
+  throw new Error(`Missing showroom ET for catalog car ${catalogCarId}`);
+}
+
 function buildSpecFromShowroomSpec(catalogCarId) {
   const spec = getShowroomCarSpec(catalogCarId);
-  const hp = Number(spec.hp) || 170;
-  const weight = Number(spec.sw) || 2800;
-  const etMatch = String(spec.et || "").match(/^([\d.]+)/);
-  const estimatedEt = etMatch ? Number(etMatch[1]) : 0;
+  if (!spec) {
+    throw new Error(`Missing showroom spec for catalog car ${catalogCarId}`);
+  }
 
-  // spec.tt is "top speed" not "transmission type" — use drivetrain to infer gearbox
-  const transmissionStr = spec.dt === "AWD" ? "6-speed manual" : "5-speed manual";
+  const hp = getShowroomSpecHorsepower(spec, catalogCarId);
+  const weight = getShowroomSpecWeight(spec, catalogCarId);
+  const estimatedEt = getShowroomSpecEstimatedEt(spec, catalogCarId);
+  const transmissionStr = spec.tt;
 
   return buildCarRaceSpec({
     horsepower: hp,
     weightLbs: weight,
-    engineStr: spec.eo || "",
-    drivetrainStr: spec.dt || "FWD",
+    engineStr: spec.eo,
+    drivetrainStr: spec.dt,
     transmissionStr,
-    bodyTypeStr: spec.ct || "Coupe",
+    bodyTypeStr: spec.ct,
     estimatedEt,
   });
 }
@@ -3413,26 +3416,10 @@ function buildSpecFromShowroomSpec(catalogCarId) {
 /**
  * Generate the timing array for a catalog car.
  *
- * For cars with a known ET (from SHOWROOM_CAR_SPEC_OVERRIDES), we scale the
- * real captured base curve proportionally. For cars without an ET override,
- * we use the physics simulation to produce a run-derived array.
- *
- * The base curve was captured from the live server for a stock ~15s car
- * (B18C1 1.8L VTEC, 2026-04-17). It is the authoritative reference shape.
+ * This stays on the physics simulation path only. We no longer replay or
+ * scale a captured live timing curve here.
  */
 function generateTimingArray(catalogCarId) {
-  const spec = getShowroomCarSpec(catalogCarId);
-  const etMatch = String(spec.et || "").match(/^([\d.]+)/);
-
-  if (etMatch) {
-    // Scale the real captured curve to match this car's ET
-    const targetEt = Number(etMatch[1]);
-    const baseEt = 15.0; // ET the base curve was captured at
-    const scale = baseEt / targetEt;
-    return LIVE_BASE_TIMING_CURVE.map((v) => Math.max(1, Math.round(v * scale)));
-  }
-
-  // No ET override — use physics simulation
   const raceSpec = buildSpecFromShowroomSpec(catalogCarId);
   return simulateRun(raceSpec);
 }
@@ -3442,17 +3429,16 @@ function generateTimingArray(catalogCarId) {
  */
 function getCarRedLine(catalogCarId) {
   const spec = getShowroomCarSpec(catalogCarId);
-  return getRedLine(spec.eo || "", spec.tt || "");
+  if (!spec) {
+    throw new Error(`Missing showroom spec for catalog car ${catalogCarId}`);
+  }
+  return getRedLine(spec.eo, spec.tt);
 }
 
 /**
- * Build the per-car n2 physics fields from captured live server data.
+ * Build the per-car n2 physics fields from showroom spec data.
  *
- * Formulas reverse-engineered from two live captures (2026-04-17):
- *   Car ab=16 (I4 FWD, 170hp, 2661lbs): x=4.86, y=26.73, z=4.86, r=2679, aa=4
- *   Car ab=32 (V8 RWD, 300hp, 3356lbs): x=8.57, y=47.135, z=8.57, r=3374, aa=8
- *
- * Confirmed formulas:
+ * Derived formulas:
  *   x = z = hp * 0.02859
  *   y = x * 5.5
  *   r = weightLbs + 18
@@ -3465,12 +3451,15 @@ function getCarRedLine(catalogCarId) {
  */
 function buildN2Fields(catalogCarId) {
   const spec = getShowroomCarSpec(catalogCarId);
-  const hp = Number(spec.hp) || 170;
-  const weight = Number(spec.sw) || 2800;
-  const engineStr = (spec.eo || "").toLowerCase();
-  const drivetrainStr = (spec.dt || "FWD").toUpperCase();
-  // spec.tt is "top speed" not "transmission type"
-  const transmissionStr = drivetrainStr === "AWD" ? "6-speed manual" : "5-speed manual";
+  if (!spec) {
+    throw new Error(`Missing showroom spec for catalog car ${catalogCarId}`);
+  }
+
+  const hp = getShowroomSpecHorsepower(spec, catalogCarId);
+  const weight = getShowroomSpecWeight(spec, catalogCarId);
+  const engineStr = spec.eo.toLowerCase();
+  const drivetrainStr = spec.dt.toUpperCase();
+  const transmissionStr = spec.tt;
 
   // x, y, z — physics power params
   const x = parseFloat((hp * 0.02859).toFixed(3));
@@ -3489,7 +3478,7 @@ function buildN2Fields(catalogCarId) {
   else if (engineStr.includes("3-cyl") || engineStr.includes("i3")) aa = 3;
 
   // RPM fields
-  const sl = getRedLine(spec.eo || "", spec.tt || "");
+  const sl = getRedLine(spec.eo, spec.tt);
   const o = sl + (engineStr.includes("vtec") || engineStr.includes("i4") ? 200 : 100);
 
   // Power peak RPM (a) and torque peak RPM (n)
@@ -3509,8 +3498,8 @@ function buildN2Fields(catalogCarId) {
   // Gear ratios from gearbox profile
   const raceSpec = buildCarRaceSpec({
     horsepower: hp, weightLbs: weight,
-    engineStr: spec.eo || "", drivetrainStr,
-    transmissionStr, bodyTypeStr: spec.ct || "Coupe",
+    engineStr: spec.eo, drivetrainStr,
+    transmissionStr, bodyTypeStr: spec.ct,
   });
   const ratios = raceSpec.gearbox.forwardRatios;
   const f = ratios[0] ?? 3.587;
@@ -3536,9 +3525,10 @@ function buildShowroomXml(locationId, starterOnly = false) {
     return 500;
   };
 
-  const eligible = FULL_CAR_CATALOG.filter(([, , price]) => {
+  const eligible = FULL_CAR_CATALOG.filter(([catalogCarId, , price]) => {
     const numPrice = Number(price);
     if (numPrice <= 0) return false;
+    if (!hasShowroomCarSpec(catalogCarId)) return false;
     if (starterOnly) return getCarLocation(numPrice) === 100;
     return true; // all priced cars available at every location
   });
@@ -3738,18 +3728,24 @@ async function handlePractice(context) {
       const hasJets    = /<p[^>]*\b(?:ci|pi)=["']204["'][^>]*\/>/.test(xml);
       if (hasBottles && hasJets) nosSize = 100;
     }
-    // Fallback: factory turbocharged cars with no turbo in parts_xml
-    if (boostType === "0" && car?.catalog_car_id) {
-      const defaultParts = getDefaultPartsXmlForCar(car.catalog_car_id);
-      if (defaultParts && /<p[^>]*\bpi=["']87["'][^>]*\/>/.test(defaultParts)) {
-        boostType = "T";
-      }
-    }
+  }
+
+  if (!car) {
+    return {
+      body: failureBody(),
+      source: "generated:practice:no-car",
+    };
   }
 
   const engineSound = boostType === "T" ? 2 : boostType === "S" ? 3 : 1;
 
   const catalogCarId = String(car?.catalog_car_id || "");
+  if (!hasShowroomCarSpec(catalogCarId)) {
+    return {
+      body: failureBody(),
+      source: "generated:practice:unsupported-car",
+    };
+  }
   const n2 = buildN2Fields(catalogCarId);
   const timing = generateTimingArray(catalogCarId);
 
@@ -4014,7 +4010,7 @@ const handlers = {
   getallcars: handleGetAllCars,
   getonecar: handleGetAllCars, // same shape as getallcars, returns the player's car(s)
   getallcats: async () => {
-    return { body: PARTS_CATEGORIES_BODY, source: "fixture:getallcats" };
+    return { body: PARTS_CATEGORIES_BODY, source: "static:getallcats" };
   },
   getpaintcats: handleGetPaintCategories,
   getpaints: handleGetPaints,
