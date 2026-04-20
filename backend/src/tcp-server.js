@@ -265,53 +265,9 @@ export class TcpServer {
         const ut = Math.floor(Date.now() / 1000);
         this.sendMessage(conn, `"ac", "HTI", "s", "<i ut='${ut}' s='1' li='1' it='1'/>"`);
 
-      // --- S / I: In-race position sync --- forward to opponent, don't ack
+      // --- S / I: In-race position sync --- sanitize and relay to opponent, don't ack
       } else if (messageType === "S" || messageType === "I") {
-        // Find race via raceId or by scanning for this player
-        let syncRace = conn.raceId ? this.races.get(conn.raceId) : null;
-        if (!syncRace && conn.playerId) {
-          for (const [, r] of this.races) {
-            if (r.players.some(p => Number(p.playerId) === Number(conn.playerId))) {
-              syncRace = r;
-              conn.raceId = r.id;
-              break;
-            }
-          }
-        }
-        if (syncRace) {
-          // Forward raw encrypted bytes to opponent - do NOT decrypt/re-encrypt
-          for (const p of syncRace.players) {
-            if (p.connId === conn.id || p.raceConnId === conn.id) continue; // skip sender
-            // Prefer race channel connection, fall back to lobby connection
-            const opponentConnId = p.raceConnId || p.connId;
-            const opponentConn = this.connections.get(opponentConnId);
-            if (opponentConn && opponentConn.socket) {
-              try {
-                opponentConn.socket.write(
-                  Buffer.from(conn._lastRaw + MESSAGE_DELIMITER, "latin1")
-                );
-                this.logger.info("TCP forwarded I/S packet", {
-                  fromConnId: conn.id,
-                  toConnId: opponentConn.id,
-                  messageType,
-                  raceId: syncRace.id
-                });
-              } catch (error) {
-                this.logger.error("TCP I/S forward error", {
-                  connId: conn.id,
-                  opponentConnId: opponentConn.id,
-                  error: error.message
-                });
-              }
-            }
-          }
-        } else {
-          this.logger.warn("TCP I/S packet received without active race", {
-            connId: conn.id,
-            playerId: conn.playerId,
-            messageType
-          });
-        }
+        this.handleRaceTelemetry(conn, messageType, parts);
         // no ack - per protocol spec
 
       // --- RD: Race done / result data ---
@@ -830,16 +786,38 @@ export class TcpServer {
 
     // Extract telemetry data - Flash client expects IO messages, not raw I/S
     // The client's RaceOpponent class processes IO messages to update opponent position
-    const rawDistance = parts[1];
-    const rawVelocity = parts[2];
-    const rawAcceleration = parts[3];
-    const rawTick = parts[4] || "0";
+    const rawDistance = String(parts[1] ?? "").trim();
+    const rawVelocity = String(parts[2] ?? "").trim();
+    const rawAcceleration = String(parts[3] ?? "").trim();
+    const rawTick = String(parts[4] ?? "0").trim();
     
     // Normalize values but preserve original if valid
     const distance = this.normalizeNumericToken(rawDistance, "0");
     const velocity = this.normalizeNumericToken(rawVelocity, "0");
     const acceleration = this.normalizeNumericToken(rawAcceleration, "0");
     const tick = this.normalizeNumericToken(rawTick, "0");
+
+    if (
+      distance !== rawDistance ||
+      velocity !== rawVelocity ||
+      acceleration !== rawAcceleration ||
+      tick !== rawTick
+    ) {
+      this.logger.warn("TCP telemetry normalized invalid tokens", {
+        connId: conn.id,
+        raceId: race.id,
+        playerId: conn.playerId,
+        messageType,
+        rawDistance,
+        rawVelocity,
+        rawAcceleration,
+        rawTick,
+        distance,
+        velocity,
+        acceleration,
+        tick,
+      });
+    }
 
     // Forward telemetry to opponent as IO message
     // This is what the Flash client's amLive.oppObj.raceOpp.getPos() expects
