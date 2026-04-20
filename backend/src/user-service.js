@@ -5,6 +5,7 @@ import {
   DEFAULT_STARTER_CATALOG_CAR_ID,
   DEFAULT_STOCK_PARTS_XML,
   getDefaultPartsXmlForCar,
+  getDefaultWheelXmlForCar,
   normalizeOwnedWheelXmlValue,
 } from "./car-defaults.js";
 import { normalizeOwnedPartsXmlValue } from "./parts-xml.js";
@@ -76,8 +77,8 @@ function normalizeCatalogCarIdValue(value) {
   return numericValue;
 }
 
-function normalizeWheelXmlValue(value) {
-  return normalizeOwnedWheelXmlValue(value);
+function normalizeWheelXmlValue(value, catalogCarId = 0) {
+  return normalizeOwnedWheelXmlValue(value, catalogCarId);
 }
 
 function hasForcedInductionSlot(partsXml) {
@@ -137,12 +138,13 @@ export function normalizeOwnedCarRecord(car) {
   }
 
   const testDriveState = deriveTestDriveState(car);
+  const normalizedCatalogCarId = normalizeCatalogCarIdValue(car.catalog_car_id);
 
   return {
     ...car,
-    catalog_car_id: normalizeCatalogCarIdValue(car.catalog_car_id),
-    wheel_xml: normalizeWheelXmlValue(car.wheel_xml),
-    parts_xml: normalizePartsXmlValue(car.parts_xml, car.catalog_car_id),
+    catalog_car_id: normalizedCatalogCarId,
+    wheel_xml: normalizeWheelXmlValue(car.wheel_xml, normalizedCatalogCarId),
+    parts_xml: normalizePartsXmlValue(car.parts_xml, normalizedCatalogCarId),
     test_drive_active: testDriveState?.active,
     test_drive_expired: testDriveState?.expired,
     test_drive_hours_remaining: testDriveState?.hoursRemaining,
@@ -157,7 +159,7 @@ function getLegacyCarPatch(car) {
     patch.catalog_car_id = normalizedCatalogCarId;
   }
 
-  const normalizedWheelXml = normalizeWheelXmlValue(car.wheel_xml);
+  const normalizedWheelXml = normalizeWheelXmlValue(car.wheel_xml, normalizedCatalogCarId);
   if (normalizedWheelXml !== String(car.wheel_xml || "")) {
     patch.wheel_xml = normalizedWheelXml;
   }
@@ -419,7 +421,7 @@ export async function createStarterCar(
     plate_name: String(plateName || ""),
     color_code: String(colorCode || DEFAULT_COLOR_CODE),
     parts_xml: normalizePartsXmlValue(partsXml, catalogCarId),
-    wheel_xml: normalizeWheelXmlValue(wheelXml),
+    wheel_xml: normalizeWheelXmlValue(wheelXml, catalogCarId),
   };
 
   const car = await insertGameCarCompat(supabase, insert);
@@ -463,7 +465,7 @@ export async function createOwnedCar(
     plate_name: String(plateName || ""),
     color_code: String(colorCode || DEFAULT_COLOR_CODE),
     parts_xml: normalizePartsXmlValue(partsXml, catalogCarId),
-    wheel_xml: normalizeWheelXmlValue(wheelXml),
+    wheel_xml: normalizeWheelXmlValue(wheelXml, catalogCarId),
   };
 
   if (testDriveInvitationId != null) {
@@ -549,14 +551,16 @@ export async function ensurePlayerHasGarageCar(
     return existingCars;
   }
 
+  const catalogCarId = Number(options.catalogCarId) || DEFAULT_STARTER_CATALOG_CAR_ID;
+
   await createStarterCar(supabase, {
     playerId,
-    catalogCarId: Number(options.catalogCarId) || DEFAULT_STARTER_CATALOG_CAR_ID,
+    catalogCarId,
     paintIndex: Number(options.paintIndex) || DEFAULT_PAINT_INDEX,
     plateName: String(options.plateName || ""),
     colorCode: String(options.colorCode || DEFAULT_COLOR_CODE),
     partsXml: String(options.partsXml || DEFAULT_STOCK_PARTS_XML),
-    wheelXml: String(options.wheelXml || NORMALIZED_STOCK_WHEEL_XML),
+    wheelXml: String(options.wheelXml || getDefaultWheelXmlForCar(catalogCarId) || NORMALIZED_STOCK_WHEEL_XML),
   });
 
   return listCarsForPlayer(supabase, playerId);

@@ -50,11 +50,10 @@ import {
   deleteCar,
   clearCarTestDriveState,
 } from "./user-service.js";
-import { getDefaultPartsXmlForCar } from "./car-defaults.js";
+import { getDefaultPartsXmlForCar, getDefaultWheelFitmentForCar, getDefaultWheelXmlForCar } from "./car-defaults.js";
 import { getShowroomCarSpec, hasShowroomCarSpec } from "./showroom-car-specs.js";
 
 const DEFAULT_STARTER_CATALOG_CAR_ID = 1; // Acura Integra GSR
-const DEFAULT_STOCK_WHEEL_XML = "<ws><w wid='1' id='1001' ws='17'/></ws>";
 const DEFAULT_STOCK_PARTS_XML = "";
 const TEST_DRIVE_DURATION_HOURS = 72;
 const DEFAULT_DYNO_PURCHASE_STATE = Object.freeze({
@@ -2047,7 +2046,7 @@ async function handleLogin(context) {
 
     const cars = await ensurePlayerHasGarageCar(supabase, player.id, {
       catalogCarId: DEFAULT_STARTER_CATALOG_CAR_ID,
-      wheelXml: DEFAULT_STOCK_WHEEL_XML,
+      wheelXml: getDefaultWheelXmlForCar(DEFAULT_STARTER_CATALOG_CAR_ID),
       partsXml: DEFAULT_STOCK_PARTS_XML,
     });
     const garageCars = decorateCarsWithTestDriveState(player.id, cars);
@@ -2117,7 +2116,7 @@ async function handleCreateAccount(context) {
       plateName: "",
       colorCode: starterColor,
       partsXml: getDefaultPartsXmlForCar(starterCatalogCarId),
-      wheelXml: DEFAULT_STOCK_WHEEL_XML,
+      wheelXml: getDefaultWheelXmlForCar(starterCatalogCarId),
     });
   } catch (error) {
     // If a starter car insert fails (e.g. constraint), continue; login will still work.
@@ -2256,7 +2255,7 @@ async function handleGetAllOtherUserCars(context) {
     body: wrapSuccessData(
       renderOwnedGarageCarsWrapper(await ensurePlayerHasGarageCar(supabase, targetPlayer.id, {
         catalogCarId: DEFAULT_STARTER_CATALOG_CAR_ID,
-        wheelXml: DEFAULT_STOCK_WHEEL_XML,
+        wheelXml: getDefaultWheelXmlForCar(DEFAULT_STARTER_CATALOG_CAR_ID),
         partsXml: DEFAULT_STOCK_PARTS_XML,
       }), {
         ownerPublicId: getPublicIdForPlayer(targetPlayer),
@@ -2307,7 +2306,7 @@ async function handleGetAllCars(context) {
 
   const cars = await ensurePlayerHasGarageCar(supabase, caller.playerId, {
     catalogCarId: DEFAULT_STARTER_CATALOG_CAR_ID,
-    wheelXml: DEFAULT_STOCK_WHEEL_XML,
+    wheelXml: getDefaultWheelXmlForCar(DEFAULT_STARTER_CATALOG_CAR_ID),
     partsXml: DEFAULT_STOCK_PARTS_XML,
   });
   const garageCars = decorateCarsWithTestDriveState(caller.playerId, cars);
@@ -2688,7 +2687,7 @@ async function handleBuyCar(context) {
     plateName: "",
     colorCode: selectedColor,
     partsXml: getDefaultPartsXmlForCar(catalogCarId),
-    wheelXml: DEFAULT_STOCK_WHEEL_XML,
+    wheelXml: getDefaultWheelXmlForCar(catalogCarId),
   });
 
   await updatePlayerMoney(supabase, caller.playerId, newBalance);
@@ -2977,7 +2976,7 @@ async function handleAcceptTestDrive(context) {
     plateName: "",
     colorCode: String(params.get("c") || pendingInvitation.colorCode || "C0C0C0"),
     partsXml: getDefaultPartsXmlForCar(pendingInvitation.catalogCarId),
-    wheelXml: DEFAULT_STOCK_WHEEL_XML,
+    wheelXml: getDefaultWheelXmlForCar(pendingInvitation.catalogCarId),
     testDriveInvitationId: invitationId,
     testDriveName: getCatalogCarName(pendingInvitation.catalogCarId),
     testDriveMoneyPrice: pendingInvitation.moneyPrice,
@@ -3551,11 +3550,10 @@ function buildShowroomXml(locationId, starterOnly = false) {
     .map(([cid, name, price], index) => {
       const escapedName = escapeXml(name);
       const spec = getShowroomCarSpec(cid);
+      const wheelFitment = getDefaultWheelFitmentForCar(cid);
       const carLocationId = starterOnly ? 100 : getCarLocation(price);
       const catId = locationToCatId[carLocationId] || 1001;
       const primarySwatch = showroomColors[index % showroomColors.length];
-      const wheelSize = String(Math.max(15, Math.min(19, 15 + (index % 5))));
-      const wheelId = String(1 + (index % 8));
       const swatchNodes = showroomColors
         .map(({ paintId, colorCode }) => `<p i='${paintId}' cd='${colorCode}'/>`)
         .join("");
@@ -3568,7 +3566,7 @@ function buildShowroomXml(locationId, starterOnly = false) {
         `l='${carLocationId}' lid='${carLocationId}' cid='${carLocationId}' ` +
         `b='0' n='${escapedName}' c='${escapedName}' p='${purchasePrice}' pr='${purchasePrice}' pp='${pointPrice}' cp='${purchasePrice}' ` +
         `lk='0' ae='0' cc='${primarySwatch.colorCode}' g='' ii='0' ` +
-        `wid='${wheelId}' ws='${wheelSize}' rh='0' ts='0' mo='0' ` +
+        `wid='${wheelFitment.designId}' ws='${wheelFitment.size}' rh='0' ts='0' mo='0' ` +
         `cbl='0' cb='0' po='0' poc='0' led='' ` +
         `le='0' lea='999' les='0' lec='999' let='0' ` +
         `eo='${escapeXml(spec.eo)}' dt='${escapeXml(spec.dt)}' np='${escapeXml(spec.np)}' ct='${escapeXml(spec.ct)}' ` +

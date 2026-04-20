@@ -9,11 +9,13 @@ const PARTS_CATALOG_PATH = path.join(CATALOG_DIR, "parts-catalog.xml");
 const PARTS_CATEGORIES_PATH = path.join(CATALOG_DIR, "parts-categories.xml");
 const CARS_CATALOG_PATH = path.join(CATALOG_DIR, "cars-catalog.json");
 const SHOWROOM_CAR_SPECS_PATH = path.join(CATALOG_DIR, "showroom-car-specs.json");
+const STOCK_WHEEL_FITMENTS_PATH = path.join(CATALOG_DIR, "stock-wheel-fitments.json");
 
 let cachedPartsCatalogXml = null;
 let cachedPartsCategoriesBody = null;
 let cachedCarsCatalogEntries = null;
 let cachedShowroomCarSpecs = null;
+let cachedStockWheelFitments = null;
 
 export function getStaticPartsCatalogXml() {
   if (cachedPartsCatalogXml) {
@@ -49,4 +51,13 @@ export function getStaticShowroomCarSpecs() {
 
   cachedShowroomCarSpecs = JSON.parse(fs.readFileSync(SHOWROOM_CAR_SPECS_PATH, "utf8"));
   return cachedShowroomCarSpecs;
+}
+
+export function getStaticStockWheelFitments() {
+  if (cachedStockWheelFitments) {
+    return cachedStockWheelFitments;
+  }
+
+  cachedStockWheelFitments = JSON.parse(fs.readFileSync(STOCK_WHEEL_FITMENTS_PATH, "utf8"));
+  return cachedStockWheelFitments;
 }

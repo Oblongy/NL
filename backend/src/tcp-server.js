@@ -355,8 +355,6 @@ export class TcpServer {
             this.logger.info("TCP RD applied engine wear (race missing)", { playerId, carId });
           }
         }
-        
-        this.handleRaceResult(conn, parts);
 
       // --- Single-char client packets ---
       } else if (messageType.length === 1 && /^[A-Za-z0-9]$/.test(messageType)) {
@@ -550,13 +548,14 @@ export class TcpServer {
             const playerId = await getSessionPlayerId({ supabase: this.supabase, sessionKey: srcSessionKey });
             if (playerId) {
               // Close any stale *race-channel* connection for the same player
-              // before adopting this new race-channel socket. A race-channel
-              // connection has `raceId` set. The lobby connection (no raceId)
-              // must NOT be destroyed here.
+              // before adopting this new race-channel socket. The lobby
+              // connection stays bound to a room, so only destroy sockets that
+              // are race-only channels.
               for (const [existingConnId, existingConn] of this.connections.entries()) {
+                const isExistingRaceChannel = Boolean(existingConn.raceId) && !existingConn.roomId;
                 if (existingConnId !== conn.id &&
                     existingConn.playerId === playerId &&
-                    existingConn.raceId) {
+                    isExistingRaceChannel) {
                   this.logger.info("SRC closing stale race connection for player", { staleConnId: existingConnId, playerId, newConnId: conn.id, staleRaceId: existingConn.raceId });
                   this.leaveRoom(existingConn);
                   existingConn.socket?.destroy();
@@ -564,9 +563,6 @@ export class TcpServer {
                   // Clean up reverse lookups for stale connection
                   if (this.connIdByPlayerId.get(playerId) === existingConnId) {
                     this.connIdByPlayerId.delete(playerId);
-                  }
-                  if (existingConn.raceId) {
-                    this.raceIdByPlayerId.delete(playerId);
                   }
                 }
               }
@@ -615,17 +611,17 @@ export class TcpServer {
           // Attach this race-channel connection to the race
           conn.raceId = srcRace.id;
           
-          // CRITICAL: Update the race player's connId to point to this race channel connection
-          // The SRC connection is the RACE CHANNEL - all I/S packets flow through it
+          // Keep connId bound to the lobby socket. RR/RD and room messages
+          // still flow through the lobby connection; telemetry uses raceConnId.
           const racePlayer = srcRace.players.find(p => Number(p.playerId) === Number(conn.playerId));
           if (racePlayer) {
-            const oldConnId = racePlayer.connId;
-            racePlayer.connId = conn.id;
-            racePlayer.raceConnId = conn.id;  // used by telemetry forwarding
+            const oldRaceConnId = racePlayer.raceConnId || null;
+            racePlayer.raceConnId = conn.id;
             this.raceIdByPlayerId.set(conn.playerId, srcRace.id);
             this.logger.info("TCP SRC race channel established", { 
               connId: conn.id,
-              oldConnId,
+              lobbyConnId: racePlayer.connId,
+              oldRaceConnId,
               raceId: srcRace.id, 
               playerId: conn.playerId,
               playerLane: racePlayer.lane
@@ -1112,6 +1108,11 @@ export class TcpServer {
     if (conn.raceId) {
       const race = this.races.get(conn.raceId);
       if (race) {
+        for (const player of race.players) {
+          if (player.raceConnId === conn.id) {
+            player.raceConnId = null;
+          }
+        }
         race.players = race.players.filter((player) => player.connId !== conn.id);
         if (race.players.length === 0) {
           this.races.delete(conn.raceId);
@@ -1652,17 +1653,15 @@ export class TcpServer {
     if (matches.length === 0) return null;
     
     // If we have multiple connections for the same player, prefer the lobby connection
-    // (the one that has roomId set) unless we specifically want the race channel
+    // (the one that has roomId set) unless the caller is explicitly filtering.
     if (matches.length === 1) return matches[0];
+    const lobbyConn = matches.find(c => c.roomId);
     
     if (excludeRaceChannels) {
-      // Return the connection that has a roomId (lobby connection)
-      const lobbyConn = matches.find(c => c.roomId);
       return lobbyConn || matches[0];
     }
     
-    // Return the most recent connection
-    return matches[matches.length - 1];
+    return lobbyConn || matches[matches.length - 1];
   }
 
   escapeXml(value) {
@@ -1822,7 +1821,7 @@ export class TcpServer {
         
         for (const participant of existingRace.players) {
           // Use the lobby connection for these messages (not race channel yet)
-          const participantConn = this.findConnectionByPlayerId(participant.playerId);
+          const participantConn = this.findConnectionByPlayerId(participant.playerId, true);
           if (!participantConn) {
             this.logger.warn("TCP RRS cannot find connection for player", {
               playerId: participant.playerId,

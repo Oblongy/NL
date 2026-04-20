@@ -72,7 +72,7 @@ export function renderUserSummaries(players, optionsByPlayerId = new Map()) {
 }
 
 function normalizeWheelXml(car) {
-  return normalizeOwnedWheelXmlValue(car.wheel_xml);
+  return normalizeOwnedWheelXmlValue(car.wheel_xml, car.catalog_car_id);
 }
 
 function normalizePartsXml(car) {
@@ -101,11 +101,18 @@ function renderFallbackWheelPartXml(car, wheelXml, partsXml) {
   const normalizedWheelSize = String(wheelSize || "").replace(/[^0-9]/g, "") || "17";
   const normalizedWheelId = String(wid || "").replace(/[^0-9]/g, "") || "1";
   const normalizedPartId = String(wheelPartId || "").replace(/[^0-9]/g, "") || "1000";
-  const isStockWheel = normalizedPartId === "1000";
+  const isStockWheel = normalizedPartId === "1000" || normalizedWheelId === "1";
+  const isFactoryWheel = normalizedPartId === "1003" || normalizedWheelId === "2";
   const partName = isStockWheel
-    ? "Stock 15&quot;"
+    ? `Stock ${normalizedWheelSize}&quot;`
+    : isFactoryWheel
+    ? `Factory ${normalizedWheelSize}&quot;`
     : `Wheel ${normalizedWheelId} ${normalizedWheelSize}&quot;`;
-  const partDesignId = isStockWheel ? "1" : normalizedWheelId;
+  const partDesignId = isStockWheel
+    ? "1"
+    : isFactoryWheel
+    ? "2"
+    : normalizedWheelId;
 
   return `<p i='${normalizedPartId}' ci='14' n='${partName}' in='1' cc='' pdi='${partDesignId}' di='${normalizedWheelId}' pt='c' ps='${normalizedWheelSize}'/>`;
 }
