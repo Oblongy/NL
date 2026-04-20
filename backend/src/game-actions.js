@@ -3626,18 +3626,12 @@ async function handleListClassified(context) {
 }
 
 async function handleViewShowroom(context) {
-  const { params, supabase } = context;
+  const { params } = context;
   let locationId = Number(params.get("lid") || params.get("l") || 0);
 
-  // If no lid provided, use the player's current location from their profile
-  if (!locationId && supabase) {
-    const caller = await resolveCallerSession(context, "supabase:viewshowroom");
-    if (caller?.ok) {
-      const player = await getPlayerById(supabase, caller.playerId);
-      locationId = Number(player?.location_id || 100);
-    }
-  }
-
+  // Opening the showroom should not depend on the player's current city.
+  // Default to the first category so players can browse the full catalog
+  // without moving locations first.
   if (!locationId) locationId = 100;
 
   const xml = buildShowroomXml(locationId);
