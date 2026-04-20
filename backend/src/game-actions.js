@@ -3957,6 +3957,29 @@ async function handleGetBuddies(context) {
   };
 }
 
+async function handleCompletePollQuestion(context) {
+  const { logger, params } = context;
+  const caller = await resolveCallerSession(context, "supabase:completepollquestion");
+  if (!caller?.ok) {
+    return caller;
+  }
+
+  const answerId = Number(params.get("said"));
+  const questionId = Number(params.get("sqid"));
+
+  logger.info("Ignoring completed poll submission for inactive poll", {
+    playerId: caller.playerId,
+    publicId: caller.publicId,
+    answerId: Number.isFinite(answerId) && answerId > 0 ? answerId : null,
+    questionId: Number.isFinite(questionId) && questionId > 0 ? questionId : null,
+  });
+
+  return {
+    body: `"s", 1`,
+    source: "generated:completepollquestion:noop",
+  };
+}
+
 async function handleTeamInfo(context) {
   const { supabase, params, services } = context;
   if (!supabase) {
@@ -4160,6 +4183,7 @@ const handlers = {
   getdescription: handleGetDescription,
   getavatarage: handleGetAvatarAge,
   getteamavatarage: handleGetTeamAvatarAge,
+  completepollquestion: handleCompletePollQuestion,
   trgetracers: handleTeamRivalsGetRacers,
   trgetteams: handleTeamRivalsGetTeams,
   trprerequest: handleTeamRivalsPreRequest,

@@ -139,14 +139,7 @@ const STATIC_INTRO_XML =
   "<n id='dailyLogin'><s><d a='0'/><d a='0'/><d a='0'/><d a='0'/><d a='0'/><d i=''/></s></n>" +
   "<n id='pwc'><x/></n>" +
   "<n id='banner'><outer><inner/></outer></n>" +
-  "<n id='poll'><s>" +
-    "<p i='1' q='What is your favorite race type?' e='2027-01-01' v='0'>" +
-      "<a i='1' a='Head to Head' v='0'/>" +
-      "<a i='2' a='Bracket' v='0'/>" +
-      "<a i='3' a='King of the Hill' v='0'/>" +
-      "<a i='4' a='Team Rivals' v='0'/>" +
-    "</p>" +
-  "</s></n>" +
+  "<n id='poll'><s/></n>" +
   "<n id='dailyChallenge'><s>" +
     "<x ct='5' w='3' c='0' et='2027-01-01 23:59:59' tt='0' tr='0' bp='5000' mp='5000' pp='50' ptp='0' eptp='0' sc='100' pn='Daily Win Bonus' imf='' ci='0' pa='500'/>" +
   "</s></n>" +
