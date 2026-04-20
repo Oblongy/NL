@@ -6,6 +6,7 @@ import {
   DEFAULT_PAINT_INDEX,
   normalizeOwnedWheelXmlValue,
 } from "./car-defaults.js";
+import { getPaintIdForColorCode } from "./paint-catalog-source.js";
 
 export function escapeXml(value) {
   return String(value ?? "")
@@ -78,6 +79,14 @@ function normalizePartsXml(car) {
   return normalizeOwnedPartsXmlValue(car.parts_xml);
 }
 
+function normalizeColorCode(value) {
+  return String(value || DEFAULT_COLOR_CODE).replace(/[^0-9A-F]/gi, "").toUpperCase() || DEFAULT_COLOR_CODE;
+}
+
+function resolvePaintIdForCar(car) {
+  return getPaintIdForColorCode(normalizeColorCode(car?.color_code));
+}
+
 function renderFallbackWheelPartXml(car, wheelXml, partsXml) {
   if (/\bci='14'\b/i.test(partsXml)) {
     return "";
@@ -106,33 +115,9 @@ function renderFallbackPaintStateXml(car, partsXml) {
     return "";
   }
 
-  const colorCode = String(car.color_code || DEFAULT_COLOR_CODE).replace(/[^0-9A-F]/gi, "").toUpperCase() || DEFAULT_COLOR_CODE;
-  
-  // Map color codes to paint IDs from the paint catalog
-  const colorToPaintId = {
-    'FF0000': '1',   // Red
-    '0000FF': '2',   // Blue
-    '000000': '3',   // Black
-    'FFFFFF': '4',   // White
-    'C0C0C0': '5',   // Silver
-    'FFD700': '6',   // Yellow
-    '00AA00': '7',   // Green
-    'FF6600': '8',   // Orange
-    '6600CC': '9',   // Purple
-    'FF69B4': '10',  // Pink
-    '191970': '11',  // Midnight Blue
-    '800020': '12',  // Burgundy
-    '2C3539': '13',  // Gunmetal
-    '32CD32': '14',  // Lime Green
-    'CC0000': '15',  // Candy Red
-    '0033FF': '16',  // Electric Blue
-    '1A1A1A': '17',  // Matte Black
-    'CCCCCC': '18',  // Chrome
-    'F5F5F5': '19',  // Pearl White
-  };
-  
-  const paintId = colorToPaintId[colorCode] || '5'; // Default to Silver
-  
+  const colorCode = normalizeColorCode(car.color_code);
+  const paintId = resolvePaintIdForCar(car);
+
   // Include both paint ID and color code for compatibility
   return `<ps><p i='${paintId}' cd='${colorCode}'/></ps>`;
 }
@@ -146,16 +131,18 @@ function renderCarBody(car) {
 }
 
 function renderCarNode(car, extraAttrs = {}) {
+  const colorCode = normalizeColorCode(car.color_code);
+  const paintId = Number(resolvePaintIdForCar(car)) || DEFAULT_PAINT_INDEX;
   const attrs = attrsToString({
     ...extraAttrs,
     i: car.game_car_id,
     ci: car.catalog_car_id,
     sel: car.selected ? 1 : 0,
-    pi: car.paint_index ?? DEFAULT_PAINT_INDEX,
+    pi: paintId,
     pn: car.plate_name ?? "",
     lk: car.locked ?? 0,
     ae: car.aero ?? 0,
-    cc: car.color_code ?? DEFAULT_COLOR_CODE,
+    cc: colorCode,
     ii: car.image_index ?? 0,
     td: car.test_drive_active,
     tdex: car.test_drive_expired,

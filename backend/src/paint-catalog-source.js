@@ -1,5 +1,46 @@
+export const COLOR_TO_PAINT_ID = Object.freeze({
+  FF0000: "1",
+  "0000FF": "2",
+  "000000": "3",
+  FFFFFF: "4",
+  C0C0C0: "5",
+  FFD700: "6",
+  "00AA00": "7",
+  FF6600: "8",
+  "6600CC": "9",
+  FF69B4: "10",
+  "191970": "11",
+  "800020": "12",
+  "2C3539": "13",
+  "32CD32": "14",
+  CC0000: "15",
+  "0033FF": "16",
+  "1A1A1A": "17",
+  CCCCCC: "18",
+  F5F5F5: "19",
+  "008080": "20",
+  "800000": "21",
+  DAA520: "22",
+  CC5500: "23",
+  "228B22": "24",
+  "0047AB": "25",
+  FF1493: "26",
+  "36454F": "27",
+  FFFDD0: "28",
+  B87333: "29",
+  "7F00FF": "30",
+});
+
+export function getPaintIdForColorCode(colorCode) {
+  const normalized = String(colorCode || "")
+    .replace(/[^0-9A-F]/gi, "")
+    .toUpperCase()
+    .slice(0, 6);
+  return COLOR_TO_PAINT_ID[normalized] || "5";
+}
+
 export const PAINT_CATS_FOR_LOC = (l) =>
-  `<c i='-2' l='${l}' p='500' pp='5'/><c i='-1' l='${l}' p='500' pp='5'/>` +
+  `<c i='-2' l='${l}' p='500' pp='5'>Full car paint job</c><c i='-1' l='${l}' p='500' pp='5'>Body panel specific</c>` +
   `<c i='65' l='${l}' p='500' pp='5'>Spoilers</c>` +
   `<c i='68' l='${l}' p='500' pp='5'>Roof Effect</c>` +
   `<c i='71' l='${l}' p='500' pp='5'>Hoods</c>` +
@@ -27,37 +68,51 @@ export const PAINT_CATEGORIES_XML = "<n id='getpaintcats'><s>" +
   PAINT_CATS_FOR_LOC(500) +
   "</s></n>";
 
+const PAINT_COLOR_DEFS = [
+  ["1", "Red", "FF0000"],
+  ["2", "Blue", "0000FF"],
+  ["3", "Black", "000000"],
+  ["4", "White", "FFFFFF"],
+  ["5", "Silver", "C0C0C0"],
+  ["6", "Yellow", "FFD700"],
+  ["7", "Green", "00AA00"],
+  ["8", "Orange", "FF6600"],
+  ["9", "Purple", "6600CC"],
+  ["10", "Pink", "FF69B4"],
+  ["11", "Midnight Blue", "191970"],
+  ["12", "Burgundy", "800020"],
+  ["13", "Gunmetal", "2C3539"],
+  ["14", "Lime Green", "32CD32"],
+  ["15", "Candy Red", "CC0000"],
+  ["16", "Electric Blue", "0033FF"],
+  ["17", "Matte Black", "1A1A1A"],
+  ["18", "Chrome", "CCCCCC"],
+  ["19", "Pearl White", "F5F5F5"],
+  ["20", "Teal", "008080"],
+  ["21", "Maroon", "800000"],
+  ["22", "Gold", "DAA520"],
+  ["23", "Burnt Orange", "CC5500"],
+  ["24", "Forest Green", "228B22"],
+  ["25", "Cobalt Blue", "0047AB"],
+  ["26", "Hot Pink", "FF1493"],
+  ["27", "Charcoal", "36454F"],
+  ["28", "Cream", "FFFDD0"],
+  ["29", "Copper", "B87333"],
+  ["30", "Violet", "7F00FF"],
+];
+
+function renderPaintColorsForCategory(categoryId) {
+  return PAINT_COLOR_DEFS
+    .map(
+      ([id, name, colorCode]) =>
+        `<p i='${id}' pi='${categoryId}' ci='${categoryId}' n='${name}' c='${colorCode}' cd='${colorCode}' p='500' pp='5' l='LOC'/>`,
+    )
+    .join("");
+}
+
 export const ALL_COLORS =
-  "<p i='1' ci='-2' n='Red' c='FF0000' p='500' l='LOC'/>" +
-  "<p i='2' ci='-2' n='Blue' c='0000FF' p='500' l='LOC'/>" +
-  "<p i='3' ci='-2' n='Black' c='000000' p='500' l='LOC'/>" +
-  "<p i='4' ci='-2' n='White' c='FFFFFF' p='500' l='LOC'/>" +
-  "<p i='5' ci='-2' n='Silver' c='C0C0C0' p='500' l='LOC'/>" +
-  "<p i='6' ci='-2' n='Yellow' c='FFD700' p='500' l='LOC'/>" +
-  "<p i='7' ci='-2' n='Green' c='00AA00' p='500' l='LOC'/>" +
-  "<p i='8' ci='-2' n='Orange' c='FF6600' p='500' l='LOC'/>" +
-  "<p i='9' ci='-2' n='Purple' c='6600CC' p='500' l='LOC'/>" +
-  "<p i='10' ci='-2' n='Pink' c='FF69B4' p='500' l='LOC'/>" +
-  "<p i='11' ci='-2' n='Midnight Blue' c='191970' p='500' l='LOC'/>" +
-  "<p i='12' ci='-2' n='Burgundy' c='800020' p='500' l='LOC'/>" +
-  "<p i='13' ci='-2' n='Gunmetal' c='2C3539' p='500' l='LOC'/>" +
-  "<p i='14' ci='-2' n='Lime Green' c='32CD32' p='500' l='LOC'/>" +
-  "<p i='15' ci='-2' n='Candy Red' c='CC0000' p='500' l='LOC'/>" +
-  "<p i='16' ci='-2' n='Electric Blue' c='0033FF' p='500' l='LOC'/>" +
-  "<p i='17' ci='-2' n='Matte Black' c='1A1A1A' p='500' l='LOC'/>" +
-  "<p i='18' ci='-2' n='Chrome' c='CCCCCC' p='500' l='LOC'/>" +
-  "<p i='19' ci='-2' n='Pearl White' c='F5F5F5' p='500' l='LOC'/>" +
-  "<p i='20' ci='-2' n='Teal' c='008080' p='500' l='LOC'/>" +
-  "<p i='21' ci='-2' n='Maroon' c='800000' p='500' l='LOC'/>" +
-  "<p i='22' ci='-2' n='Gold' c='DAA520' p='500' l='LOC'/>" +
-  "<p i='23' ci='-2' n='Burnt Orange' c='CC5500' p='500' l='LOC'/>" +
-  "<p i='24' ci='-2' n='Forest Green' c='228B22' p='500' l='LOC'/>" +
-  "<p i='25' ci='-2' n='Cobalt Blue' c='0047AB' p='500' l='LOC'/>" +
-  "<p i='26' ci='-2' n='Hot Pink' c='FF1493' p='500' l='LOC'/>" +
-  "<p i='27' ci='-2' n='Charcoal' c='36454F' p='500' l='LOC'/>" +
-  "<p i='28' ci='-2' n='Cream' c='FFFDD0' p='500' l='LOC'/>" +
-  "<p i='29' ci='-2' n='Copper' c='B87333' p='500' l='LOC'/>" +
-  "<p i='30' ci='-2' n='Violet' c='7F00FF' p='500' l='LOC'/>";
+  renderPaintColorsForCategory("-2") +
+  renderPaintColorsForCategory("-1");
 
 export const PAINTS_XML =
   "<n id='getpaints'><s>" +

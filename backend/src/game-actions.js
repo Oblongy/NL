@@ -1,7 +1,7 @@
 import { RaceManager } from "./race-manager.js";
 import { buildLoginBody } from "./login-payload.js";
 import { PARTS_CATALOG_XML, PARTS_CATEGORIES_BODY } from "./parts-catalog.js";
-import { ALL_COLORS, PAINT_CATS_FOR_LOC } from "./paint-catalog-source.js";
+import { ALL_COLORS, PAINT_CATS_FOR_LOC, getPaintIdForColorCode } from "./paint-catalog-source.js";
 import { buildWheelsTiresCatalogXml } from "./wheels-catalog.js";
 import { buildStaticCarsXml, FULL_CAR_CATALOG, getCatalogCarPrice } from "./car-catalog.js";
 import { randomUUID } from "node:crypto";
@@ -2671,12 +2671,13 @@ async function handleBuyCar(context) {
     .replace(/[^0-9A-F]/gi, "")
     .toUpperCase()
     .slice(0, 6) || "C0C0C0";
+  const paintIndex = Number(getPaintIdForColorCode(selectedColor)) || 5;
   
   const createdCar = await createOwnedCar(supabase, {
     playerId: caller.playerId,
     catalogCarId,
     selected: existingCars.length === 0,
-    paintIndex: 4,
+    paintIndex,
     plateName: "",
     colorCode: selectedColor,
     partsXml: getDefaultPartsXmlForCar(catalogCarId),
