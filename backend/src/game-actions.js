@@ -1,6 +1,8 @@
 import { RaceManager } from "./race-manager.js";
 import { buildLoginBody } from "./login-payload.js";
 import { PARTS_CATALOG_XML, PARTS_CATEGORIES_BODY } from "./parts-catalog.js";
+import { ALL_COLORS, PAINT_CATS_FOR_LOC } from "./paint-catalog-source.js";
+import { buildWheelsTiresCatalogXml } from "./wheels-catalog.js";
 import { buildStaticCarsXml, FULL_CAR_CATALOG, getCatalogCarPrice } from "./car-catalog.js";
 import { randomUUID } from "node:crypto";
 import {
@@ -25,6 +27,7 @@ import {
   renderUserSummary,
   wrapSuccessData,
 } from "./game-xml.js";
+import { buildCarRaceSpec, simulateRun, getRedLine } from "./engine-physics.js";
 import { hashGamePassword, normalizeUsername, verifyGamePassword } from "./player-identity.js";
 import { getPublicIdForPlayer } from "./public-id.js";
 import { createLoginSession, getSessionPlayerId, validateOrCreateSession } from "./session.js";
@@ -47,6 +50,7 @@ import {
   deleteCar,
   clearCarTestDriveState,
 } from "./user-service.js";
+import { getDefaultPartsXmlForCar } from "./car-defaults.js";
 
 const DEFAULT_STARTER_CATALOG_CAR_ID = 1; // Acura Integra GSR
 const DEFAULT_STOCK_WHEEL_XML = "<ws><w wid='1' id='1001' ws='17'/></ws>";
@@ -75,6 +79,7 @@ const TEAM_APP_STATUS = Object.freeze({
 });
 
 let partsCatalogById = null;
+let wheelsTiresCatalogById = null;
 const pendingTestDriveInvitationsById = new Map();
 const pendingTestDriveInvitationsByPlayerId = new Map();
 const activeTestDriveCarsByPlayerId = new Map();
@@ -106,6 +111,25 @@ function getPartsCatalogById() {
   }
   PART_XML_ENTRY_REGEX.lastIndex = 0;
   return partsCatalogById;
+}
+
+function getWheelsTiresCatalogById() {
+  if (wheelsTiresCatalogById) {
+    return wheelsTiresCatalogById;
+  }
+
+  wheelsTiresCatalogById = new Map();
+  const xml = buildWheelsTiresCatalogXml();
+  let match;
+  while ((match = PART_XML_ENTRY_REGEX.exec(xml)) !== null) {
+    const attrs = parsePartXmlAttributes(match[0]);
+    const id = Number(attrs.i || 0);
+    if (id > 0) {
+      wheelsTiresCatalogById.set(id, attrs);
+    }
+  }
+  PART_XML_ENTRY_REGEX.lastIndex = 0;
+  return wheelsTiresCatalogById;
 }
 
 function createInstalledPartId() {
@@ -232,6 +256,63 @@ async function resolveTargetPlayerByPublicId(supabase, publicId) {
     return null;
   }
   return getPlayerById(supabase, playerId);
+}
+
+function normalizeLocationId(rawLocationId) {
+  const locationId = Number(rawLocationId || 100);
+  return [100, 200, 300, 400, 500].includes(locationId) ? locationId : 100;
+}
+
+async function resolvePaintCatalogLocationId(context, sourceLabel) {
+  const { supabase, params } = context;
+  if (!supabase) {
+    return {
+      ok: true,
+      locationId: normalizeLocationId(params.get("lid") || params.get("l") || params.get("loc")),
+    };
+  }
+
+  const caller = await resolveCallerSession(context, sourceLabel);
+  if (!caller?.ok) {
+    return {
+      ok: false,
+      body: caller?.body || failureBody(),
+      source: caller?.source || `${sourceLabel}:bad-session`,
+    };
+  }
+
+  return {
+    ok: true,
+    locationId: normalizeLocationId(
+      params.get("lid") || params.get("l") || params.get("loc") || caller.player?.location_id,
+    ),
+  };
+}
+
+async function handleGetPaintCategories(context) {
+  const resolved = await resolvePaintCatalogLocationId(context, "supabase:getpaintcats");
+  if (!resolved?.ok) {
+    return resolved;
+  }
+
+  return {
+    body: wrapSuccessData(`<n id='getpaintcats'><s>${PAINT_CATS_FOR_LOC(resolved.locationId)}</s></n>`),
+    source: `generated:getpaintcats:location=${resolved.locationId}`,
+  };
+}
+
+async function handleGetPaints(context) {
+  const resolved = await resolvePaintCatalogLocationId(context, "supabase:getpaints");
+  if (!resolved?.ok) {
+    return resolved;
+  }
+
+  return {
+    body: wrapSuccessData(
+      `<n id='getpaints'><s>${ALL_COLORS.replace(/LOC/g, String(resolved.locationId))}</s></n>`,
+    ),
+    source: `generated:getpaints:location=${resolved.locationId}`,
+  };
 }
 
 async function attachOwnerPublicIds(supabase, cars) {
@@ -2283,11 +2364,22 @@ async function handleGetOneCarEngine(context) {
 
   if (car?.parts_xml) {
     const xml = car.parts_xml;
-    if (/<p[^>]*\bci=["']87["'][^>]*\/>/.test(xml)) boostType = "T";
-    else if (/<p[^>]*\bci=["']81["'][^>]*\/>/.test(xml)) boostType = "S";
-    const hasBottles = /<p[^>]*\bci=["']203["'][^>]*\/>/.test(xml);
-    const hasJets    = /<p[^>]*\bci=["']204["'][^>]*\/>/.test(xml);
+    // Check both ci= (normalized) and pi= (raw stored) for turbo/supercharger
+    if (/<p[^>]*\b(?:ci|pi)=["']87["'][^>]*\/>/.test(xml)) boostType = "T";
+    else if (/<p[^>]*\b(?:ci|pi)=["']81["'][^>]*\/>/.test(xml)) boostType = "S";
+    const hasBottles = /<p[^>]*\b(?:ci|pi)=["']203["'][^>]*\/>/.test(xml);
+    const hasJets    = /<p[^>]*\b(?:ci|pi)=["']204["'][^>]*\/>/.test(xml);
     if (hasBottles && hasJets) nosSize = 100;
+  }
+
+  // Fallback: if the car is a factory turbocharged model but has no turbo in parts_xml,
+  // treat it as turbocharged (covers existing cars created before default parts were added)
+  if (boostType === "0" && car?.catalog_car_id) {
+    const { getDefaultPartsXmlForCar: getDefaults } = await import("./car-defaults.js");
+    const defaultParts = getDefaults(car.catalog_car_id);
+    if (defaultParts && /<p[^>]*\bpi=["']87["'][^>]*\/>/.test(defaultParts)) {
+      boostType = "T";
+    }
   }
 
   const engineSound = boostType === "T" ? 2 : boostType === "S" ? 3 : 1;
@@ -2382,7 +2474,8 @@ async function handleBuyPart(context) {
     return { body: failureBody(), source: "supabase:buypart:no-car" };
   }
 
-  const catalogPart = partId ? getPartsCatalogById().get(Number(partId)) : null;
+  const catalogPart = partId ? (getPartsCatalogById().get(Number(partId)) ?? getWheelsTiresCatalogById().get(Number(partId))) : null;
+  const isWheelPart = catalogPart && String(catalogPart.pi || "") === "14";
   let partName = "Part";
   let partSlotId = "";
   let partPs = "";
@@ -2442,16 +2535,36 @@ async function handleBuyPart(context) {
         logger?.info("Saved custom graphic to car", { accountCarId, partId, slotId, partsXmlLength: partsXml.length });
       }
     } else if (catalogPart && partSlotId) {
-      const installedPartXml = buildInstalledCatalogPartXml(catalogPart, installId, {
-        t: catalogPart.t || partType || "",
-        ps: partPs,
-      });
-      const partsXml = upsertInstalledPartXml(car.parts_xml || "", partSlotId, installedPartXml);
-      const { error: updateError2 } = await supabase.from("game_cars").update({ parts_xml: partsXml }).eq("game_car_id", accountCarId);
-      if (updateError2) {
-        logger?.error("Failed to save part", { error: updateError2, accountCarId, partId, partSlotId });
+      if (isWheelPart) {
+        // Wheels update wheel_xml (wid=designId, id=partId, ws=wheelSize)
+        const designId = catalogPart.di || catalogPart.pdi || "1";
+        const wheelSize = catalogPart.ps || "17";
+        const newWheelXml = `<ws><w wid='${designId}' id='${partId}' ws='${wheelSize}'/></ws>`;
+        const { error: wheelUpdateError } = await supabase.from("game_cars").update({ wheel_xml: newWheelXml }).eq("game_car_id", accountCarId);
+        if (wheelUpdateError) {
+          logger?.error("Failed to save wheel", { error: wheelUpdateError, accountCarId, partId });
+        } else {
+          logger?.info("Saved wheel to car", { accountCarId, partId, designId, wheelSize, installId });
+        }
+        // Also update parts_xml so the client sees ci='14' installed
+        const installedPartXml = buildInstalledCatalogPartXml(catalogPart, installId, {
+          t: "c",
+          ps: wheelSize,
+        });
+        const partsXml = upsertInstalledPartXml(car.parts_xml || "", "14", installedPartXml);
+        await supabase.from("game_cars").update({ parts_xml: partsXml }).eq("game_car_id", accountCarId);
       } else {
-        logger?.info("Saved part to car", { accountCarId, partId, partSlotId, partName, installId, partsXmlLength: partsXml.length });
+        const installedPartXml = buildInstalledCatalogPartXml(catalogPart, installId, {
+          t: catalogPart.t || partType || "",
+          ps: partPs,
+        });
+        const partsXml = upsertInstalledPartXml(car.parts_xml || "", partSlotId, installedPartXml);
+        const { error: updateError2 } = await supabase.from("game_cars").update({ parts_xml: partsXml }).eq("game_car_id", accountCarId);
+        if (updateError2) {
+          logger?.error("Failed to save part", { error: updateError2, accountCarId, partId, partSlotId });
+        } else {
+          logger?.info("Saved part to car", { accountCarId, partId, partSlotId, partName, installId, partsXmlLength: partsXml.length });
+        }
       }
     }
   }
@@ -2566,14 +2679,14 @@ async function handleBuyCar(context) {
     paintIndex: 4,
     plateName: "",
     colorCode: selectedColor,
-    partsXml: DEFAULT_STOCK_PARTS_XML,
+    partsXml: getDefaultPartsXmlForCar(catalogCarId),
     wheelXml: DEFAULT_STOCK_WHEEL_XML,
   });
 
   await updatePlayerMoney(supabase, caller.playerId, newBalance);
 
   return {
-    body: `"s", 1, "d1", "<r s='2' b='${newBalance}' ai='${createdCar.game_car_id}'/>", "d", "<r s='1' b='0'></r>"`,
+    body: `"s", 2, "m", "${newBalance}", "d", "<r i='${createdCar.game_car_id}' ai='${createdCar.game_car_id}' ci='${catalogCarId}'/>"`,
     source: "supabase:buycar",
   };
 }
@@ -2769,7 +2882,7 @@ async function handleGetEmailList(context) {
 
     // Response format: "s", 1, "d", "<emails>...</emails>", "t", <total>, "p", <page>
     return {
-      body: `"s", 1, "d", "${escapeXml(`<emails>${emailsXml}</emails>`)}", "t", ${emails?.length || 0}, "p", ${page}`,
+      body: `"s", 1, "d", "${`<emails>${emailsXml}</emails>`}", "t", ${emails?.length || 0}, "p", ${page}`,
       source: "supabase:getemaillist",
     };
   } catch (error) {
@@ -3272,9 +3385,6 @@ const LIVE_BASE_TIMING_CURVE = Object.freeze([
   61, 60,
 ]);
 
-import { buildCarRaceSpec, simulateRun, getRedLine } from "./engine-physics.js";
-import { buildWheelsTiresCatalogXml } from "./wheels-catalog.js";
-
 /**
  * Build a CarRaceSpec from a car's showroom spec entry.
  */
@@ -3285,12 +3395,15 @@ function buildSpecFromShowroomSpec(catalogCarId) {
   const etMatch = String(spec.et || "").match(/^([\d.]+)/);
   const estimatedEt = etMatch ? Number(etMatch[1]) : 0;
 
+  // spec.tt is "top speed" not "transmission type" — use drivetrain to infer gearbox
+  const transmissionStr = spec.dt === "AWD" ? "6-speed manual" : "5-speed manual";
+
   return buildCarRaceSpec({
     horsepower: hp,
     weightLbs: weight,
     engineStr: spec.eo || "",
     drivetrainStr: spec.dt || "FWD",
-    transmissionStr: spec.tt || "5-speed manual",
+    transmissionStr,
     bodyTypeStr: spec.ct || "Coupe",
     estimatedEt,
   });
@@ -3355,7 +3468,8 @@ function buildN2Fields(catalogCarId) {
   const weight = Number(spec.sw) || 2800;
   const engineStr = (spec.eo || "").toLowerCase();
   const drivetrainStr = (spec.dt || "FWD").toUpperCase();
-  const transmissionStr = (spec.tt || "5-speed manual").toLowerCase();
+  // spec.tt is "top speed" not "transmission type"
+  const transmissionStr = drivetrainStr === "AWD" ? "6-speed manual" : "5-speed manual";
 
   // x, y, z — physics power params
   const x = parseFloat((hp * 0.02859).toFixed(3));
@@ -3386,7 +3500,7 @@ function buildN2Fields(catalogCarId) {
   } else if (engineStr.includes("v6")) {
     a = Math.round(sl * 0.94);
     n = Math.round(sl * 0.985);
-  } else if (engineStr.includes("turbo")) {
+  } else if (engineStr.includes("turbo") || engineStr.includes(" tt") || engineStr.includes(" t ") || / t$/.test(engineStr)) {
     a = Math.round(sl * 0.88);
     n = Math.round(sl * 0.68);
   }
@@ -3411,7 +3525,8 @@ function buildN2Fields(catalogCarId) {
 function buildShowroomXml(locationId, starterOnly = false) {
   const targetLocationId = Number(locationId) || 100;
 
-  // Filter to only cars that belong to this exact location tier
+  // Show all cars at every location — players can buy any car regardless of where they live.
+  // For starter showroom, restrict to the cheapest tier only.
   const locationTiers = Object.entries(LOCATION_MAX_PRICE).sort((a, b) => Number(a[0]) - Number(b[0]));
   const getCarLocation = (price) => {
     for (const [lid, maxP] of locationTiers) {
@@ -3424,7 +3539,7 @@ function buildShowroomXml(locationId, starterOnly = false) {
     const numPrice = Number(price);
     if (numPrice <= 0) return false;
     if (starterOnly) return getCarLocation(numPrice) === 100;
-    return getCarLocation(numPrice) === targetLocationId;
+    return true; // all priced cars available at every location
   });
 
   const locationToCatId = { 100: 1001, 200: 1002, 300: 1003, 400: 1004, 500: 1005 };
@@ -3620,11 +3735,19 @@ async function handlePractice(context) {
     car = await getCarById(supabase, accountCarId);
     if (car?.parts_xml) {
       const xml = car.parts_xml;
-      if (/<p[^>]*\bci=["']87["'][^>]*\/>/.test(xml)) boostType = "T";
-      else if (/<p[^>]*\bci=["']81["'][^>]*\/>/.test(xml)) boostType = "S";
-      const hasBottles = /<p[^>]*\bci=["']203["'][^>]*\/>/.test(xml);
-      const hasJets    = /<p[^>]*\bci=["']204["'][^>]*\/>/.test(xml);
+      // Check both ci= (normalized) and pi= (raw stored)
+      if (/<p[^>]*\b(?:ci|pi)=["']87["'][^>]*\/>/.test(xml)) boostType = "T";
+      else if (/<p[^>]*\b(?:ci|pi)=["']81["'][^>]*\/>/.test(xml)) boostType = "S";
+      const hasBottles = /<p[^>]*\b(?:ci|pi)=["']203["'][^>]*\/>/.test(xml);
+      const hasJets    = /<p[^>]*\b(?:ci|pi)=["']204["'][^>]*\/>/.test(xml);
       if (hasBottles && hasJets) nosSize = 100;
+    }
+    // Fallback: factory turbocharged cars with no turbo in parts_xml
+    if (boostType === "0" && car?.catalog_car_id) {
+      const defaultParts = getDefaultPartsXmlForCar(car.catalog_car_id);
+      if (defaultParts && /<p[^>]*\bpi=["']87["'][^>]*\/>/.test(defaultParts)) {
+        boostType = "T";
+      }
     }
   }
 
@@ -3897,13 +4020,15 @@ const handlers = {
   getallcats: async () => {
     return { body: PARTS_CATEGORIES_BODY, source: "fixture:getallcats" };
   },
+  getpaintcats: handleGetPaintCategories,
+  getpaints: handleGetPaints,
   updatedefaultcar: handleUpdateDefaultCar,
   getcarprice: handleGetCarPrice,
   sellcar: handleSellCar,
   // --- Parts & Engine ---
   getallparts: handleGetAllParts,
   getallwheelstires: async () => {
-    return { body: wrapSuccessData(PARTS_CATALOG_XML), source: "static:getallwheelstires" };
+    return { body: wrapSuccessData(buildWheelsTiresCatalogXml()), source: "generated:getallwheelstires" };
   },
   getonecarengine: handleGetOneCarEngine,
   getgearinfo: handleGetGearInfo,
@@ -3931,6 +4056,74 @@ const handlers = {
   getremarks: handleGetRemarks,
   getwinsandlosses: handleGetWinsAndLosses,
   getblackcardprogress: handleGetBlackCardProgress,
+  // Email actions
+  getemail: async (context) => {
+    const { params } = context;
+    const emailId = params.get("eid") || "0";
+    return { body: wrapSuccessData(`<email i='${emailId}' s='' b='' si='0' d='0'/>`), source: "stub:getemail" };
+  },
+  markemailread: async () => ({ body: `"s", 1`, source: "stub:markemailread" }),
+  deleteemail: async (context) => {
+    const { params } = context;
+    const eid = params.get("eid") || "0";
+    return { body: `"s", 1, "eid", "${eid}"`, source: "stub:deleteemail" };
+  },
+  sendemail: async (context) => {
+    const { params } = context;
+    const id = params.get("i") || "0";
+    return { body: wrapSuccessData(`<r s='1' id='${id}'/>`), source: "stub:sendemail" };
+  },
+  // Remarks
+  addremark: async () => ({ body: `"s", 1`, source: "stub:addremark" }),
+  deleteremark: async (context) => {
+    const { params } = context;
+    const arid = params.get("arid") || "0";
+    return { body: `"s", 1, "arid", "${arid}"`, source: "stub:deleteremark" };
+  },
+  getuserremarks: async () => ({ body: wrapSuccessData(`<remarks/>`), source: "stub:getuserremarks" }),
+  setnondeletes: async () => ({ body: `"s", 1`, source: "stub:setnondeletes" }),
+  setdeletes: async () => ({ body: `"s", 1`, source: "stub:setdeletes" }),
+  // Repair
+  getrepairparts: async (context) => {
+    const { params } = context;
+    const acid = params.get("acid") || "0";
+    return { body: `"s", 1, "d", "<parts/>"`, source: "stub:getrepairparts" };
+  },
+  repairparts: async () => ({ body: `"s", 2`, source: "stub:repairparts" }),
+  // Garage / parts bin
+  getcarpartsbin: async () => ({ body: wrapSuccessData(`<parts/>`), source: "stub:getcarpartsbin" }),
+  getpartsbin: async () => ({ body: wrapSuccessData(`<parts/>`), source: "stub:getpartsbin" }),
+  sellcarpart: async () => ({ body: `"s", 1`, source: "stub:sellcarpart" }),
+  sellenginepart: async () => ({ body: `"s", 1`, source: "stub:sellenginepart" }),
+  sellengine: async () => ({ body: `"s", 1`, source: "stub:sellengine" }),
+  installpart: async () => ({ body: wrapSuccessData(`<r s='1' b='0'/>`), source: "stub:installpart" }),
+  installenginepart: async () => ({ body: wrapSuccessData(`<r s='1' b='0'/>`), source: "stub:installenginepart" }),
+  swapengine: async () => ({ body: wrapSuccessData(`<r s='1' b='0'/>`), source: "stub:swapengine" }),
+  // Account / profile
+  updatebg: async () => ({ body: `"s", 1`, source: "stub:updatebg" }),
+  addastopbuddy: async () => ({ body: `"s", 1`, source: "stub:addastopbuddy" }),
+  removeastopbuddy: async () => ({ body: `"s", 1`, source: "stub:removeastopbuddy" }),
+  changepassword: async () => ({ body: `"s", 1`, source: "stub:changepassword" }),
+  changepasswordreq: async () => ({ body: `"s", 1`, source: "stub:changepasswordreq" }),
+  changeemail: async () => ({ body: `"s", 1`, source: "stub:changeemail" }),
+  changehomemachine: async () => ({ body: `"s", 1`, source: "stub:changehomemachine" }),
+  agreetoterms: async () => ({ body: `"s", 1`, source: "stub:agreetoterms" }),
+  verifyaccount: async () => ({ body: `"s", 1`, source: "stub:verifyaccount" }),
+  activateaccount: async () => ({ body: `"s", 1`, source: "stub:activateaccount" }),
+  resendactivation: async () => ({ body: `"s", 1`, source: "stub:resendactivation" }),
+  forgotpw: async () => ({ body: `"s", 1`, source: "stub:forgotpw" }),
+  activatepoints: async () => ({ body: `"s", 1`, source: "stub:activatepoints" }),
+  activatemember: async () => ({ body: `"s", 1`, source: "stub:activatemember" }),
+  getinfo: async () => ({ body: `"s", 1`, source: "stub:getinfo" }),
+  getlocations: async (context) => {
+    // Already in login payload but client may request it separately
+    return { body: `"s", 1`, source: "stub:getlocations" };
+  },
+  getinstalledenginepartbyaccountcar: async () => ({ body: `"s", 1, "d", "<parts/>"`, source: "stub:getinstalledenginepartbyaccountcar" }),
+  racersearchnopage: async (context) => {
+    // Same as racersearch but without pagination
+    return handleGetRacerSearch(context);
+  },
   checktestdrive: handleCheckTestDrive,
   accepttestdrive: handleAcceptTestDrive,
   removetestdrivecar: handleRemoveTestDriveCar,

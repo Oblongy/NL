@@ -4,6 +4,8 @@ import { buildStaticCarsXml } from "./car-catalog.js";
 import {
   PAINT_CATEGORIES_XML as STATIC_PAINT_CATS_XML,
   PAINTS_XML as STATIC_PAINTS_XML,
+  PAINT_CATS_FOR_LOC,
+  ALL_COLORS,
 } from "./paint-catalog-source.js";
 import { getClientRoleForPlayer } from "./player-role.js";
 
@@ -137,8 +139,17 @@ const STATIC_INTRO_XML =
   "<n id='dailyLogin'><s><d a='0'/><d a='0'/><d a='0'/><d a='0'/><d a='0'/><d i=''/></s></n>" +
   "<n id='pwc'><x/></n>" +
   "<n id='banner'><outer><inner/></outer></n>" +
-  "<n id='poll'><s/></n>" +
-  "<n id='dailyChallenge'><s><x ct='0' w='0' c='0' et='' tt='0' tr='0' bp='0' mp='0' pp='0' ptp='0' eptp='0' sc='0' pn='' imf='' ci='0' pa='0'/></s></n>" +
+  "<n id='poll'><s>" +
+    "<p i='1' q='What is your favorite race type?' e='2027-01-01' v='0'>" +
+      "<a i='1' a='Head to Head' v='0'/>" +
+      "<a i='2' a='Bracket' v='0'/>" +
+      "<a i='3' a='King of the Hill' v='0'/>" +
+      "<a i='4' a='Team Rivals' v='0'/>" +
+    "</p>" +
+  "</s></n>" +
+  "<n id='dailyChallenge'><s>" +
+    "<x ct='5' w='3' c='0' et='2027-01-01 23:59:59' tt='0' tr='0' bp='5000' mp='5000' pp='50' ptp='0' eptp='0' sc='100' pn='Daily Win Bonus' imf='' ci='0' pa='500'/>" +
+  "</s></n>" +
   "<s/></n>";
 
 // ---------------------------------------------------------------------------
@@ -158,9 +169,9 @@ function renderLoginNode(player) {
     "<n id='login'>" +
     `<r u='${escapeXml(player.username)}' i='${publicId}' r='${clientRole}' m='${player.money}' p='${player.points}' ` +
     `sc='${player.score}' im='${player.image_id ?? 0}' act='${player.active ? 1 : 0}' vip='${player.vip ? 1 : 0}' ` +
-    `fbc='${player.facebook_connected ? 1 : 0}' alr='${player.alert_flag ? 1 : 0}' bpr='${player.blackcard_progress ? 1 : 0}' ` +
+    `fbc='${player.facebook_connected ? 1 : 0}' alr='1' bpr='1' ` +
     `sr='${player.sponsor_rating}' dt='${escapeXml(player.driver_text || "")}' tn='${escapeXml(player.team_name || "")}' ` +
-    `em='' me='' g='${genderValue}' rl='${player.respect_level}' mb='${player.message_badge ? 1 : 0}' ` +
+    `em='' me='' g='${genderValue}' rl='${player.respect_level}' mb='${player.vip ? 1 : 0}' ` +
     `ti='${player.title_id}' tr='${player.track_rank}' lid='${player.location_id}' ` +
     `bg='${player.background_id}' dc='${player.default_car_game_id || 0}'/>` +
     "</n>"
@@ -185,14 +196,19 @@ function buildLoginTail(player, sessionKey) {
 // ---------------------------------------------------------------------------
 
 export function buildLoginBody(player, cars, _templateBody, sessionKey, logger, options = {}) {
+  // Build paint data for the player's current location only (keeps login body small)
+  const playerLid = Number(player.location_id || 100);
+  const paintCatsXml = "<n id='getpaintcats'><s>" + PAINT_CATS_FOR_LOC(playerLid) + "</s></n>";
+  const paintColorsXml = "<n id='getpaints'><s>" + ALL_COLORS.replace(/LOC/g, String(playerLid)) + "</s></n>";
+
   const ini =
     "<ini>" +
     renderLoginNode(player) +
     STATIC_LOCATIONS_XML +
     STATIC_SCLEVELS_XML +
     STATIC_LICENSE_PLATES_XML +
-    STATIC_PAINT_CATS_XML +
-    STATIC_PAINTS_XML +
+    paintCatsXml +
+    paintColorsXml +
     STATIC_BANNERS_XML +
     renderOwnedCarsNode(cars) +
     STATIC_DYNO_XML +

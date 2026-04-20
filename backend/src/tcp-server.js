@@ -281,8 +281,10 @@ export class TcpServer {
         if (syncRace) {
           // Forward raw encrypted bytes to opponent - do NOT decrypt/re-encrypt
           for (const p of syncRace.players) {
-            if (p.connId === conn.id) continue;
-            const opponentConn = this.connections.get(p.connId);
+            if (p.connId === conn.id || p.raceConnId === conn.id) continue; // skip sender
+            // Prefer race channel connection, fall back to lobby connection
+            const opponentConnId = p.raceConnId || p.connId;
+            const opponentConn = this.connections.get(opponentConnId);
             if (opponentConn && opponentConn.socket) {
               try {
                 opponentConn.socket.write(
@@ -496,8 +498,8 @@ export class TcpServer {
             const chatClass = conn.clientRole === 1 ? 1 : (conn.clientRole === 8 ? 8 : (conn.clientRole === 2 ? 5 : DEFAULT_GLOBAL_CHAT_CLASS));
             const imMsg = `"ac", "NIM", "i", "${conn.playerId}", "u", "${this.escapeForTcp(conn.username)}", "t", "${this.escapeForTcp(messageText)}", "c", ${chatClass}`;
             this.sendMessage(targetConn, imMsg);
-            // Ack to sender
-            this.sendMessage(conn, '"ac", "NIM", "s", 1');
+            // Ack to sender with target ID so sendNimCB can update the conversation
+            this.sendMessage(conn, `"ac", "NIM", "s", 1, "rid", "${targetPlayerId}"`);
             this.logger.info("TCP NIM delivered", { 
               fromPlayerId: conn.playerId, 
               targetPlayerId 
@@ -533,9 +535,6 @@ export class TcpServer {
             chatText: srcSessionKey,
             logLabel: "TCP SRC chat received",
           });
-          
-          // Ack the message
-          this.sendMessage(conn, '"ac", "SRC", "s", 1');
           return;
         }
         
@@ -622,6 +621,8 @@ export class TcpServer {
           if (racePlayer) {
             const oldConnId = racePlayer.connId;
             racePlayer.connId = conn.id;
+            racePlayer.raceConnId = conn.id;  // used by telemetry forwarding
+            this.raceIdByPlayerId.set(conn.playerId, srcRace.id);
             this.logger.info("TCP SRC race channel established", { 
               connId: conn.id,
               oldConnId,
@@ -632,6 +633,16 @@ export class TcpServer {
           }
           
           const [p1, p2] = srcRace.players;
+          if (!p1 || !p2) {
+            // Race not fully populated yet — ack and wait
+            this.sendMessage(conn, '"ac", "SRC", "s", 1');
+            this.logger.warn("TCP SRC ack sent (race not fully populated)", {
+              connId: conn.id,
+              raceId: srcRace.id,
+              playerCount: srcRace.players.length,
+            });
+            return;
+          }
           // Acknowledge the race channel and push the race-start burst
           this.sendMessage(conn, '"ac", "SRC", "s", 1');
           this.sendMessage(conn, `"ac", "RRA", "d", "${this.escapeForTcp(this.buildRraXml({
@@ -1230,9 +1241,11 @@ export class TcpServer {
       return `<q>${queueXml}</q>`;
     }
 
-    const queueXml = roomPlayers.map((player) =>
-      `<r i='${player.playerId}' icid='${player.carId}' ci='${player.playerId}' cicid='${player.carId}' bt='0' b='0'/>`
-    ).join("");
+    const queueXml = roomPlayers
+      .filter((player) => Number(player.playerId || 0) > 0)
+      .map((player) =>
+        `<r i='${player.playerId}' icid='${player.carId}' ci='${player.playerId}' cicid='${player.carId}' bt='0' b='0'/>`
+      ).join("");
     return `<q>${queueXml}</q>`;
   }
 
@@ -1669,7 +1682,7 @@ export class TcpServer {
   }
 
   buildUcuXml({ playerId, username }) {
-    return `<ul><u ul='0' i='${Number(playerId)}' un='${this.escapeXml(username)}' ti='2' tid='2' tf='7D7D7D' ms='5' iv='0'/></ul>`;
+    return `<u ul='0' i='${Number(playerId)}' un='${this.escapeXml(username)}' ti='2' tid='2' tf='7D7D7D' ms='5' iv='0'/>`;
   }
 
   buildRclgXml({
@@ -1836,9 +1849,7 @@ export class TcpServer {
               })
             )}"`
           );
-          // Fallback: if the client doesn't emit RO, bootstrap the track anyway.
-          this.sendMessage(participantConn, `"ac", "RO", "t", ${existingRace.trackId || 32}`);
-          this.sendInitialIoFrames(participantConn);
+          // RO and IO frames are sent on the SRC (race channel) connection, not here.
         }
         this.logger.info("TCP race ready broadcast sent", { raceId: existingRace.id });
       }
@@ -1933,9 +1944,7 @@ export class TcpServer {
     for (const participantConn of [challengerConn, challengedConn]) {
       this.sendMessage(participantConn, `"ac", "RN", "d", "${this.escapeForTcp(rnXml)}"`);
       this.sendMessage(participantConn, `"ac", "RRA", "d", "${this.escapeForTcp(rraXml)}"`);
-      // Fallback: some clients don't send RO after RN/RRA. Bootstrap anyway.
-      this.sendMessage(participantConn, `"ac", "RO", "t", ${pending.trackId}`);
-      this.sendInitialIoFrames(participantConn);
+      // RO and IO frames are sent on the SRC (race channel) connection, not here.
     }
 
     this.logger.info("TCP race started from RRQ/RRS", {
@@ -1952,7 +1961,7 @@ export class TcpServer {
       return;
     }
 
-    const player = race.players.find((entry) => entry.connId === conn.id);
+    const player = race.players.find((entry) => entry.connId === conn.id || entry.raceConnId === conn.id);
     if (!player) {
       this.logger.info("TCP RO received from unknown race player", { connId: conn.id, raceId: race.id });
       return;
@@ -1961,8 +1970,15 @@ export class TcpServer {
     player.opened = true;
     this.logger.info("TCP RO received", { connId: conn.id, raceId: race.id, openedCount: race.players.filter((entry) => entry.opened).length });
 
+    // Send RO ack on this connection so the client knows to open the race channel (SRC).
     this.sendMessage(conn, '"ac", "RO", "t", 32');
     this.sendInitialIoFrames(conn);
+
+    // Once both players have opened, allow telemetry to flow
+    if (race.players.every((entry) => entry.opened) && !race.sequenceStarted) {
+      race.sequenceStarted = true;
+      this.logger.info("TCP race sequence started - telemetry enabled", { raceId: race.id });
+    }
   }
 
   handleRaceResult(conn, parts) {
@@ -2027,9 +2043,9 @@ export class TcpServer {
     // Format from decompiled Flash: <r wid='' r1id='' r2id='' rt1='' et1='' ts1='' rt2='' et2='' ts2='' c1='' c2='' h1='0' h2='0' td='0'/>
     if (race) {
       const [p1, p2] = race.players;
-      const sc1Gain = winnerPlayerId && Number(p1.playerId) === winnerPlayerId ? SC_WIN : SC_LOSS;
-      const sc2Gain = winnerPlayerId && Number(p2.playerId) === winnerPlayerId ? SC_WIN : SC_LOSS;
-      const resultXml = `<r wid='${winnerPlayerId || 0}' r1id='${p1.playerId}' r2id='${p2.playerId}' rt1='-1' et1='-1' ts1='-1' rt2='-1' et2='-1' ts2='-1' c1='${sc1Gain}' c2='${sc2Gain}' h1='0' h2='0' td='0'/>`;
+      const sc1Gain = winnerPlayerId && Number(p1?.playerId) === winnerPlayerId ? SC_WIN : SC_LOSS;
+      const sc2Gain = winnerPlayerId && Number(p2?.playerId) === winnerPlayerId ? SC_WIN : SC_LOSS;
+      const resultXml = `<r wid='${winnerPlayerId || 0}' r1id='${p1?.playerId || 0}' r2id='${p2?.playerId || 0}' rt1='-1' et1='-1' ts1='-1' rt2='-1' et2='-1' ts2='-1' c1='${sc1Gain}' c2='${sc2Gain}' h1='0' h2='0' td='0'/>`;
       const escapedXml = this.escapeForTcp(resultXml);
       for (const participant of race.players) {
         const participantConn = this.connections.get(participant.connId) || this.connections.get(participant.raceConnId);

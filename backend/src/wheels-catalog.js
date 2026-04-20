@@ -44,7 +44,7 @@ function generateWheelCatalog() {
           i: partId,
           pi: 14,
           t: 'c',
-          n: `${brand.name} ${size}"`,
+          n: `${brand.name} ${size}&quot;`,
           p: basePrice,
           pp: Math.floor(basePrice / 100),
           g: grade,

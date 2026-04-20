@@ -43,7 +43,7 @@ function selectRedLine(engineStr, transmissionStr) {
   if (engine.includes("supercharged v8"))           return 6500;
   if (engine.includes("v8"))                        return isAutomatic ? 5800 : 6500;
   if (engine.includes("v6"))                        return isAutomatic ? 6200 : 6600;
-  if (engine.includes("turbo")) {
+  if (engine.includes("turbo") || / tt\b/.test(engine) || / t\b/.test(engine)) {
     const is6speed = transmission.includes("6-speed");
     return is6speed ? 7000 : 6800;
   }

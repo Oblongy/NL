@@ -31,9 +31,10 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Sync backend changes to the live VPS and restart PM2."
     )
-    parser.add_argument("--host", default=os.getenv("NL_VPS_HOST", "173.249.220.49"))
-    parser.add_argument("--user", default=os.getenv("NL_VPS_USER", "root"))
+    parser.add_argument("--host", default=os.getenv("NL_VPS_HOST", "3.93.35.32"))
+    parser.add_argument("--user", default=os.getenv("NL_VPS_USER", "ubuntu"))
     parser.add_argument("--password", default=os.getenv("NL_VPS_PASSWORD"))
+    parser.add_argument("--key-file", default=os.getenv("NL_VPS_KEY_FILE"), help="Path to SSH private key file (e.g. B:\\LightsailDefaultKey-us-east-1.pem)")
     parser.add_argument(
         "--remote-dir",
         default=os.getenv("NL_VPS_BACKEND_DIR", "/opt/NL/backend"),
@@ -46,7 +47,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--health-url",
-        default=os.getenv("NL_VPS_HEALTH_URL", "http://127.0.0.1:8082/healthz"),
+        default=os.getenv("NL_VPS_HEALTH_URL", "http://127.0.0.1:80/healthz"),
         help="Health endpoint to check on the VPS after restart.",
     )
     parser.add_argument(
@@ -338,7 +339,7 @@ def build_plan(args: argparse.Namespace) -> tuple[str, set[str], set[str], calla
 
 def main() -> int:
     args = parse_args()
-    if not args.password:
+    if not args.password and not args.key_file:
         args.password = getpass.getpass(f"Password for {args.user}@{args.host}: ")
 
     mode, upload_candidates, delete_candidates, read_local_bytes = build_plan(args)
@@ -352,7 +353,8 @@ def main() -> int:
     client.connect(
         hostname=args.host,
         username=args.user,
-        password=args.password,
+        password=args.password if not args.key_file else None,
+        key_filename=args.key_file if args.key_file else None,
         timeout=20,
         banner_timeout=20,
         auth_timeout=20,

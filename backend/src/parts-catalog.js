@@ -78,6 +78,6 @@ function rebalancePartNeighborhoods(partsCatalogXml) {
   return wrapperMatch ? `<p>${rebalancedInnerXml}</p>` : rebalancedInnerXml;
 }
 
-export const PARTS_CATALOG_XML = getFixturePartsCatalogXml();
+export const PARTS_CATALOG_XML = rebalancePartNeighborhoods(getFixturePartsCatalogXml());
 
 export const PARTS_CATEGORIES_BODY = getFixturePartsCategoriesBody();
