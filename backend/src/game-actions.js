@@ -3543,7 +3543,6 @@ function buildShowroomXml(locationId, starterOnly = false) {
   });
 
   const locationToCatId = { 100: 1001, 200: 1002, 300: 1003, 400: 1004, 500: 1005 };
-  const catId = locationToCatId[targetLocationId] || 1001;
 
   const selectedCarId = eligible.length > 0 ? eligible[0][0] : "0";
   const showroomColors = [
@@ -3561,6 +3560,8 @@ function buildShowroomXml(locationId, starterOnly = false) {
     .map(([cid, name, price], index) => {
       const escapedName = escapeXml(name);
       const spec = getShowroomCarSpec(cid);
+      const carLocationId = starterOnly ? 100 : getCarLocation(price);
+      const catId = locationToCatId[carLocationId] || 1001;
       const primarySwatch = showroomColors[index % showroomColors.length];
       const wheelSize = String(Math.max(15, Math.min(19, 15 + (index % 5))));
       const wheelId = String(1 + (index % 8));
@@ -3573,7 +3574,7 @@ function buildShowroomXml(locationId, starterOnly = false) {
       return (
         `<c ai='0' id='${cid}' i='${cid}' ci='${cid}' ` +
         `sel='${index === 0 ? "1" : "0"}' pi='${catId}' pn='' ` +
-        `l='${targetLocationId}' lid='${targetLocationId}' cid='${targetLocationId}' ` +
+        `l='${carLocationId}' lid='${carLocationId}' cid='${carLocationId}' ` +
         `b='0' n='${escapedName}' c='${escapedName}' p='${purchasePrice}' pr='${purchasePrice}' pp='${pointPrice}' cp='${purchasePrice}' ` +
         `lk='0' ae='0' cc='${primarySwatch.colorCode}' g='' ii='0' ` +
         `wid='${wheelId}' ws='${wheelSize}' rh='0' ts='0' mo='0' ` +
