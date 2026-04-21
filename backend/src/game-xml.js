@@ -8,6 +8,7 @@ import {
   getDefaultWheelXmlForCar,
   normalizeOwnedWheelXmlValue,
 } from "./car-defaults.js";
+import { getCarEngineIdentity } from "./car-engine-state.js";
 import { getPaintIdForColorCode } from "./paint-catalog-source.js";
 
 export function escapeXml(value) {
@@ -146,15 +147,16 @@ function retagInstalledShowroomParts(xml) {
 function renderCarNode(car, extraAttrs = {}) {
   const colorCode = normalizeColorCode(car.color_code);
   const paintId = Number(resolvePaintIdForCar(car)) || DEFAULT_PAINT_INDEX;
+  const engineIdentity = getCarEngineIdentity(car);
   const attrs = attrsToString({
-    ...extraAttrs,
     i: car.game_car_id,
     ci: car.catalog_car_id,
     sel: car.selected ? 1 : 0,
     pi: paintId,
     pn: car.plate_name ?? "",
     lk: car.locked ?? 0,
-    ae: car.aero ?? 0,
+    ae: engineIdentity.ae,
+    et: engineIdentity.et,
     cc: colorCode,
     ii: car.image_index ?? 0,
     td: car.test_drive_active,
@@ -164,6 +166,7 @@ function renderCarNode(car, extraAttrs = {}) {
     p: car.test_drive_money_price,
     pp: car.test_drive_point_price,
     rh: car.test_drive_hours_remaining,
+    ...extraAttrs,
   });
 
   return `<c ${attrs}>${renderCarBody(car)}</c>`;

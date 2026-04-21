@@ -46,6 +46,12 @@ import { getPublicIdForPlayer } from "./public-id.js";
 import { createLoginSession, getSessionPlayerId, validateOrCreateSession } from "./session.js";
 import { consumeRecentDecalUpload } from "./upload-state.js";
 import {
+  getBoostTypeForCar,
+  getEffectiveEngineString,
+  getEngineTypeIdForCatalogCar,
+  getEngineTypeIdForCar,
+} from "./car-engine-state.js";
+import {
   getPlayerById,
   getTeamMembershipByPlayerId,
   getPlayerByUsername,
@@ -218,20 +224,22 @@ function readNumericPartAttr(attrs, key, fallback) {
 
 function getPersistedDynoState(car) {
   const catalogCarId = String(car?.catalog_car_id || "");
+  const engineTypeId = getEngineTypeIdForCar(car);
   const derivedRedLine = catalogCarId && hasShowroomCarSpec(catalogCarId)
-    ? getCarRedLine(catalogCarId)
+    ? getCarRedLine(catalogCarId, engineTypeId)
     : DEFAULT_DYNO_PURCHASE_STATE.redLine;
   const carrier = findTuneCarrierPartEntry(car?.parts_xml || "");
   const attrs = carrier?.attrs || {};
+  const safeRedLine = Math.max(1000, Math.min(readNumericPartAttr(attrs, "rl", derivedRedLine), derivedRedLine));
   const rawShiftLightRpm = readNumericPartAttr(attrs, "slr", DEFAULT_DYNO_PURCHASE_STATE.shiftLightRpm);
-  const safeShiftLightRpm = Math.max(1000, Math.min(rawShiftLightRpm, derivedRedLine));
+  const safeShiftLightRpm = Math.max(1000, Math.min(rawShiftLightRpm, safeRedLine));
 
   return {
     boostSetting: readNumericPartAttr(attrs, "bs", DEFAULT_DYNO_PURCHASE_STATE.boostSetting),
     maxPsi: readNumericPartAttr(attrs, "mp", DEFAULT_DYNO_PURCHASE_STATE.maxPsi),
     chipSetting: readNumericPartAttr(attrs, "cs", DEFAULT_DYNO_PURCHASE_STATE.chipSetting),
     shiftLightRpm: safeShiftLightRpm,
-    redLine: readNumericPartAttr(attrs, "rl", derivedRedLine),
+    redLine: safeRedLine,
   };
 }
 
@@ -2279,7 +2287,7 @@ async function handleGetOneCarEngine(context) {
     };
   }
 
-  const { boostType, nosSize, compressionLevel } = getCarBuildFlags(car);
+  const { boostType, nosSize, compressionLevel, engineTypeId } = getCarBuildFlags(car);
 
   const engineSound = boostType === "T" ? 2 : boostType === "S" ? 3 : 1;
 
@@ -2290,11 +2298,12 @@ async function handleGetOneCarEngine(context) {
       source: "generated:getonecarengine:unsupported-car",
     };
   }
-  const timing = generateTimingArray(catalogCarId);
+  const timing = generateTimingArray(catalogCarId, engineTypeId);
   const gearRatios = getPersistedGearRatios(car);
   const engineXml = buildDriveableEngineXml({
     catalogCarId,
     gearRatios,
+    engineTypeId,
   });
 
   return {
@@ -3426,7 +3435,7 @@ function generateLegacyTimingArray() {
   return values;
 }
 
-function generateTimingArray(catalogCarId) {
+function generateTimingArray(catalogCarId, engineTypeId = null) {
   // Temporary testing switch: use the exact legacy captured curve so we can
   // verify client behavior, then flip this back off to restore generated timing.
   if (TEMP_USE_LEGACY_CAPTURED_TIMING_FOR_TESTING) {
@@ -3439,7 +3448,10 @@ function generateTimingArray(catalogCarId) {
   }
 
   const torque = getShowroomSpecTorque(spec, catalogCarId);
-  const profile = getCapturedTimingCurveProfile(spec);
+  const profile = getCapturedTimingCurveProfile({
+    ...spec,
+    eo: getEffectiveEngineString(spec.eo, engineTypeId ?? getEngineTypeIdForCatalogCar(catalogCarId)),
+  });
   const startValue = torque * profile.startFactor;
   const endValue = Math.max(startValue + 1, torque * profile.endFactor);
   const values = [];
@@ -3457,12 +3469,12 @@ function generateTimingArray(catalogCarId) {
 /**
  * Get the redline RPM for a catalog car (used in n2 sl= and a= attributes).
  */
-function getCarRedLine(catalogCarId) {
+function getCarRedLine(catalogCarId, engineTypeId = null) {
   const spec = getShowroomCarSpec(catalogCarId);
   if (!spec) {
     throw new Error(`Missing showroom spec for catalog car ${catalogCarId}`);
   }
-  return getRedLine(spec.eo, spec.tt);
+  return getRedLine(getEffectiveEngineString(spec.eo, engineTypeId), spec.tt);
 }
 
 /**
@@ -3479,7 +3491,7 @@ function getCarRedLine(catalogCarId) {
  *   o = rev limiter (redline + 100-200)
  *   f/g/h/i/j/l = gear ratios from gearbox profile
  */
-function buildN2Fields(catalogCarId, gearRatioOverrides = null) {
+function buildN2Fields(catalogCarId, gearRatioOverrides = null, engineTypeId = null) {
   const spec = getShowroomCarSpec(catalogCarId);
   if (!spec) {
     throw new Error(`Missing showroom spec for catalog car ${catalogCarId}`);
@@ -3487,7 +3499,8 @@ function buildN2Fields(catalogCarId, gearRatioOverrides = null) {
 
   const hp = getShowroomSpecHorsepower(spec, catalogCarId);
   const weight = getShowroomSpecWeight(spec, catalogCarId);
-  const engineStr = spec.eo.toLowerCase();
+  const effectiveEngineStr = getEffectiveEngineString(spec.eo, engineTypeId);
+  const engineStr = effectiveEngineStr.toLowerCase();
   const drivetrainStr = spec.dt.toUpperCase();
   const transmissionStr = spec.tt;
 
@@ -3508,7 +3521,7 @@ function buildN2Fields(catalogCarId, gearRatioOverrides = null) {
   else if (engineStr.includes("3-cyl") || engineStr.includes("i3")) aa = 3;
 
   // RPM fields
-  const sl = getRedLine(spec.eo, spec.tt);
+  const sl = getRedLine(effectiveEngineStr, spec.tt);
   const o = sl + (engineStr.includes("vtec") || engineStr.includes("i4") ? 200 : 100);
 
   // Power peak RPM (a) and torque peak RPM (n)
@@ -3528,7 +3541,7 @@ function buildN2Fields(catalogCarId, gearRatioOverrides = null) {
   // Gear ratios from gearbox profile
   const raceSpec = buildCarRaceSpec({
     horsepower: hp, weightLbs: weight,
-    engineStr: spec.eo, drivetrainStr,
+    engineStr: effectiveEngineStr, drivetrainStr,
     transmissionStr, bodyTypeStr: spec.ct,
   });
   const ratios = raceSpec.gearbox.forwardRatios;
@@ -3544,6 +3557,7 @@ function buildN2Fields(catalogCarId, gearRatioOverrides = null) {
 
 function getDefaultGearRatiosForCar(car) {
   const catalogCarId = String(car?.catalog_car_id || "");
+  const engineTypeId = getEngineTypeIdForCar(car);
   const defaultRatios = {
     g1: "3.587",
     g2: "2.022",
@@ -3558,7 +3572,7 @@ function getDefaultGearRatiosForCar(car) {
     return defaultRatios;
   }
 
-  const n2 = buildN2Fields(catalogCarId);
+  const n2 = buildN2Fields(catalogCarId, null, engineTypeId);
   return {
     g1: String(n2.f ?? defaultRatios.g1),
     g2: String(n2.g ?? defaultRatios.g2),
@@ -3598,13 +3612,12 @@ function getShowroomSpecTorque(spec, catalogCarId) {
 
 function getCarBuildFlags(car) {
   const xml = String(car?.parts_xml || "");
-  let boostType = "0";
+  const engineTypeId = getEngineTypeIdForCar(car);
+  const boostType = getBoostTypeForCar(car);
   let nosSize = 0;
   let compressionLevel = 0;
 
   if (xml) {
-    if (/<p[^>]*\b(?:ci|pi)=["']87["'][^>]*\/>/.test(xml)) boostType = "T";
-    else if (/<p[^>]*\b(?:ci|pi)=["']81["'][^>]*\/>/.test(xml)) boostType = "S";
     const hasBottles = /<p[^>]*\b(?:ci|pi)=["']203["'][^>]*\/>/.test(xml);
     const hasJets = /<p[^>]*\b(?:ci|pi)=["']204["'][^>]*\/>/.test(xml);
     if (hasBottles && hasJets) nosSize = 100;
@@ -3613,15 +3626,7 @@ function getCarBuildFlags(car) {
     compressionLevel = pistonMatch ? Number(pistonMatch[1]) : 0;
   }
 
-  if (boostType === "0" && car?.catalog_car_id) {
-    const defaultParts = getDefaultPartsXmlForCar(car.catalog_car_id);
-    if (defaultParts) {
-      if (/<p[^>]*\bpi=["']87["'][^>]*\/>/.test(defaultParts)) boostType = "T";
-      else if (/<p[^>]*\bpi=["']81["'][^>]*\/>/.test(defaultParts)) boostType = "S";
-    }
-  }
-
-  return { boostType, nosSize, compressionLevel };
+  return { boostType, nosSize, compressionLevel, engineTypeId };
 }
 
 function getDriveableBoostField(boostType) {
@@ -3631,13 +3636,13 @@ function getDriveableBoostField(boostType) {
   return Number.isFinite(numericBoost) ? numericBoost : 0;
 }
 
-function buildDriveableEngineXml({ catalogCarId, gearRatios = null }) {
+function buildDriveableEngineXml({ catalogCarId, gearRatios = null, engineTypeId = null }) {
   const spec = getShowroomCarSpec(catalogCarId);
   if (!spec) {
     throw new Error(`Missing showroom spec for catalog car ${catalogCarId}`);
   }
 
-  const n2 = buildN2Fields(catalogCarId, gearRatios);
+  const n2 = buildN2Fields(catalogCarId, gearRatios, engineTypeId);
   const valveCount = n2.aa * 4;
 
   return (
@@ -4130,7 +4135,7 @@ async function handlePractice(context) {
     };
   }
 
-  const { boostType, nosSize, compressionLevel } = getCarBuildFlags(car);
+  const { boostType, nosSize, compressionLevel, engineTypeId } = getCarBuildFlags(car);
   const engineSound = boostType === "T" ? 2 : boostType === "S" ? 3 : 1;
 
   const catalogCarId = String(car?.catalog_car_id || "");
@@ -4140,11 +4145,12 @@ async function handlePractice(context) {
       source: "generated:practice:unsupported-car",
     };
   }
-  const timing = generateTimingArray(catalogCarId);
+  const timing = generateTimingArray(catalogCarId, engineTypeId);
   const gearRatios = getPersistedGearRatios(car);
   const carStats = buildDriveableEngineXml({
     catalogCarId,
     gearRatios,
+    engineTypeId,
   });
 
   const body = `"s", 1, "d", "${carStats}", "t", [${timing.join(', ')}]`;
@@ -4152,6 +4158,7 @@ async function handlePractice(context) {
   logger?.info("Practice response", {
     carId: accountCarId,
     catalogCarId,
+    engineTypeId,
     boostType,
     nosSize,
     bodyLength: body.length,
