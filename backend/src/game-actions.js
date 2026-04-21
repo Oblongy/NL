@@ -40,7 +40,7 @@ import {
   renderUserSummary,
   wrapSuccessData,
 } from "./game-xml.js";
-import { buildCarRaceSpec, getRedLine } from "./engine-physics.js";
+import { buildCarRaceSpec, getRedLine, simulateRun } from "./engine-physics.js";
 import { hashGamePassword, normalizeUsername, verifyGamePassword } from "./player-identity.js";
 import { getPublicIdForPlayer } from "./public-id.js";
 import { createLoginSession, getSessionPlayerId, validateOrCreateSession } from "./session.js";
@@ -2211,8 +2211,14 @@ async function handleGetTwoRacersCars(context) {
     return { body: failureBody(), source: "supabase:gettworacerscars:missing-cars" };
   }
 
+  const cars = await listCarsByIds(supabase, gameCarIds);
+  const carsById = new Map((cars || []).map((car) => [Number(car.game_car_id), car]));
+  const orderedCars = gameCarIds
+    .map((gameCarId) => carsById.get(gameCarId) || buildComputerTournamentVirtualCar(gameCarId))
+    .filter(Boolean);
+
   return {
-    body: wrapSuccessData(renderTwoRacerCars(await listCarsByIds(supabase, gameCarIds))),
+    body: wrapSuccessData(renderTwoRacerCars(orderedCars)),
     source: "supabase:gettworacerscars",
   };
 }
@@ -4206,6 +4212,13 @@ const COMPUTER_TOURNAMENTS = [
 ];
 
 const computerTournamentSessions = new Map();
+const computerTournamentSessionsByPlayerId = new Map();
+const COMPUTER_TOURNAMENT_ROUNDS_TO_WIN = 5;
+const COMPUTER_TOURNAMENT_CAR_POOLS = {
+  1: [1, 3, 4, 8, 10, 14, 18, 28],
+  2: [11, 15, 16, 17, 19, 20, 21, 22],
+  3: [41, 42, 50, 55, 57, 58, 67, 76],
+};
 
 function getComputerTournamentDefinition(tournamentId) {
   return COMPUTER_TOURNAMENTS.find((entry) => Number(entry.id) === Number(tournamentId)) || COMPUTER_TOURNAMENTS[0];
@@ -4222,6 +4235,122 @@ function interpolate(min, max, fraction) {
 
 function formatMetric(value, decimals = 3) {
   return Number(value || 0).toFixed(decimals);
+}
+
+function computeComputerTournamentBracketTime(horsepower, weight) {
+  return Math.round(Math.pow(Number(weight || 0) / Math.max(Number(horsepower || 1), 1), 1 / 3) * 5.825 * 1000) / 1000;
+}
+
+function buildComputerTournamentSessionKey(playerId) {
+  return `player:${Number(playerId || 0)}`;
+}
+
+function bindComputerTournamentSession(session) {
+  if (!session?.sessionKey) {
+    return session;
+  }
+
+  computerTournamentSessions.set(session.sessionKey, session);
+
+  if (Number.isFinite(Number(session.playerId)) && Number(session.playerId) > 0) {
+    computerTournamentSessionsByPlayerId.set(Number(session.playerId), session.sessionKey);
+  }
+
+  return session;
+}
+
+function getBoundComputerTournamentSession({ tournamentKey, playerId }) {
+  if (tournamentKey && computerTournamentSessions.has(tournamentKey)) {
+    return computerTournamentSessions.get(tournamentKey);
+  }
+
+  const numericPlayerId = Number(playerId || 0);
+  if (numericPlayerId > 0) {
+    const playerSessionKey = computerTournamentSessionsByPlayerId.get(numericPlayerId) || buildComputerTournamentSessionKey(numericPlayerId);
+    if (computerTournamentSessions.has(playerSessionKey)) {
+      return computerTournamentSessions.get(playerSessionKey);
+    }
+  }
+
+  return null;
+}
+
+function getComputerTournamentOpponentProfile(session) {
+  const tournament = getComputerTournamentDefinition(session?.tournamentId);
+  const opponentIndex = Number(session?.wins || 0) % 31;
+  const seedBase = Number(tournament.id) * 300 + opponentIndex * 19;
+  const horsepower = Math.round(interpolate(tournament.minHp, tournament.maxHp, seededFraction(seedBase + 1)));
+  const weight = Math.round(interpolate(tournament.minWeight, tournament.maxWeight, seededFraction(seedBase + 2)));
+  const reactionTime = interpolate(tournament.minRt, tournament.maxRt, seededFraction(seedBase + 3));
+  const elapsedTime = interpolate(tournament.minEt, tournament.maxEt, seededFraction(seedBase + 4));
+  const trapSpeed = interpolate(tournament.minTrap, tournament.maxTrap, seededFraction(seedBase + 5));
+  const bracketTime = computeComputerTournamentBracketTime(horsepower, weight);
+  const competitorCarId = 2000 + Number(tournament.id) * 100 + opponentIndex;
+  const virtualCarId = 6000 + Number(tournament.id) * 100 + opponentIndex;
+  const username = `${tournament.type} ${String(opponentIndex + 1).padStart(2, "0")}`;
+
+  const raceSpec = buildCarRaceSpec({
+    horsepower,
+    weightLbs: weight,
+    drivetrainStr: Number(tournament.id) >= 3 ? "RWD" : "FWD",
+    transmissionStr: Number(tournament.id) >= 2 ? "6-speed manual" : "5-speed manual",
+    bodyTypeStr: "Coupe",
+    estimatedEt: elapsedTime,
+  });
+
+  return {
+    opponentIndex,
+    purse: Number(tournament.purse || 0) * (Number(session?.wins || 0) + 1),
+    competitorCarId,
+    virtualCarId,
+    username,
+    horsepower,
+    weight,
+    reactionTime,
+    elapsedTime,
+    trapSpeed,
+    bracketTime,
+    pp: simulateRun(raceSpec).join(","),
+  };
+}
+
+function buildComputerTournamentVirtualCar(gameCarId) {
+  const numericId = Number(gameCarId || 0);
+  if (numericId < 6000 || numericId >= 7000) {
+    return null;
+  }
+
+  const tournamentId = Math.floor((numericId - 6000) / 100);
+  const opponentIndex = (numericId - 6000) % 100;
+  const carPool = COMPUTER_TOURNAMENT_CAR_POOLS[tournamentId] || [1];
+  const catalogCarId = carPool[opponentIndex % carPool.length] || carPool[0] || 1;
+  const tournament = getComputerTournamentDefinition(tournamentId);
+  const fallbackCatalogCar = FULL_CAR_CATALOG.find((entry) => Number(entry.id) === Number(catalogCarId)) || FULL_CAR_CATALOG[0] || { id: 1 };
+
+  return {
+    game_car_id: numericId,
+    account_car_id: numericId,
+    catalog_car_id: Number(fallbackCatalogCar.id || catalogCarId || 1),
+    selected: 0,
+    plate_name: "",
+    locked: 0,
+    color_code: "FFFFFF",
+    image_index: 0,
+    wheel_xml: "",
+    parts_xml: "",
+    horsepower: 0,
+    weight: 0,
+    transmission_type: Number(tournamentId) >= 2 ? "6-speed manual" : "5-speed manual",
+    drivetrain: Number(tournamentId) >= 3 ? "RWD" : "FWD",
+    engine_type_id: 1,
+    test_drive_active: 0,
+    test_drive_expired: 0,
+    test_drive_invitation_id: 0,
+    test_drive_name: tournament?.name || "Computer Tournament",
+    test_drive_money_price: 0,
+    test_drive_point_price: 0,
+    test_drive_hours_remaining: 0,
+  };
 }
 
 function buildComputerTournamentCompetitorNode(tournament, index) {
@@ -4253,23 +4382,15 @@ function buildComputerTournamentFieldXml(tournamentId) {
 }
 
 function buildComputerTournamentOpponentXml(session) {
-  const tournament = getComputerTournamentDefinition(session?.tournamentId);
-  const opponentIndex = Number(session?.wins || 0) % 31;
-  const purse = Number(tournament.purse || 0) * (Number(session?.wins || 0) + 1);
-  const seedBase = Number(tournament.id) * 300 + opponentIndex * 19;
-  const reactionTime = interpolate(tournament.minRt, tournament.maxRt, seededFraction(seedBase + 1));
-  const elapsedTime = interpolate(tournament.minEt, tournament.maxEt, seededFraction(seedBase + 2));
-  const trapSpeed = interpolate(tournament.minTrap, tournament.maxTrap, seededFraction(seedBase + 3));
-  const opponentId = 5000 + Number(tournament.id) * 100 + opponentIndex;
-  const opponentCarId = 6000 + Number(tournament.id) * 100 + opponentIndex;
-  const opponentName = `${tournament.name} Opponent ${String(opponentIndex + 1).padStart(2, "0")}`;
+  const opponent = getComputerTournamentOpponentProfile(session);
 
   return {
-    purse,
+    ...opponent,
     xml:
-      `<n2><r id='${opponentId}' i='${opponentCarId}' n='${escapeXml(opponentName)}' u='${escapeXml(opponentName)}' ` +
-      `bt='0' rt='${formatMetric(reactionTime)}' et='${formatMetric(elapsedTime)}' ts='${formatMetric(trapSpeed, 2)}' ` +
-      `total='${formatMetric(reactionTime + elapsedTime)}' racerNum='${200 + opponentIndex}' type='C'/></n2>`,
+      `<r cid='${opponent.competitorCarId}' cacid='${opponent.virtualCarId}' ` +
+      `bt='${formatMetric(opponent.bracketTime)}' rt='${formatMetric(opponent.reactionTime)}' ` +
+      `et='${formatMetric(opponent.elapsedTime)}' ts='${formatMetric(opponent.trapSpeed, 2)}' ` +
+      `pp='${opponent.pp}'/>`,
   };
 }
 
@@ -4764,19 +4885,25 @@ const handlers = {
   ctjt: async (context) => {
     const { params, logger } = context;
     const tournamentId = Number(params.get("ctid") || 1);
+    const caller = await resolveCallerSession(context, "generated:ctjt");
     const tournamentKey = randomUUID();
     const session = {
+      sessionKey: tournamentKey,
       tournamentId,
       createdAt: Date.now(),
       bracketTime: null,
       qualifyingComplete: false,
       wins: 0,
+      playerId: caller?.ok ? caller.playerId : null,
+      publicId: caller?.ok ? caller.publicId : null,
+      activeCarId: null,
     };
-    computerTournamentSessions.set(tournamentKey, session);
+    bindComputerTournamentSession(session);
 
     logger.info("ctjt called - joined computer tournament", {
       tournamentId,
       tournamentKey,
+      playerId: session.playerId,
     });
 
     return {
@@ -4788,19 +4915,34 @@ const handlers = {
     const { params, logger } = context;
     const tournamentKey = params.get("k") || "";
     const bracketTime = Number(params.get("bt") || 0);
-    const session = computerTournamentSessions.get(tournamentKey) || {
+    const activeCarId = Number(params.get("acid") || 0) || null;
+    const caller = await resolveCallerSession(context, "generated:ctct");
+    const session = getBoundComputerTournamentSession({
+      tournamentKey,
+      playerId: caller?.ok ? caller.playerId : null,
+    }) || {
+      sessionKey: tournamentKey || buildComputerTournamentSessionKey(caller?.ok ? caller.playerId : 0),
       tournamentId: 1,
       createdAt: Date.now(),
       wins: 0,
+      playerId: caller?.ok ? caller.playerId : null,
+      publicId: caller?.ok ? caller.publicId : null,
+      activeCarId: null,
     };
 
     session.bracketTime = bracketTime;
     session.qualifyingComplete = true;
-    computerTournamentSessions.set(tournamentKey, session);
+    session.activeCarId = activeCarId;
+    if (!session.sessionKey) {
+      session.sessionKey = tournamentKey || buildComputerTournamentSessionKey(session.playerId);
+    }
+    bindComputerTournamentSession(session);
 
     logger.info("ctct called - saved computer tournament qualifying pass", {
-      tournamentKey,
+      tournamentKey: session.sessionKey,
       bracketTime,
+      activeCarId,
+      playerId: session.playerId,
     });
 
     return {
@@ -4810,44 +4952,71 @@ const handlers = {
   },
   ctrt: async (context) => {
     const { params, logger } = context;
-    const tournamentKey = params.get("k") || "";
-    const session = computerTournamentSessions.get(tournamentKey) || {
+    const caller = await resolveCallerSession(context, "generated:ctrt");
+    const requestedCarId = Number(params.get("caid") || 0) || null;
+    const session = getBoundComputerTournamentSession({
+      tournamentKey: params.get("k") || "",
+      playerId: caller?.ok ? caller.playerId : null,
+    }) || {
+      sessionKey: buildComputerTournamentSessionKey(caller?.ok ? caller.playerId : 0),
       tournamentId: 1,
       createdAt: Date.now(),
       wins: 0,
+      playerId: caller?.ok ? caller.playerId : null,
+      publicId: caller?.ok ? caller.publicId : null,
+      activeCarId: requestedCarId,
     };
+    if (requestedCarId) {
+      session.activeCarId = requestedCarId;
+    }
+    bindComputerTournamentSession(session);
     const opponent = buildComputerTournamentOpponentXml(session);
 
     logger.info("ctrt called - returning computer tournament opponent", {
-      tournamentKey,
+      tournamentKey: session.sessionKey,
       tournamentId: session.tournamentId,
       wins: session.wins,
       purse: opponent.purse,
+      requestedCarId,
+      opponentCompetitorCarId: opponent.competitorCarId,
+      opponentVirtualCarId: opponent.virtualCarId,
     });
 
     return {
-      body: `"s", 1, "d", "${opponent.xml}", "b", ${opponent.purse}`,
+      body: `"s", 1, "d", "${opponent.xml}"`,
       source: "generated:ctrt",
     };
   },
   ctst: async (context) => {
     const { params, logger } = context;
+    const caller = await resolveCallerSession(context, "generated:ctst");
     const tournamentKey = params.get("k") || "";
-    const session = computerTournamentSessions.get(tournamentKey) || {
+    const session = getBoundComputerTournamentSession({
+      tournamentKey,
+      playerId: caller?.ok ? caller.playerId : null,
+    }) || {
+      sessionKey: tournamentKey || buildComputerTournamentSessionKey(caller?.ok ? caller.playerId : 0),
       tournamentId: 1,
       createdAt: Date.now(),
       wins: 0,
+      playerId: caller?.ok ? caller.playerId : null,
+      publicId: caller?.ok ? caller.publicId : null,
+      activeCarId: null,
     };
-    const winState = Number(params.get("w") || 1) ? 1 : 0;
+    const rawWinState = Number(params.get("w") || 1);
+    let winState = rawWinState ? 1 : 0;
     const payout = Number(params.get("b") || getComputerTournamentDefinition(session.tournamentId).purse || 0);
 
     if (winState) {
       session.wins = Number(session.wins || 0) + 1;
+      if (session.wins >= COMPUTER_TOURNAMENT_ROUNDS_TO_WIN) {
+        winState = 2;
+      }
     }
-    computerTournamentSessions.set(tournamentKey, session);
+    bindComputerTournamentSession(session);
 
     logger.info("ctst called - saved computer tournament race result", {
-      tournamentKey,
+      tournamentKey: session.sessionKey,
       winState,
       payout,
       wins: session.wins,
