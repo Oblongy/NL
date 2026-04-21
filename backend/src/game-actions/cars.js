@@ -23,55 +23,55 @@ const DEFAULT_STOCK_PARTS_XML = "";
 
 // Full car catalog - only cars with logo SWFs in the 10.0.03 game cache (104 cars)
 const FULL_CAR_CATALOG = [
-  ["1","Acura Integra GSR",24000], ["6","Acura RSX Type-S",24000], ["28","Acura NSX",140000],
-  ["20","Acura Integra Type R",30000], ["32","Acura RSX-S",26000],
-  ["11","BMW M3",54000],
-  ["7","Chevy Corvette C6",45000], ["18","Chevy Camaro",25000], ["52","Chevy Cobalt SS",20000],
-  ["82","Chevy C-10",5000], ["100","Chevy Impala SS",28000], ["46","Chevy Camaro SS",32000],
-  ["48","Chevy Camaro SS",42000], ["83","Chevy S-10",12000], ["34","Chevy Corvette Z06",75000],
-  ["108","Chevy Camaro Z28",35000],
-  ["10","Dodge Viper SRT-10",80000], ["15","Dodge Neon SRT-4",20000],
-  ["59","Dodge Challenger SRT-8",38000], ["60","Dodge Charger SRT-8",35000],
-  ["63","Dodge Challenger R/T",32000], ["75","Dodge Charger R/T",30000],
-  ["81","Dodge Ram SRT-10",45000], ["97","Dodge Charger SRT-8",40000],
-  ["109","Dodge Viper ACR-X",120000],
-  ["103","Dodge Dart GTS",18000],
-  ["3","Ford Mustang GT",30000], ["5","Ford GT",150000],
-  ["45","Ford SVT Cobra R",55000], ["68","Ford Shelby GT500",55000],
-  ["26","Ford Mustang Mach 1",35000], ["71","Ford Mustang Boss 302",42000],
-  ["8","Honda Integra Type R",27000], ["9","Honda S2000",33000], ["31","Honda Civic Si",18000],
-  ["37","Honda Civic Si",19000], ["44","Honda Prelude DOHC VTEC",22000], ["74","Honda CR-X Si",12000],
-  ["76","Honda Civic Si",20000], ["105","Honda Civic Type R",35000], ["29","Honda Del Sol VTEC",16000],
-  ["30","Honda Accord Euro R",25000],
-  ["4","Infiniti G35 Coupe",32000], ["51","Infiniti G37S",38000],
-  ["54","Lexus IS 300",33000], ["66","Lexus SC 300",38000],
-  ["57","Mazda Furai",500000], ["19","Mazdaspeed 6 Bergenholtz",25000], ["23","Mazdaspeed 3",20000],
-  ["24","Mazda RX-8",28000], ["16","Mazda RX-7",30000], ["73","Mazda RX-3",3000],
-  ["107","Mazda MX-5 Miata",24000], ["36","Mazda Speed3",20000], ["86","Mazda RX-7 Spirit R",75000],
-  ["2","Mitsubishi Lancer Evo VIII",35000], ["87","Mitsubishi Lancer Evo X",38000],
-  ["88","Mitsubishi Eclipse GSX",25000], ["17","Mitsubishi Eclipse GT",24000],
-  ["27","Mitsubishi 3000GT VR-4",40000], ["40","Mitsubishi Lancer Evo IX",35000],
-  ["104","Mitsubishi Galant VR-4",28000],
-  ["55","Nissan 370Z",35000], ["38","Nissan Skyline GT-R",80000], ["35","Nissan 300ZX",35000],
-  ["47","Nissan Sentra SE-R",16000], ["41","Nissan 240SX",18000], ["25","Nissan 350Z",30000],
-  ["21","Nissan GT-R",85000], ["39","Nissan Pulsar NX",12000], ["42","Nissan Silvia S15",25000],
-  ["69","Nissan 180SX",20000], ["70","Nissan 240SX Fastback",18000], ["98","Nissan Skyline R32 GT-R",60000],
-  ["101","Nissan GT-R Black Edition",110000], ["102","Nissan Leaf",30000],
-  ["110","Nissan Silvia S13",18000], ["111","Nissan Sentra B15",14000], ["112","Nissan Altima SE-R",22000],
-  ["79","Plymouth 'Cuda",5000], ["80","Plymouth Road Runner",4000],
-  ["33","Pontiac Solstice GXP",25000], ["43","Pontiac GTO",33000], ["49","Pontiac Trans Am",28000],
-  ["50","Pontiac GTO",40000], ["56","Pontiac GTO Judge",6000], ["85","Pontiac Firebird Trans Am",26000],
-  ["13","Scion tC",17000], ["22","Scion xB",15000], ["95","Scion tC",18000],
-  ["89","Subaru Impreza WRX STI",38000], ["92","Subaru Impreza WRX STI",36000],
-  ["91","Subaru Impreza WRX STI",37000], ["12","Subaru Impreza WRX",28000],
-  ["14","Toyota Supra",42000], ["61","Toyota MR2",15000],
-  ["65","Toyota Celica GT-S",19000], ["99","Toyota Corolla GT-S",12000],
-  ["58","VW Golf R32",32000], ["62","VW Beetle",18000], ["67","VW Golf GTI",22000],
-  ["64","VW Golf GTI",24000], ["77","VW Corrado",20000], ["84","VW Jetta GLI",22000],
-  ["72","Buick Grand National",30000],
-  ["53","Cadillac CTS-V",60000],
-  ["90","McLaren MP4-12C",230000],
-  ["94","Honda Fit Sport",15000],
+  ["1", "Acura Integra GSR", 24000], ["6", "Acura RSX Type-S", 24000], ["28", "Acura NSX", 140000],
+  ["20", "Acura Integra Type R", 30000], ["32", "Acura RSX-S", 26000],
+  ["11", "BMW M3", 54000],
+  ["7", "Chevy Corvette C6", 45000], ["18", "Chevy Camaro", 25000], ["52", "Chevy Cobalt SS", 20000],
+  ["82", "Chevy C-10", 5000], ["100", "Chevy Impala SS", 28000], ["46", "Chevy Camaro SS", 32000],
+  ["48", "Chevy Camaro SS", 42000], ["83", "Chevy S-10", 12000], ["34", "Chevy Corvette Z06", 75000],
+  ["108", "Chevy Camaro Z28", 35000],
+  ["10", "Dodge Viper SRT-10", 80000], ["15", "Dodge Neon SRT-4", 20000],
+  ["59", "Dodge Challenger SRT-8", 38000], ["60", "Dodge Charger SRT-8", 35000],
+  ["63", "Dodge Challenger R/T", 32000], ["75", "Dodge Charger R/T", 30000],
+  ["81", "Dodge Ram SRT-10", 45000], ["97", "Dodge Charger SRT-8", 40000],
+  ["109", "Dodge Viper ACR-X", 120000],
+  ["103", "Dodge Dart GTS", 18000],
+  ["3", "Ford Mustang GT", 30000], ["5", "Ford GT", 150000],
+  ["45", "Ford SVT Cobra R", 55000], ["68", "Ford Shelby GT500", 55000],
+  ["26", "Ford Mustang Mach 1", 35000], ["71", "Ford Mustang Boss 302", 42000],
+  ["8", "Honda Integra Type R", 27000], ["9", "Honda S2000", 33000], ["31", "Honda Civic Si", 18000],
+  ["37", "Honda Civic Si", 19000], ["44", "Honda Prelude DOHC VTEC", 22000], ["74", "Honda CR-X Si", 12000],
+  ["76", "Honda Civic Si", 20000], ["105", "Honda Civic Type R", 35000], ["29", "Honda Del Sol VTEC", 16000],
+  ["30", "Honda Accord Euro R", 25000],
+  ["4", "Infiniti G35 Coupe", 32000], ["51", "Infiniti G37S", 38000],
+  ["54", "Lexus IS 300", 33000], ["66", "Lexus SC 300", 38000],
+  ["57", "Mazda Furai", 500000], ["19", "Mazdaspeed 6 Bergenholtz", 25000], ["23", "Mazdaspeed 3", 20000],
+  ["24", "Mazda RX-8", 28000], ["16", "Mazda RX-7", 30000], ["73", "Mazda RX-3", 3000],
+  ["107", "Mazda MX-5 Miata", 24000], ["36", "Mazda Speed3", 20000], ["86", "Mazda RX-7 Spirit R", 75000],
+  ["2", "Mitsubishi Lancer Evo VIII", 35000], ["87", "Mitsubishi Lancer Evo X", 38000],
+  ["88", "Mitsubishi Eclipse GSX", 25000], ["17", "Mitsubishi Eclipse GT", 24000],
+  ["27", "Mitsubishi 3000GT VR-4", 40000], ["40", "Mitsubishi Lancer Evo IX", 35000],
+  ["104", "Mitsubishi Galant VR-4", 28000],
+  ["55", "Nissan 370Z", 35000], ["38", "Nissan Skyline GT-R", 80000], ["35", "Nissan 300ZX", 35000],
+  ["47", "Nissan Sentra SE-R", 16000], ["41", "Nissan 240SX", 18000], ["25", "Nissan 350Z", 30000],
+  ["21", "Nissan GT-R", 85000], ["39", "Nissan Pulsar NX", 12000], ["42", "Nissan Silvia S15", 25000],
+  ["69", "Nissan 180SX", 20000], ["70", "Nissan 240SX Fastback", 18000], ["98", "Nissan Skyline R32 GT-R", 60000],
+  ["101", "Nissan GT-R Black Edition", 110000], ["102", "Nissan Leaf", 30000],
+  ["110", "Nissan Silvia S13", 18000], ["111", "Nissan Sentra B15", 14000], ["112", "Nissan Altima SE-R", 22000],
+  ["79", "Plymouth 'Cuda", 5000], ["80", "Plymouth Road Runner", 4000],
+  ["33", "Pontiac Solstice GXP", 25000], ["43", "Pontiac GTO", 33000], ["49", "Pontiac Trans Am", 28000],
+  ["50", "Pontiac GTO", 40000], ["56", "Pontiac GTO Judge", 6000], ["85", "Pontiac Firebird Trans Am", 26000],
+  ["13", "Scion tC", 17000], ["22", "Scion xB", 15000], ["95", "Scion tC", 18000],
+  ["89", "Subaru Impreza WRX STI", 38000], ["92", "Subaru Impreza WRX STI", 36000],
+  ["91", "Subaru Impreza WRX STI", 37000], ["12", "Subaru Impreza WRX", 28000],
+  ["14", "Toyota Supra", 42000], ["61", "Toyota MR2", 15000],
+  ["65", "Toyota Celica GT-S", 19000], ["99", "Toyota Corolla GT-S", 12000],
+  ["58", "VW Golf R32", 32000], ["62", "VW Beetle", 18000], ["67", "VW Golf GTI", 22000],
+  ["64", "VW Golf GTI", 24000], ["77", "VW Corrado", 20000], ["84", "VW Jetta GLI", 22000],
+  ["72", "Buick Grand National", 30000],
+  ["53", "Cadillac CTS-V", 60000],
+  ["90", "McLaren MP4-12C", 230000],
+  ["94", "Honda Fit Sport", 15000],
 ];
 
 // Location-based tier for showroom filtering
@@ -85,11 +85,11 @@ const LOCATION_MAX_PRICE = {
 
 // Dealer categories
 const DEALER_CATEGORIES = [
-  { i: "1001", pi: "0", n: "Toreno Showroom",       cl: "55AACC", l: "100" },
-  { i: "1002", pi: "0", n: "Newburge Showroom",     cl: "55CC55", l: "200" },
-  { i: "1003", pi: "0", n: "Creek Side Showroom",   cl: "CCAA55", l: "300" },
-  { i: "1004", pi: "0", n: "Vista Heights Showroom",cl: "CC5555", l: "400" },
-  { i: "1005", pi: "0", n: "Diamond Point Showroom",cl: "CC55CC", l: "500" },
+  { i: "1001", pi: "0", n: "Toreno Showroom", cl: "55AACC", l: "100" },
+  { i: "1002", pi: "0", n: "Newburge Showroom", cl: "55CC55", l: "200" },
+  { i: "1003", pi: "0", n: "Creek Side Showroom", cl: "CCAA55", l: "300" },
+  { i: "1004", pi: "0", n: "Vista Heights Showroom", cl: "CC5555", l: "400" },
+  { i: "1005", pi: "0", n: "Diamond Point Showroom", cl: "CC55CC", l: "500" },
 ];
 
 const DEFAULT_DYNO_PURCHASE_STATE = Object.freeze({
@@ -124,20 +124,20 @@ export function getCatalogCarPointPrice(catalogCarId) {
 export function parseShowroomPurchaseCatalogCarId(params) {
   return Number(
     params.get("acid")
-      || params.get("ci")
-      || params.get("cid")
-      || params.get("carid")
-      || params.get("id")
-      || 0,
+    || params.get("ci")
+    || params.get("cid")
+    || params.get("carid")
+    || params.get("id")
+    || 0,
   );
 }
 
 export function parseShowroomPurchasePrice(params) {
   return Number(
     params.get("pr")
-      || params.get("price")
-      || params.get("cp")
-      || 0,
+    || params.get("price")
+    || params.get("cp")
+    || 0,
   );
 }
 
@@ -165,8 +165,8 @@ export async function handleGetAllCars(context) {
   });
   const garageCars = decorateCarsWithTestDriveState(caller.playerId, cars);
 
-  logger?.info("GetAllCars returning cars", { 
-    count: garageCars.length, 
+  logger?.info("GetAllCars returning cars", {
+    count: garageCars.length,
     carIds: garageCars.map(c => c.game_car_id),
     partsXmlLengths: garageCars.map(c => c.parts_xml?.length || 0)
   });
@@ -196,7 +196,7 @@ export async function handleGetOneCarEngine(context) {
       const pistonMatch = partsXml.match(/<p[^>]*\bci='190'[^>]*\bdi='(\d+)'[^>]*\/>/i);
       const compressionLevel = pistonMatch ? Number(pistonMatch[1]) : 0;
 
-      const timing = [273,273,273,273,273,273,273,273,273,375,387,398,410,421,432,444,455,467,478,490,501,513,524,536,547,559,570,582,593,605,614,617,619,622,624,626,629,631,634,636,639,641,644,646,648,651,653,656,658,661,663,665,668,670,673,675,678,680,680,672,665,657,649,641,633,625,617,609,601,593,585,577,569,561,554,546,537,529,520,512,503,494,486,477,469,460,452,443,435,426,418,409,401,392,384,375,367,358,350,341];
+      const timing = [273, 273, 273, 273, 273, 273, 273, 273, 273, 375, 387, 398, 410, 421, 432, 444, 455, 467, 478, 490, 501, 513, 524, 536, 547, 559, 570, 582, 593, 605, 614, 617, 619, 622, 624, 626, 629, 631, 634, 636, 639, 641, 644, 646, 648, 651, 653, 656, 658, 661, 663, 665, 668, 670, 673, 675, 678, 680, 680, 672, 665, 657, 649, 641, 633, 625, 617, 609, 601, 593, 585, 577, 569, 561, 554, 546, 537, 529, 520, 512, 503, 494, 486, 477, 469, 460, 452, 443, 435, 426, 418, 409, 401, 392, 384, 375, 367, 358, 350, 341];
 
       const engineXml =
         `<n2 es='1' sl='7200' sg='0' rc='0' tmp='0' r='3257' v='2.2398523985239853' ` +
@@ -214,7 +214,7 @@ export async function handleGetOneCarEngine(context) {
     }
   }
 
-  const timing = [273,273,273,273,273,273,273,273,273,375,387,398,410,421,432,444,455,467,478,490,501,513,524,536,547,559,570,582,593,605,614,617,619,622,624,626,629,631,634,636,639,641,644,646,648,651,653,656,658,661,663,665,668,670,673,675,678,680,680,672,665,657,649,641,633,625,617,609,601,593,585,577,569,561,554,546,537,529,520,512,503,494,486,477,469,460,452,443,435,426,418,409,401,392,384,375,367,358,350,341];
+  const timing = [273, 273, 273, 273, 273, 273, 273, 273, 273, 375, 387, 398, 410, 421, 432, 444, 455, 467, 478, 490, 501, 513, 524, 536, 547, 559, 570, 582, 593, 605, 614, 617, 619, 622, 624, 626, 629, 631, 634, 636, 639, 641, 644, 646, 648, 651, 653, 656, 658, 661, 663, 665, 668, 670, 673, 675, 678, 680, 680, 672, 665, 657, 649, 641, 633, 625, 617, 609, 601, 593, 585, 577, 569, 561, 554, 546, 537, 529, 520, 512, 503, 494, 486, 477, 469, 460, 452, 443, 435, 426, 418, 409, 401, 392, 384, 375, 367, 358, 350, 341];
 
   const engineXml =
     `<n2 es='1' sl='7200' sg='0' rc='0' tmp='0' r='3257' v='2.2398523985239853' ` +
@@ -318,7 +318,7 @@ export async function handleBuyCar(context) {
     .replace(/[^0-9A-F]/gi, "")
     .toUpperCase()
     .slice(0, 6) || "C0C0C0";
-  
+
   const createdCar = await createOwnedCar(supabase, {
     playerId: caller.playerId,
     catalogCarId,

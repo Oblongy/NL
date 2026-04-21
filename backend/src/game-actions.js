@@ -2229,7 +2229,7 @@ async function handleGetOneCarEngine(context) {
 }
 
 async function handleBuyDyno(context) {
-  const { supabase, params } = context;
+  const { supabase } = context;
 
   if (!supabase) {
     return null;
@@ -2245,6 +2245,19 @@ async function handleBuyDyno(context) {
     return { body: failureBody(), source: "supabase:buydyno:no-player" };
   }
 
+  if (player.has_dyno === 1 || player.has_dyno === true) {
+    return {
+      body:
+        `"s", 1, "b", ${player.money}, ` +
+        `"bs", ${DEFAULT_DYNO_PURCHASE_STATE.boostSetting}, ` +
+        `"mp", ${DEFAULT_DYNO_PURCHASE_STATE.maxPsi}, ` +
+        `"cs", ${DEFAULT_DYNO_PURCHASE_STATE.chipSetting}, ` +
+        `"sl", ${DEFAULT_DYNO_PURCHASE_STATE.shiftLightRpm}, ` +
+        `"rl", ${DEFAULT_DYNO_PURCHASE_STATE.redLine}`,
+      source: "supabase:buydyno:already-owned",
+    };
+  }
+
   const dynoPrice = 500;
   const newBalance = Number(player.money) - dynoPrice;
 
@@ -2252,7 +2265,12 @@ async function handleBuyDyno(context) {
     return { body: `"s", -2`, source: "supabase:buydyno:insufficient-funds" };
   }
 
-  await updatePlayerMoney(supabase, caller.playerId, newBalance);
+  try {
+    await updatePlayerRecord(supabase, caller.playerId, { money: newBalance, hasDyno: 1 });
+  } catch (error) {
+    console.error("Failed to update dyno ownership:", error);
+    return { body: failureBody(), source: "supabase:buydyno:update-failed" };
+  }
 
   // 10.0.03 garageDynoBuyCB expects positional scalar args:
   // (s, b, bs, mp, cs, sl, rl)
@@ -2315,7 +2333,16 @@ async function handleBuyPart(context) {
 
   // For custom panel graphics (pt=p), price from catalog if not provided
   if (price === 0 && partType === "p" && partId) {
-    const panelPrices = { 6001: 190, 6002: 135, 6003: 130, 6004: 110 };
+    const panelPrices = {
+      6000: 110,
+      6001: 190,
+      6002: 130,
+      6003: 135,
+      16001: 110,
+      16101: 190,
+      16201: 130,
+      16301: 135,
+    };
     price = panelPrices[partId] || 0;
   }
 
@@ -2335,23 +2362,35 @@ async function handleBuyPart(context) {
   // Save part to the owned car's parts_xml
   if (accountCarId && partId) {
     if (partType === "p" && decalId) {
-      const partSlotMap = { 6001: "161", 6002: "163", 6003: "162", 6004: "160" };
-      const slotId = partSlotMap[partId] || "161";
+      const partSlotMap = {
+        6000: "160",
+        6001: "161",
+        6002: "162",
+        6003: "163",
+        16001: "160",
+        16101: "161",
+        16201: "162",
+        16301: "163",
+      };
+      const slotId = partSlotMap[partId] || String(catalogPart?.pi || "161");
 
       try {
-        const { readdirSync, renameSync, mkdirSync } = await import("node:fs");
+        const { existsSync, mkdirSync, renameSync } = await import("node:fs");
         const { resolve } = await import("node:path");
         const decalDir = resolve(process.cwd(), "../cache/car/userDecals");
         mkdirSync(decalDir, { recursive: true });
-        const files = readdirSync(decalDir).filter((file) => file.endsWith(".jpg")).sort().reverse();
-        if (files.length > 0) {
-          renameSync(resolve(decalDir, files[0]), resolve(decalDir, `${slotId}_${decalId}.swf`));
+        const sourcePath = resolve(decalDir, `${decalId}.jpg`);
+        const targetPath = resolve(decalDir, `${slotId}_${decalId}.swf`);
+        if (existsSync(sourcePath)) {
+          renameSync(sourcePath, targetPath);
+        } else {
+          logger?.warn("Custom graphic source upload missing", { decalId, slotId, sourcePath });
         }
       } catch (err) {
         logger?.error("Failed to rename decal", { error: err.message });
       }
 
-      const installedPartXml = `<p ai='${installId}' i='${partId}' pi='${slotId}' t='c' n='Custom Graphic' in='1' cc='0' pdi='${decalId}' di='${decalId}' ps=''/>`;
+      const installedPartXml = `<p ai='${installId}' i='${partId}' ci='${slotId}' pt='c' n='Custom Graphic' in='1' cc='0' pdi='${decalId}' di='${decalId}' ps=''/>`;
       const partsXml = upsertInstalledPartXml(car.parts_xml || "", slotId, installedPartXml);
       try {
         await saveCarPartsXml(supabase, accountCarId, partsXml);
@@ -3575,17 +3614,50 @@ async function handleGetCarCategories(context) {
 async function handleGetGearInfo(context) {
   const { supabase, params } = context;
   const accountCarId = params.get("acid") || "";
+  let car = null;
 
   if (supabase) {
     const caller = await resolveCallerSession(context, "supabase:getgearinfo");
-    // Non-fatal: fall through to default even if session check fails
     if (caller && !caller.ok) {
       return { body: caller.body || failureBody(), source: caller.source || "supabase:getgearinfo:bad-session" };
     }
+
+    if (accountCarId) {
+      car = await getCarById(supabase, accountCarId);
+      if (car && caller?.playerId && Number(car.player_id) !== Number(caller.playerId)) {
+        car = null;
+      }
+    }
   }
 
-  // Default gear ratios for all cars
-  const gearRatios = `<g p='2500' pp='25'><r g1='3.587' g2='2.022' g3='1.384' g4='1' g5='0.861' g6='0' fg='4.058'/></g>`;
+  let ratios = {
+    g1: "3.587",
+    g2: "2.022",
+    g3: "1.384",
+    g4: "1",
+    g5: "0.861",
+    g6: "0",
+    fg: "4.058",
+  };
+
+  const catalogCarId = String(car?.catalog_car_id || "");
+  if (catalogCarId && hasShowroomCarSpec(catalogCarId)) {
+    const n2 = buildN2Fields(catalogCarId);
+    ratios = {
+      g1: String(n2.f ?? ratios.g1),
+      g2: String(n2.g ?? ratios.g2),
+      g3: String(n2.h ?? ratios.g3),
+      g4: String(n2.i ?? ratios.g4),
+      g5: String(n2.j ?? ratios.g5),
+      g6: "0",
+      fg: String(n2.l ?? ratios.fg),
+    };
+  }
+
+  const gearRatios =
+    `<g p='2500' pp='25'>` +
+    `<r g1='${ratios.g1}' g2='${ratios.g2}' g3='${ratios.g3}' g4='${ratios.g4}' g5='${ratios.g5}' g6='${ratios.g6}' fg='${ratios.fg}'/>` +
+    `</g>`;
   return {
     body: wrapSuccessData(gearRatios),
     source: "generated:getgearinfo",
