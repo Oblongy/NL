@@ -1034,8 +1034,11 @@ export class TcpServer {
     if (conn.roomId) {
       const room = this.rooms.get(conn.roomId) || [];
       const chatClass = conn.clientRole === 1 ? 1 : (conn.clientRole === 8 ? 8 : (conn.clientRole === 2 ? 5 : DEFAULT_GLOBAL_CHAT_CLASS));
-      const roomChatMsg =
-        `"ac", "TE", "i", "${conn.playerId}", "u", "${this.escapeForTcp(conn.username)}", "t", "${this.escapeForTcp(chatText)}", "c", ${chatClass}`;
+      // In the race-room UI this client sends chat over `SRC`, but the only
+      // confirmed visible inbound chat shape from capture is the GC envelope.
+      const roomChatMsg = messageType === "SRC"
+        ? `"ac", "GC", "u", "${this.escapeForTcp(conn.username)}", "m", "${this.escapeForTcp(chatText)}", "c", ${chatClass}`
+        : `"ac", "TE", "i", "${conn.playerId}", "u", "${this.escapeForTcp(conn.username)}", "t", "${this.escapeForTcp(chatText)}", "c", ${chatClass}`;
       this.logger.info("Broadcasting room chat", { connId: conn.id, roomId: conn.roomId, memberCount: room.length });
       for (const member of room) {
         const memberConn = this.connections.get(member.connId);
@@ -1880,11 +1883,10 @@ export class TcpServer {
     // In 10.0.03 XML this maps to the `b` (bracket time) attribute, not `bt`.
     const bracketTime = Number(parts[5] || -1);
 
-    this.sendMessage(conn, '"ac", "RRQ", "s", 1');
-
     // Use excludeRaceChannels to get the lobby connection for the target
     const targetConn = this.findConnectionByPlayerId(targetPlayerId, true);
     if (!targetConn) {
+      this.sendMessage(conn, '"ac", "RRQ", "s", -1');
       this.logger.warn("TCP RRQ ignored (target not connected)", {
         connId: conn.id,
         requesterPlayerId,
@@ -1922,6 +1924,7 @@ export class TcpServer {
     };
 
     this.pendingRaceChallenges.set(raceGuid, challenge);
+    this.sendMessage(conn, `"ac", "RRQ", "s", 1, "d", "${raceGuid}"`);
 
     this.logger.info("TCP RRQ challenge created", {
       connId: conn.id,
@@ -2011,7 +2014,7 @@ export class TcpServer {
   }
 
   buildUcuXml({ playerId, username }) {
-    return `<u ul='0' i='${Number(playerId)}' un='${this.escapeXml(username)}' ti='2' tid='2' tf='7D7D7D' ms='5' iv='0'/>`;
+    return `<ul><u ul='0' i='${Number(playerId)}' un='${this.escapeXml(username)}' ti='2' tid='2' tf='7D7D7D' ms='5' iv='0'/></ul>`;
   }
 
   buildRclgXml({
