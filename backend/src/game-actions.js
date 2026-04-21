@@ -158,6 +158,15 @@ function normalizeUserGraphicFileExt(value, fallback = "png") {
   return fallback;
 }
 
+function decodeXmlEntities(value) {
+  return String(value || "")
+    .replace(/&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
 function extractInfoXmlFromLoginBody(body) {
   const match = String(body || "").match(/"d", "([\s\S]*)", "aid", /);
   return match?.[1] || "<ini></ini>";
@@ -4391,7 +4400,7 @@ async function handleListClassified(context) {
   // Empty classified ads list.
   return {
     body: wrapSuccessData(`<cars i='0' dc='0'></cars>`),
-    source: "stub:listclassified",
+    source: "generated:listclassified",
   };
 }
 
@@ -4407,21 +4416,21 @@ async function handleViewShowroom(context) {
   const xml = buildShowroomXml(locationId);
   return {
     body: wrapSuccessData(xml),
-    source: `stub:viewshowroom:lid=${locationId}`,
+    source: `generated:viewshowroom:lid=${locationId}`,
   };
 }
 
 async function handleGetStarterShowroom(context) {
   return {
     body: wrapSuccessData(buildShowroomXml(100, true)),
-    source: "stub:getstartershowroom",
+    source: "generated:getstartershowroom",
   };
 }
 
 async function handleUploadRequest(context) {
   // The client uploads decals/avatars to an external CDN. In local mode we
   // just tell it the upload is accepted.
-  return { body: `"s", 1`, source: "stub:uploadrequest" };
+  return { body: `"s", 1`, source: "generated:uploadrequest" };
 }
 
 async function handleSellCar(context) {
@@ -5263,17 +5272,53 @@ async function handleGetMisconductCount(context) {
 }
 
 async function handleGetDescription(context) {
+  const partId = Number(context.params.get("id") || 0);
+  const partType = String(context.params.get("pt") || "").trim().toLowerCase();
+  const catalog = partType === "w" ? getWheelsTiresCatalogById() : getPartsCatalogById();
+  const attrs = catalog.get(partId) || null;
+  const asNumber = (value) => {
+    const numeric = Number(value || 0);
+    return Number.isFinite(numeric) ? numeric : 0;
+  };
+  const parts = [];
+  if (attrs) {
+    const name = decodeXmlEntities(attrs.n || "");
+    const brand = decodeXmlEntities(attrs.bn || "");
+    const family = decodeXmlEntities(attrs.mn || "");
+    const hp = asNumber(attrs.hp);
+    const tq = asNumber(attrs.tq);
+    const wt = asNumber(attrs.wt);
+    const money = asNumber(attrs.p);
+    const points = asNumber(attrs.pp);
+
+    if (name) parts.push(name);
+    if (brand || family) {
+      parts.push([brand, family].filter(Boolean).join(" "));
+    }
+    const stats = [];
+    if (hp) stats.push(`+${hp} HP`);
+    if (tq) stats.push(`+${tq} TQ`);
+    if (wt) stats.push(`${wt > 0 ? "+" : ""}${wt} WT`);
+    if (money) stats.push(`$${money}`);
+    if (points) stats.push(`${points} pts`);
+    if (stats.length) {
+      parts.push(stats.join(" | "));
+    }
+  }
+
   return {
-    body: wrapSuccessData(`<d></d>`),
-    source: "stub:getdescription",
+    body: wrapSuccessData(
+      `<d>${escapeXml(parts.join(" - ") || `No description available for ${partType || "part"} ${partId}.`)}</d>`,
+    ),
+    source: attrs ? `generated:getdescription:id=${partId}` : `generated:getdescription:id=${partId}:fallback`,
   };
 }
 
 async function handleGetBuddies(context) {
-  // Return empty buddies list - TCP server not implemented yet
+  const targetId = Number(context.params.get("tid") || context.params.get("id") || 0);
   return {
     body: wrapSuccessData(`<buddies></buddies>`),
-    source: "stub:getbuddies",
+    source: `generated:getbuddies:tid=${targetId || 0}`,
   };
 }
 
@@ -5718,13 +5763,13 @@ const handlers = {
   loaddynograph: async () => {
     return {
       body: `"s", 1, "d", "<dyno/>"`,
-      source: "stub:loaddynograph",
+      source: "generated:loaddynograph",
     };
   },
   savedynograph: async () => {
     return {
       body: `"s", 1`,
-      source: "stub:savedynograph",
+      source: "generated:savedynograph",
     };
   },
   buypart: handleBuyPart,
@@ -5760,8 +5805,8 @@ const handlers = {
   addremark: handleAddRemark,
   deleteremark: handleDeleteRemark,
   getuserremarks: handleGetUserRemarks,
-  setnondeletes: async () => ({ body: `"s", 1`, source: "stub:setnondeletes" }),
-  setdeletes: async () => ({ body: `"s", 1`, source: "stub:setdeletes" }),
+  setnondeletes: async () => ({ body: `"s", 1`, source: "generated:setnondeletes" }),
+  setdeletes: async () => ({ body: `"s", 1`, source: "generated:setdeletes" }),
   // Repair
   getrepairparts: handleGetRepairParts,
   repairparts: handleRepairParts,
@@ -5781,8 +5826,8 @@ const handlers = {
   esfi: handleEngineSwapFinish,
   // Account / profile
   updatebg: handleUpdateBg,
-  addastopbuddy: async () => ({ body: `"s", 1`, source: "stub:addastopbuddy" }),
-  removeastopbuddy: async () => ({ body: `"s", 1`, source: "stub:removeastopbuddy" }),
+  addastopbuddy: async () => ({ body: `"s", 1`, source: "generated:addastopbuddy" }),
+  removeastopbuddy: async () => ({ body: `"s", 1`, source: "generated:removeastopbuddy" }),
   changepassword: async () => ({ body: `"s", 1`, source: "stub:changepassword" }),
   changepasswordreq: async () => ({ body: `"s", 1`, source: "stub:changepasswordreq" }),
   changeemail: async () => ({ body: `"s", 1`, source: "stub:changeemail" }),

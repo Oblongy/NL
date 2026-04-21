@@ -160,6 +160,15 @@ function writePngChunk(type, data) {
   return Buffer.concat([chunkLength, chunkType, data, crc]);
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function crc32(buffer) {
   let crc = 0xffffffff;
   for (let index = 0; index < buffer.length; index += 1) {
@@ -390,6 +399,112 @@ async function resolveCompatSessionInfo(supabase, sessionKey) {
   };
 }
 
+async function loadAdminUserInfo(supabase, playerId) {
+  if (!supabase || !playerId) {
+    return null;
+  }
+
+  const [player, carsResult, openReportsResult, bannedReportsResult, recentTicketsResult] = await Promise.all([
+    getPlayerById(supabase, playerId),
+    listCarsForPlayer(supabase, playerId),
+    supabase
+      .from("game_support_tickets")
+      .select("id", { count: "exact", head: true })
+      .eq("offender_player_id", Number(playerId))
+      .eq("status", "open"),
+    supabase
+      .from("game_support_tickets")
+      .select("id", { count: "exact", head: true })
+      .eq("offender_player_id", Number(playerId))
+      .eq("resolution", "banned"),
+    supabase
+      .from("game_support_tickets")
+      .select("ticket_number, support_id, requester_username, offender_username, subject, status, resolution, created_at")
+      .or(`offender_player_id.eq.${Number(playerId)},requester_player_id.eq.${Number(playerId)}`)
+      .order("created_at", { ascending: false })
+      .limit(20),
+  ]);
+
+  if (!player) {
+    return null;
+  }
+
+  return {
+    player,
+    cars: Array.isArray(carsResult) ? carsResult : [],
+    openReports: Number(openReportsResult.count || 0),
+    bannedReports: Number(bannedReportsResult.count || 0),
+    tickets: Array.isArray(recentTicketsResult.data) ? recentTicketsResult.data : [],
+  };
+}
+
+function renderAdminUserInfoPage(info) {
+  const { player, cars, openReports, bannedReports, tickets } = info;
+  const rows = tickets.length > 0
+    ? tickets.map((ticket) => `
+        <tr>
+          <td>${escapeHtml(ticket.ticket_number)}</td>
+          <td>${escapeHtml(ticket.requester_username || "")}</td>
+          <td>${escapeHtml(ticket.offender_username || "")}</td>
+          <td>${escapeHtml(ticket.subject || "")}</td>
+          <td>${escapeHtml(ticket.status || "")}</td>
+          <td>${escapeHtml(ticket.resolution || "")}</td>
+          <td>${escapeHtml(ticket.created_at || "")}</td>
+        </tr>`).join("")
+    : `<tr><td colspan="7">No support tickets found.</td></tr>`;
+
+  const carRows = cars.length > 0
+    ? cars.map((car) => `
+        <tr>
+          <td>${escapeHtml(String(car.game_car_id || 0))}</td>
+          <td>${escapeHtml(String(car.catalog_car_id || 0))}</td>
+          <td>${car.selected ? "yes" : "no"}</td>
+          <td>${escapeHtml(String(car.paint_index || 0))}</td>
+          <td>${escapeHtml(String((car.parts_xml || "").length))}</td>
+        </tr>`).join("")
+    : `<tr><td colspan="5">No cars found.</td></tr>`;
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Local Admin User Info</title>
+  <style>
+    body{font-family:Segoe UI,Arial,sans-serif;background:#111827;color:#e5e7eb;margin:0;padding:24px}
+    h1,h2{margin:0 0 12px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:0 0 24px}
+    .card{background:#1f2937;border:1px solid #374151;border-radius:10px;padding:14px}
+    table{width:100%;border-collapse:collapse;background:#111827}
+    th,td{border:1px solid #374151;padding:8px;text-align:left;vertical-align:top}
+    th{background:#1f2937}
+    .muted{color:#9ca3af}
+  </style>
+</head>
+<body>
+  <h1>Local Admin User Info</h1>
+  <div class="grid">
+    <div class="card"><strong>Player ID</strong><div>${escapeHtml(String(player.id || 0))}</div></div>
+    <div class="card"><strong>Username</strong><div>${escapeHtml(player.username || "")}</div></div>
+    <div class="card"><strong>Role</strong><div>${escapeHtml(String(player.client_role || player.role || ""))}</div></div>
+    <div class="card"><strong>Money</strong><div>${escapeHtml(String(player.money || 0))}</div></div>
+    <div class="card"><strong>Open Reports</strong><div>${escapeHtml(String(openReports))}</div></div>
+    <div class="card"><strong>Ban Count</strong><div>${escapeHtml(String(bannedReports))}</div></div>
+  </div>
+  <h2>Cars</h2>
+  <table>
+    <thead><tr><th>Game Car ID</th><th>Catalog Car ID</th><th>Selected</th><th>Paint</th><th>Parts XML Len</th></tr></thead>
+    <tbody>${carRows}</tbody>
+  </table>
+  <h2 style="margin-top:24px">Support Tickets</h2>
+  <table>
+    <thead><tr><th>Ticket</th><th>Requester</th><th>Offender</th><th>Subject</th><th>Status</th><th>Resolution</th><th>Created</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <p class="muted" style="margin-top:16px">This local page replaces the old external moderator lookup page for the current backend.</p>
+</body>
+</html>`;
+}
+
 export function createHttpServer({ config, logger, supabase, services = {}, fixtureStore = null }) {
   return createServer(async (req, res) => {
     try {
@@ -575,6 +690,23 @@ export function createHttpServer({ config, logger, supabase, services = {}, fixt
         }
 
         sendJson(res, 200, { ok: true, ...sessionInfo });
+        return;
+      }
+
+      if (/^\/(?:admin\/)?userinfo\.aspx$/i.test(requestUrl.pathname)) {
+        const playerId = Number(requestUrl.searchParams.get("aid") || 0);
+        const info = await loadAdminUserInfo(supabase, playerId);
+        if (!info) {
+          sendText(res, 404, "admin user not found\n");
+          return;
+        }
+        const body = renderAdminUserInfoPage(info);
+        res.writeHead(200, {
+          "Content-Type": "text/html; charset=utf-8",
+          "Content-Length": Buffer.byteLength(body, "utf8"),
+          "X-Nitto-Source": "generated:userInfo.aspx",
+        });
+        res.end(body, "utf8");
         return;
       }
 
