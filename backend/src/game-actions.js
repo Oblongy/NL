@@ -5400,6 +5400,103 @@ async function handleGetHumanTournaments(context) {
   };
 }
 
+async function handleJoinHumanTournament(context) {
+  const { supabase, params, services, logger } = context;
+  if (!supabase) {
+    return {
+      body: `"s", 0, "b", 0, "d", "Tournament service unavailable."`,
+      source: "generated:joinhumantournament:no-supabase",
+    };
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:joinhumantournament");
+  if (!caller?.ok) {
+    return {
+      body: `"s", 0, "b", 0, "d", "Your session has expired."`,
+      source: caller?.source || "supabase:joinhumantournament:bad-session",
+    };
+  }
+
+  const tcpServer = services?.tcpServer;
+  const liveEvent = typeof tcpServer?.getLiveTournamentEvent === "function"
+    ? tcpServer.getLiveTournamentEvent()
+    : null;
+  const requestedTournamentId = Number(params.get("tid") || 0);
+  const eventId = Number(liveEvent?.id || 9001);
+  if (requestedTournamentId && requestedTournamentId !== eventId) {
+    const balance = Number(caller.player.money || 0);
+    return {
+      body: `"s", 0, "b", ${balance}, "d", "This tournament is no longer available."`,
+      source: "supabase:joinhumantournament:invalid-event",
+    };
+  }
+
+  const gameCarId = Number(params.get("acid") || 0);
+  const car = await getCarById(supabase, gameCarId);
+  if (!car || Number(car.player_id) !== caller.playerId) {
+    const balance = Number(caller.player.money || 0);
+    return {
+      body: `"s", 0, "b", ${balance}, "d", "That car is not available for entry."`,
+      source: "supabase:joinhumantournament:invalid-car",
+    };
+  }
+
+  const paymentType = String(params.get("pt") || liveEvent?.entryType || "m").trim().toLowerCase();
+  const chargePoints = paymentType === "p";
+  const entryCost = Math.max(0, Number(liveEvent?.entryCost || 0));
+  const currentMoney = Number(caller.player.money || 0);
+  const currentPoints = Number(caller.player.points || 0);
+  const currentBalance = chargePoints ? currentPoints : currentMoney;
+  const statusCode = chargePoints ? 1 : 2;
+
+  if (entryCost > currentBalance) {
+    return {
+      body: `"s", 0, "b", ${currentBalance}, "d", "You do not have enough ${chargePoints ? "points" : "cash"} to enter."`,
+      source: `supabase:joinhumantournament:insufficient-${chargePoints ? "points" : "money"}`,
+    };
+  }
+
+  const newBalance = currentBalance - entryCost;
+  if (chargePoints) {
+    await updatePlayerRecord(supabase, caller.playerId, { points: newBalance });
+  } else {
+    await updatePlayerMoney(supabase, caller.playerId, newBalance);
+  }
+  await updatePlayerDefaultCar(supabase, caller.playerId, gameCarId);
+
+  if (typeof tcpServer?.getLiveTournamentState === "function") {
+    const liveState = tcpServer.getLiveTournamentState({
+      playerId: caller.playerId,
+      username: caller.player?.username || `Player ${caller.playerId}`,
+    });
+    if (Array.isArray(liveState?.roster) && liveState.roster.length > 0) {
+      liveState.roster[0] = {
+        id: Number(caller.playerId),
+        username: caller.player?.username || `Player ${caller.playerId}`,
+        rt: Number(liveState.roster[0]?.rt || 0.548),
+        et: Number(liveState.roster[0]?.et || 14.882),
+        bt: Number(params.get("bt") || liveState.roster[0]?.bt || 0),
+      };
+      liveState.createdAt = Date.now();
+    }
+  }
+
+  const responseBody = `"s", ${statusCode}, "b", ${newBalance}, "d", ""`;
+  logTournamentPayload(logger, "joinhumantournament", responseBody, {
+    playerId: caller.playerId,
+    tournamentId: eventId,
+    gameCarId,
+    paymentType,
+    entryCost,
+    newBalance,
+  });
+
+  return {
+    body: responseBody,
+    source: "supabase:joinhumantournament",
+  };
+}
+
 async function handleUpdateBg(context) {
   const { supabase, params } = context;
   if (!supabase) {
@@ -5895,6 +5992,7 @@ const handlers = {
   getbuddylist: handleGetBuddies,
   buddylist: handleGetBuddies,
   gethumantournaments: handleGetHumanTournaments,
+  joinhumantournament: handleJoinHumanTournament,
   listracechatusers: handleListRaceChatUsers,
   leaveracechat: async () => ({ body: `"s", 1`, source: "generated:leaveracechat" }),
   // --- Uploads ---
