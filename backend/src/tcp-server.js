@@ -297,9 +297,9 @@ export class TcpServer {
 
       // --- HTI: Heartbeat ---
       } else if (messageType === "HTI") {
-        const payload = this.buildTournamentInfoXml(conn);
+        const payload = this.buildTournamentHeartbeatXml(conn);
         this.logTournamentTcpPayload(conn, "HTI", payload);
-        this.sendMessage(conn, `"ac", "HTI", "s", "${payload}"`);
+        this.sendMessage(conn, `"ac", "HTI", "d", "${payload}"`);
       } else if (messageType === "HTGET32") {
         const payload = this.buildLiveTournamentTop32Xml(conn);
         this.logTournamentTcpPayload(conn, "HTGET32", payload);
@@ -1714,9 +1714,9 @@ export class TcpServer {
       // client can satisfy its socket-ready gate before it starts room flow.
       this.sendMessage(conn, '"ac", "L", "s", 1, "ni", 1000, "ns", 30, "tid", 1, "trp", 0, "trbp", 0, "lft", "0.5"');
       this.sendMessage(conn, '"ac", "GNL", "d", "<buddies></buddies>"');
-      const payload = this.buildTournamentInfoXml(conn, { ut });
+      const payload = this.buildTournamentHeartbeatXml(conn, { ut });
       this.logTournamentTcpPayload(conn, "HTI_BOOTSTRAP", payload, { source });
-      this.sendMessage(conn, `"ac", "HTI", "s", "${payload}"`);
+      this.sendMessage(conn, `"ac", "HTI", "d", "${payload}"`);
       conn.bootstrapSent = true;
       this.logger.info("TCP initial lobby bootstrap sent", { connId: conn.id, source });
     }
@@ -1838,6 +1838,11 @@ export class TcpServer {
       `mp='${event.maxPlayers}' pp='${event.purse}' ct='${event.entryType}' ` +
       `c='${event.entryCost}'/>`
     );
+  }
+
+  buildTournamentHeartbeatXml(_conn, { ut = Math.floor(Date.now() / 1000) } = {}) {
+    const event = this.getLiveTournamentEvent();
+    return `<i ut='${ut}' s='${event.status}' li='${event.logoId}' it='${event.scheduleId}'/>`;
   }
 
   buildLiveTournamentTop32Xml(conn) {
