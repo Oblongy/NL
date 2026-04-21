@@ -788,25 +788,36 @@ export class TcpServer {
     const elapsedTime = this.normalizeNumericToken(parts[1], "-1");
     const trapSpeed = this.normalizeNumericToken(parts[2], "-1");
     const reportedTotal = this.normalizeNumericToken(parts[16], "0");
-    const reactionTime = this.normalizeNumericToken(parts[20], "-1");
     const elapsedValue = Number(elapsedTime);
-    const reactionValue = Number(reactionTime);
     const reportedTotalValue = Number(reportedTotal);
     const totalTime = Number.isFinite(reportedTotalValue) && reportedTotalValue > 0
       ? reportedTotalValue
       : (
-        Number.isFinite(elapsedValue) && elapsedValue >= 0 &&
-        Number.isFinite(reactionValue) && reactionValue >= 0
-          ? elapsedValue + reactionValue
+        Number.isFinite(elapsedValue) && elapsedValue >= 0
+          ? elapsedValue
           : Number.POSITIVE_INFINITY
       );
 
     return {
-      rt: reactionTime,
+      rt: "-1",
       et: elapsedTime,
       ts: trapSpeed,
       totalTime,
     };
+  }
+
+  getRaceReactionTime(race, playerId) {
+    if (!race?.reactionTimes || !playerId) {
+      return "-1";
+    }
+
+    const reactionTime = race.reactionTimes.get(Number(playerId));
+    return reactionTime ?? "-1";
+  }
+
+  isStagedDistance(distance) {
+    const numericDistance = Number(distance);
+    return Number.isFinite(numericDistance) && numericDistance > -2 && numericDistance < 1;
   }
 
   determineRaceWinnerFromResults(race) {
@@ -817,10 +828,21 @@ export class TcpServer {
     const ranked = race.players
       .map((participant) => {
         const result = race.finishResults.get(Number(participant.playerId));
+        const reactionTime = Number(this.getRaceReactionTime(race, participant.playerId));
+        const elapsedTime = Number(result?.et ?? Number.POSITIVE_INFINITY);
+        const reportedTotal = Number(result?.totalTime ?? Number.POSITIVE_INFINITY);
+        const totalTime = Number.isFinite(reportedTotal) && reportedTotal > 0
+          ? reportedTotal
+          : (
+            Number.isFinite(reactionTime) && reactionTime >= 0 &&
+            Number.isFinite(elapsedTime) && elapsedTime >= 0
+              ? reactionTime + elapsedTime
+              : elapsedTime
+          );
         return {
           playerId: Number(participant.playerId || 0),
-          totalTime: Number(result?.totalTime ?? Number.POSITIVE_INFINITY),
-          elapsedTime: Number(result?.et ?? Number.POSITIVE_INFINITY),
+          totalTime,
+          elapsedTime,
         };
       })
       .filter((entry) => entry.playerId > 0);
@@ -842,7 +864,9 @@ export class TcpServer {
     const [p1, p2] = race.players;
     const p1Result = race.finishResults?.get(Number(p1?.playerId)) || null;
     const p2Result = race.finishResults?.get(Number(p2?.playerId)) || null;
-    return `<r r1id='${p1?.playerId || 0}' r2id='${p2?.playerId || 0}' wid='${winnerPlayerId || 0}' rt1='${p1Result?.rt ?? "-1"}' et1='${p1Result?.et ?? "-1"}' ts1='${p1Result?.ts ?? "-1"}' rt2='${p2Result?.rt ?? "-1"}' et2='${p2Result?.et ?? "-1"}' ts2='${p2Result?.ts ?? "-1"}' m1='0' m2='0' c1='0' c2='0' h1='0' h2='0'/>`;
+    const p1ReactionTime = this.getRaceReactionTime(race, p1?.playerId);
+    const p2ReactionTime = this.getRaceReactionTime(race, p2?.playerId);
+    return `<r r1id='${p1?.playerId || 0}' r2id='${p2?.playerId || 0}' wid='${winnerPlayerId || 0}' rt1='${p1ReactionTime}' et1='${p1Result?.et ?? "-1"}' ts1='${p1Result?.ts ?? "-1"}' rt2='${p2ReactionTime}' et2='${p2Result?.et ?? "-1"}' ts2='${p2Result?.ts ?? "-1"}' m1='0' m2='0' c1='0' c2='0' h1='0' h2='0'/>`;
   }
 
   buildRaceDoneXml(playerId, result) {
@@ -975,6 +999,7 @@ export class TcpServer {
     if (!race) return;
     if (!race.players.every((entry) => entry.opened)) return;
     if (race.rivalsReadyBroadcasted) return;
+    if (!race.players.every((entry) => this.isStagedDistance(entry.lastDistance))) return;
 
     race.rivalsReadyBroadcasted = true;
     this.setRacePhase(race, "TREE_ARMED", "both-opened");
@@ -990,6 +1015,7 @@ export class TcpServer {
   maybeStartRaceSequence(race, trigger = "") {
     if (!race || race.sequenceStarted) return;
     if (!race.players.every((entry) => entry.opened)) return;
+    if (!race.rivalsReadyBroadcasted) return;
 
     race.sequenceStarted = true;
     this.setRacePhase(race, "RACING", trigger || "both-opened");
@@ -1034,11 +1060,11 @@ export class TcpServer {
     if (conn.roomId) {
       const room = this.rooms.get(conn.roomId) || [];
       const chatClass = conn.clientRole === 1 ? 1 : (conn.clientRole === 8 ? 8 : (conn.clientRole === 2 ? 5 : DEFAULT_GLOBAL_CHAT_CLASS));
-      // In the race-room UI this client sends chat over `SRC`, but the only
-      // confirmed visible inbound chat shape from capture is the GC envelope.
-      const roomChatMsg = messageType === "SRC"
-        ? `"ac", "GC", "u", "${this.escapeForTcp(conn.username)}", "m", "${this.escapeForTcp(chatText)}", "c", ${chatClass}`
-        : `"ac", "TE", "i", "${conn.playerId}", "u", "${this.escapeForTcp(conn.username)}", "t", "${this.escapeForTcp(chatText)}", "c", ${chatClass}`;
+      // The exported client chat UI only needs username + message text, and
+      // the live capture shows visible inbound chat using the GC envelope.
+      // Room chat reaching the client as TE has not rendered in testing.
+      const roomChatMsg =
+        `"ac", "GC", "u", "${this.escapeForTcp(conn.username)}", "m", "${this.escapeForTcp(chatText)}", "c", ${chatClass}`;
       this.logger.info("Broadcasting room chat", { connId: conn.id, roomId: conn.roomId, memberCount: room.length });
       for (const member of room) {
         const memberConn = this.connections.get(member.connId);
@@ -1092,10 +1118,6 @@ export class TcpServer {
       return;
     }
 
-    if (!race.sequenceStarted) {
-      return;
-    }
-
     // Update race activity timestamp
     race.lastActivity = Date.now();
 
@@ -1133,6 +1155,10 @@ export class TcpServer {
         tick,
       });
     }
+
+    sender.lastDistance = Number(distance);
+    this.maybeBroadcastRivalsReady(race);
+    this.maybeStartRaceSequence(race, "staging-complete");
 
     // Forward telemetry to opponent as IO message
     // This is what the Flash client's amLive.oppObj.raceOpp.getPos() expects
