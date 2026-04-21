@@ -872,10 +872,6 @@ export class TcpServer {
     return race.players.length === 2 && race.players.every((participant) => this.getRaceParticipantConnectionId(participant) && participant.opened);
   }
 
-  hasAllRivalsReactionTimes(race) {
-    return Boolean(race?.reactionTimes instanceof Map) && race.reactionTimes.size >= race.players.length;
-  }
-
   extractChatText(messageType, parts) {
     if (messageType === "CRC") {
       return parts.slice(1).find((part) => part.length > 1 && !/^\d+$/.test(part)) || "";
@@ -1091,13 +1087,6 @@ export class TcpServer {
       this.sendMessage(participantConn, rivalsMessage);
     }
 
-    if (this.isRaceReadyForTelemetry(race) && this.hasAllRivalsReactionTimes(race) && !race.sequenceStarted) {
-      race.sequenceStarted = true;
-      this.logger.info("TCP race sequence started - rivals handshake complete", {
-        raceId: race.id,
-        reactionTimes: Array.from(race.reactionTimes.entries()),
-      });
-    }
   }
 
   handleRaceMeta(conn, parts) {
@@ -2098,9 +2087,10 @@ export class TcpServer {
     // Ack the tree-open event only after the client explicitly sends RO.
     this.sendMessage(conn, '"ac", "RO", "t", 32');
 
-    // Once both players have opened, broadcast the rivals-ready event. We
-    // still wait for both RIVRT messages before forwarding live telemetry.
+    // Once both players have explicitly opened their race channel, start the
+    // sequence and allow live telemetry to flow.
     if (race.players.every((entry) => entry.opened) && !race.sequenceStarted) {
+      race.sequenceStarted = true;
       if (!race.rivalsReadyBroadcasted) {
         race.rivalsReadyBroadcasted = true;
         for (const participant of race.players) {
@@ -2110,7 +2100,7 @@ export class TcpServer {
           }
         }
       }
-      this.logger.info("TCP race tree opened - waiting for rivals handshake", { raceId: race.id });
+      this.logger.info("TCP race sequence started - both race channels open", { raceId: race.id });
     }
   }
 
