@@ -287,6 +287,14 @@ export class TcpServer {
         const playerId = conn.playerId;
         
         if (race) {
+          const participant = this.findRaceParticipant(race, conn, { bindRaceConn: true });
+          if (participant) {
+            if (!race.finishResults) {
+              race.finishResults = new Map();
+            }
+            race.finishResults.set(Number(participant.playerId), this.parseRaceDoneMetrics(parts));
+          }
+
           // Track completion for cleanup
           if (!this.raceCompletions.has(race.id)) {
             this.raceCompletions.set(race.id, new Set());
@@ -305,6 +313,12 @@ export class TcpServer {
           const allPlayersCompleted = race.players.every(p => completions.has(p.playerId));
           
           if (allPlayersCompleted) {
+            if (!race.resultBroadcasted) {
+              this.broadcastRaceResult(
+                race,
+                race.winnerPlayerId || this.determineRaceWinnerFromResults(race),
+              );
+            }
             this.races.delete(race.id);
             this.raceCompletions.delete(race.id);
             this.logger.info("TCP race cleaned up", { raceId: race.id });
@@ -695,8 +709,166 @@ export class TcpServer {
     return token !== "" && Number.isFinite(Number(token)) ? token : String(fallback);
   }
 
+  getRaceParticipantConnectionId(participant) {
+    return participant?.raceConnId || participant?.connId || null;
+  }
+
+  getRaceParticipantConnection(participant) {
+    for (const connectionId of [participant?.raceConnId, participant?.connId]) {
+      if (!connectionId) {
+        continue;
+      }
+      const connection = this.connections.get(connectionId);
+      if (connection) {
+        return connection;
+      }
+    }
+    return null;
+  }
+
+  findRaceParticipant(race, conn, { bindRaceConn = false } = {}) {
+    if (!race || !conn) {
+      return null;
+    }
+
+    let participant = race.players.find((entry) => entry.raceConnId === conn.id);
+    if (!participant) {
+      participant = race.players.find((entry) => entry.connId === conn.id);
+    }
+    if (!participant && conn.playerId) {
+      participant = race.players.find((entry) => Number(entry.playerId) === Number(conn.playerId));
+    }
+
+    if (participant && bindRaceConn && !participant.raceConnId) {
+      participant.raceConnId = conn.id;
+    }
+
+    return participant || null;
+  }
+
+  parseRaceDoneMetrics(parts) {
+    const elapsedTime = this.normalizeNumericToken(parts[1], "-1");
+    const trapSpeed = this.normalizeNumericToken(parts[2], "-1");
+    const reportedTotal = this.normalizeNumericToken(parts[16], "0");
+    const reactionTime = this.normalizeNumericToken(parts[20], "-1");
+    const elapsedValue = Number(elapsedTime);
+    const reactionValue = Number(reactionTime);
+    const reportedTotalValue = Number(reportedTotal);
+    const totalTime = Number.isFinite(reportedTotalValue) && reportedTotalValue > 0
+      ? reportedTotalValue
+      : (
+        Number.isFinite(elapsedValue) && elapsedValue >= 0 &&
+        Number.isFinite(reactionValue) && reactionValue >= 0
+          ? elapsedValue + reactionValue
+          : Number.POSITIVE_INFINITY
+      );
+
+    return {
+      rt: reactionTime,
+      et: elapsedTime,
+      ts: trapSpeed,
+      totalTime,
+    };
+  }
+
+  determineRaceWinnerFromResults(race) {
+    if (!race?.finishResults || race.finishResults.size < race.players.length) {
+      return 0;
+    }
+
+    const ranked = race.players
+      .map((participant) => {
+        const result = race.finishResults.get(Number(participant.playerId));
+        return {
+          playerId: Number(participant.playerId || 0),
+          totalTime: Number(result?.totalTime ?? Number.POSITIVE_INFINITY),
+          elapsedTime: Number(result?.et ?? Number.POSITIVE_INFINITY),
+        };
+      })
+      .filter((entry) => entry.playerId > 0);
+
+    ranked.sort((left, right) => {
+      if (left.totalTime !== right.totalTime) {
+        return left.totalTime - right.totalTime;
+      }
+      if (left.elapsedTime !== right.elapsedTime) {
+        return left.elapsedTime - right.elapsedTime;
+      }
+      return left.playerId - right.playerId;
+    });
+
+    return Number.isFinite(ranked[0]?.totalTime) ? ranked[0].playerId : 0;
+  }
+
+  buildRaceResultXml(race, winnerPlayerId) {
+    const [p1, p2] = race.players;
+    const p1Result = race.finishResults?.get(Number(p1?.playerId)) || null;
+    const p2Result = race.finishResults?.get(Number(p2?.playerId)) || null;
+    const scWin = 50;
+    const scLoss = 10;
+    const sc1Gain = winnerPlayerId && Number(p1?.playerId) === winnerPlayerId ? scWin : scLoss;
+    const sc2Gain = winnerPlayerId && Number(p2?.playerId) === winnerPlayerId ? scWin : scLoss;
+
+    return `<r wid='${winnerPlayerId || 0}' r1id='${p1?.playerId || 0}' r2id='${p2?.playerId || 0}' rt1='${p1Result?.rt ?? "-1"}' et1='${p1Result?.et ?? "-1"}' ts1='${p1Result?.ts ?? "-1"}' rt2='${p2Result?.rt ?? "-1"}' et2='${p2Result?.et ?? "-1"}' ts2='${p2Result?.ts ?? "-1"}' c1='${sc1Gain}' c2='${sc2Gain}' h1='0' h2='0' td='0'/>`;
+  }
+
+  maybeAwardRaceScore(race, winnerPlayerId) {
+    if (!(winnerPlayerId && this.supabase && !race.scAwarded)) {
+      return;
+    }
+
+    const scWin = 50;
+    const scLoss = 10;
+    race.scAwarded = true;
+
+    for (const participant of race.players) {
+      const isWinner = Number(participant.playerId) === Number(winnerPlayerId);
+      const scGain = isWinner ? scWin : scLoss;
+      applyPlayerRaceResult(this.supabase, participant.playerId, {
+        scoreDelta: scGain,
+        won: isWinner,
+        lost: !isWinner,
+      }).catch((error) => {
+        this.logger.warn("Failed to update SC/wins/losses", {
+          playerId: participant.playerId,
+          error: error.message,
+        });
+      });
+    }
+
+    this.logger.info("TCP race SC awarded", {
+      raceId: race.id,
+      winnerPlayerId,
+      scWin,
+      scLoss,
+    });
+  }
+
+  broadcastRaceResult(race, winnerPlayerId) {
+    if (!race || race.resultBroadcasted) {
+      return;
+    }
+
+    race.resultBroadcasted = true;
+    race.winnerPlayerId = winnerPlayerId || race.winnerPlayerId || 0;
+    this.maybeAwardRaceScore(race, race.winnerPlayerId);
+
+    const escapedXml = this.escapeForTcp(this.buildRaceResultXml(race, race.winnerPlayerId));
+    for (const participant of race.players) {
+      const connectionIds = [...new Set([participant.connId, participant.raceConnId].filter(Boolean))];
+      for (const connectionId of connectionIds) {
+        const participantConn = this.connections.get(connectionId);
+        if (!participantConn) {
+          continue;
+        }
+        this.sendMessage(participantConn, `"ac", "UR", "d", "${escapedXml}"`);
+        this.sendMessage(participantConn, '"ac", "OR", "s", 1');
+      }
+    }
+  }
+
   isRaceReadyForTelemetry(race) {
-    return race.players.length === 2 && race.players.every((participant) => participant.raceConnId && participant.opened);
+    return race.players.length === 2 && race.players.every((participant) => this.getRaceParticipantConnectionId(participant) && participant.opened);
   }
 
   extractChatText(messageType, parts) {
@@ -771,8 +943,7 @@ export class TcpServer {
       return;
     }
 
-    // Find sender by race channel connection ID
-    const sender = race.players.find((participant) => participant.raceConnId === conn.id);
+    const sender = this.findRaceParticipant(race, conn, { bindRaceConn: true });
     if (!sender) {
       this.logger.warn("TCP telemetry rejected (connection not bound to race participant)", {
         connId: conn.id,
@@ -832,8 +1003,8 @@ export class TcpServer {
       `"ac", "IO", "d", ${distance}, "v", ${velocity}, "a", ${acceleration}, "t", ${tick}`;
 
     for (const participant of race.players) {
-      if (participant.raceConnId === conn.id) continue; // Skip sender
-      const participantConn = this.connections.get(participant.raceConnId);
+      if (Number(participant.playerId) === Number(sender.playerId)) continue;
+      const participantConn = this.getRaceParticipantConnection(participant);
       if (participantConn && participantConn.socket && !participantConn.socket.destroyed) {
         try {
           this.sendMessage(participantConn, ioMessage);
@@ -864,7 +1035,7 @@ export class TcpServer {
       } else {
         this.logger.warn("TCP opponent connection unavailable for telemetry", {
           connId: conn.id,
-          opponentConnId: participant.raceConnId,
+          opponentConnId: this.getRaceParticipantConnectionId(participant),
           raceId: race.id,
           socketExists: !!participantConn?.socket,
           socketDestroyed: participantConn?.socket?.destroyed
@@ -877,7 +1048,7 @@ export class TcpServer {
     if (!race.lastStateUpdate || Date.now() - race.lastStateUpdate > 5000) {
       race.lastStateUpdate = Date.now();
       for (const participant of race.players) {
-        const participantConn = this.connections.get(participant.raceConnId);
+        const participantConn = this.getRaceParticipantConnection(participant);
         if (participantConn) {
           this.sendMessage(participantConn, '"ac", "RKA", "s", 1'); // Race Keep Alive
         }
@@ -905,10 +1076,11 @@ export class TcpServer {
     const rivalsMessage =
       `"ac", "RIVRT", "r", ${racerIndex}, "rt", ${reactionTime}, "i", ${Number(conn.playerId)}`;
 
+    const sender = this.findRaceParticipant(race, conn, { bindRaceConn: true });
     for (const participant of race.players) {
-      const participantConn = this.connections.get(participant.raceConnId);
+      const participantConn = this.getRaceParticipantConnection(participant);
       if (!participantConn) continue;
-      if (participant.raceConnId !== conn.id) {
+      if (!sender || Number(participant.playerId) !== Number(sender.playerId)) {
         this.sendMessage(participantConn, `"ac", "RIVRTO", "rt", ${reactionTime}`);
       }
       this.sendMessage(participantConn, rivalsMessage);
@@ -1904,6 +2076,9 @@ export class TcpServer {
       return;
     }
 
+    if (!player.raceConnId) {
+      player.raceConnId = conn.id;
+    }
     player.opened = true;
     this.logger.info("TCP RO received", { connId: conn.id, raceId: race.id, openedCount: race.players.filter((entry) => entry.opened).length });
 
@@ -1933,58 +2108,15 @@ export class TcpServer {
       race.engineWearApplied = true;
     }
 
-    // Award SC based on race result
-    // parts[1] = winner player ID (sent by client in RR message)
     const winnerPlayerId = Number(parts[1] || 0);
-    const SC_WIN = 50;
-    const SC_LOSS = 10;
-
-    if (winnerPlayerId && this.supabase && !race.scAwarded) {
-      race.scAwarded = true;
-
-      for (const participant of race.players) {
-        const isWinner = Number(participant.playerId) === winnerPlayerId;
-        const scGain = isWinner ? SC_WIN : SC_LOSS;
-        applyPlayerRaceResult(this.supabase, participant.playerId, {
-          scoreDelta: scGain,
-          won: isWinner,
-          lost: !isWinner,
-        }).catch((error) => {
-          this.logger.warn("Failed to update SC/wins/losses", {
-            playerId: participant.playerId,
-            error: error.message,
-          });
-        });
-      }
-
-      this.logger.info("TCP RR SC awarded", {
-        raceId: race.id,
-        winnerPlayerId,
-        scWin: SC_WIN,
-        scLoss: SC_LOSS,
-      });
+    if (winnerPlayerId) {
+      race.winnerPlayerId = winnerPlayerId;
     }
 
     this.sendMessage(conn, '"ac", "RR", "s", 1');
 
-    // Build and broadcast the race result XML to both players
-    // Format from decompiled Flash: <r wid='' r1id='' r2id='' rt1='' et1='' ts1='' rt2='' et2='' ts2='' c1='' c2='' h1='0' h2='0' td='0'/>
-    if (race) {
-      const [p1, p2] = race.players;
-      const sc1Gain = winnerPlayerId && Number(p1?.playerId) === winnerPlayerId ? SC_WIN : SC_LOSS;
-      const sc2Gain = winnerPlayerId && Number(p2?.playerId) === winnerPlayerId ? SC_WIN : SC_LOSS;
-      const resultXml = `<r wid='${winnerPlayerId || 0}' r1id='${p1?.playerId || 0}' r2id='${p2?.playerId || 0}' rt1='-1' et1='-1' ts1='-1' rt2='-1' et2='-1' ts2='-1' c1='${sc1Gain}' c2='${sc2Gain}' h1='0' h2='0' td='0'/>`;
-      const escapedXml = this.escapeForTcp(resultXml);
-      for (const participant of race.players) {
-        const participantConn = this.connections.get(participant.connId) || this.connections.get(participant.raceConnId);
-        if (participantConn) {
-          this.sendMessage(participantConn, `"ac", "UR", "d", "${escapedXml}"`);
-          this.sendMessage(participantConn, '"ac", "OR", "s", 1');
-        }
-      }
-    } else {
-      this.sendMessage(conn, '"ac", "UR", "s", 1');
-      this.sendMessage(conn, '"ac", "OR", "s", 1');
+    if (race.finishResults?.size >= race.players.length && !race.resultBroadcasted) {
+      this.broadcastRaceResult(race, race.winnerPlayerId || this.determineRaceWinnerFromResults(race));
     }
   }
 
