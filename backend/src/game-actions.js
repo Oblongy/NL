@@ -4368,8 +4368,8 @@ function buildComputerTournamentCompetitorNode(tournament, index) {
 
   return (
     `<r id='${competitorId}' i='${accountCarId}' n='${escapeXml(username)}' u='${escapeXml(username)}' ` +
-    `bt='0' rt='${formatMetric(reactionTime)}' et='${formatMetric(elapsedTime)}' ts='${formatMetric(trapSpeed, 2)}' ` +
-    `racerNum='${racerNumber}' type='C' hp='${horsepower}' w='${weight}'/>`
+    `bt='${formatMetric(totalTime)}' rt='${formatMetric(reactionTime)}' et='${formatMetric(elapsedTime)}' ts='${formatMetric(trapSpeed, 2)}' ` +
+    `total='${formatMetric(totalTime)}' racerNum='${racerNumber}' type='C' hp='${horsepower}' w='${weight}'/>`
   );
 }
 

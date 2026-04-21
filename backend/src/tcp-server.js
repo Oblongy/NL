@@ -31,6 +31,21 @@ const MESSAGE_DELIMITER = "\x04";
 const FIELD_DELIMITER = "\x1e";
 const DEFAULT_GLOBAL_CHAT_CLASS = 2;
 const RACE_STAGE_SETTLE_MS = 750;
+const DEFAULT_LIVE_TOURNAMENT_EVENT = Object.freeze({
+  id: 9001,
+  scheduleId: 4,
+  logoId: 100,
+  roomId: 2,
+  maxPlayers: 32,
+  purse: 5000,
+  entryType: "f",
+  entryCost: 0,
+  bracketDialIn: 0,
+  status: 2,
+  detailDateOffsetSeconds: -900,
+  qualifyingEndsInSeconds: 1800,
+  timeLabel: "OPEN NOW",
+});
 
 export class TcpServer {
   constructor({ logger, notify, proxy, supabase, raceRoomRegistry = null, port = 3724, host = "127.0.0.1" }) {
@@ -271,9 +286,7 @@ export class TcpServer {
 
       // --- HTI: Heartbeat ---
       } else if (messageType === "HTI") {
-        // Python server: render_tuple("ac","HTI","s","<i ut='...' s='1' li='1' it='1'/>")
-        const ut = Math.floor(Date.now() / 1000);
-        this.sendMessage(conn, `"ac", "HTI", "s", "<i ut='${ut}' s='1' li='1' it='1'/>"`);
+        this.sendMessage(conn, `"ac", "HTI", "s", "${this.buildTournamentInfoXml(conn)}"`);
 
       // --- S / I: In-race position sync --- sanitize and relay to opponent, don't ack
       } else if (messageType === "S" || messageType === "I") {
@@ -1655,7 +1668,7 @@ export class TcpServer {
       // client can satisfy its socket-ready gate before it starts room flow.
       this.sendMessage(conn, '"ac", "L", "s", 1, "ni", 1000, "ns", 30, "tid", 1, "trp", 0, "trbp", 0, "lft", "0.5"');
       this.sendMessage(conn, '"ac", "GNL", "d", "<buddies></buddies>"');
-      this.sendMessage(conn, `"ac", "HTI", "s", "<i ut='${ut}' s='1' li='1' it='1'/>"`);
+      this.sendMessage(conn, `"ac", "HTI", "s", "${this.buildTournamentInfoXml(conn, { ut })}"`);
       conn.bootstrapSent = true;
       this.logger.info("TCP initial lobby bootstrap sent", { connId: conn.id, source });
     }
@@ -1698,6 +1711,28 @@ export class TcpServer {
 
   getRoomDefinition(roomId) {
     return this.getRoomDefinitions().find((room) => Number(room.roomId) === Number(roomId)) || null;
+  }
+
+  getLiveTournamentEvent() {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const startsAt = nowSeconds + DEFAULT_LIVE_TOURNAMENT_EVENT.detailDateOffsetSeconds;
+    const qualifyingEndsAt = nowSeconds + DEFAULT_LIVE_TOURNAMENT_EVENT.qualifyingEndsInSeconds;
+    return {
+      ...DEFAULT_LIVE_TOURNAMENT_EVENT,
+      startsAt,
+      qualifyingEndsAt,
+    };
+  }
+
+  buildTournamentInfoXml(_conn, { ut = Math.floor(Date.now() / 1000) } = {}) {
+    const event = this.getLiveTournamentEvent();
+    return (
+      `<i ut='${ut}' s='${event.status}' li='${event.logoId}' it='${event.scheduleId}' ` +
+      `i='${event.id}' d='${event.startsAt}' de='${event.qualifyingEndsAt}' ` +
+      `tstr='${this.escapeXml(event.timeLabel)}' b='${event.bracketDialIn}' ` +
+      `mp='${event.maxPlayers}' pp='${event.purse}' ct='${event.entryType}' ` +
+      `c='${event.entryCost}'/>`
+    );
   }
 
   buildLobbyRoomsXml(stripId = 0) {
