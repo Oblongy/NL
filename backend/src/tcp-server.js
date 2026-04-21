@@ -1206,8 +1206,8 @@ export class TcpServer {
     // Update race activity timestamp
     race.lastActivity = Date.now();
 
-    // Extract telemetry data - Flash client expects IO messages, not raw I/S
-    // The client's RaceOpponent class processes IO messages to update opponent position
+    // Parse the decoded fields for server-side staging/state tracking, but relay
+    // the original race packet bytes to the opponent unchanged.
     const rawDistance = String(parts[1] ?? "").trim();
     const rawVelocity = String(parts[2] ?? "").trim();
     const rawAcceleration = String(parts[3] ?? "").trim();
@@ -1252,21 +1252,29 @@ export class TcpServer {
     this.maybeBroadcastRivalsReady(race);
     this.maybeStartRaceSequence(race, "staging-complete");
 
-    // Forward telemetry to opponent as IO message
-    // This is what the Flash client's amLive.oppObj.raceOpp.getPos() expects
-    const ioMessage =
-      `"ac", "IO", "d", ${distance}, "v", ${velocity}, "a", ${acceleration}, "t", ${tick}`;
+    const rawTelemetryFrame =
+      typeof conn._lastRaw === "string" && conn._lastRaw.length > 0
+        ? conn._lastRaw + MESSAGE_DELIMITER
+        : null;
 
     for (const participant of race.players) {
       if (Number(participant.playerId) === Number(sender.playerId)) continue;
       const participantConn = this.getRaceParticipantConnection(participant);
       if (participantConn && participantConn.socket && !participantConn.socket.destroyed) {
         try {
-          this.sendMessage(participantConn, ioMessage);
+          if (rawTelemetryFrame) {
+            participantConn.socket.write(Buffer.from(rawTelemetryFrame, "latin1"));
+          } else {
+            // Defensive fallback: keep the race moving even if the raw frame is unavailable.
+            this.sendMessage(
+              participantConn,
+              `${messageType}${FIELD_DELIMITER}${distance}${FIELD_DELIMITER}${velocity}${FIELD_DELIMITER}${acceleration}${FIELD_DELIMITER}${tick}`,
+            );
+          }
           
           // Debug logging (can be disabled in production for performance)
           if (this.debugTelemetry) {
-            this.logger.info("TCP forwarded telemetry as IO", {
+            this.logger.info("TCP forwarded telemetry raw", {
               fromConnId: conn.id,
               toConnId: participantConn.id,
               messageType,
@@ -1438,6 +1446,9 @@ export class TcpServer {
       playerId: Number(conn.playerId || 0),
       username: conn.username || "Player",
       carId: Number(conn.carId || 0),
+      teamId: Number(conn.teamId || 0),
+      teamRole: conn.teamRole || "",
+      clientRole: conn.clientRole || 5,
     });
     this.rooms.set(roomId, updatedPlayers);
 
@@ -1737,16 +1748,20 @@ export class TcpServer {
     return `<q>${queueXml}</q>`;
   }
 
+  getUserNameColor(clientRole) {
+    const normalizedRole = Number(clientRole || 0);
+    if (normalizedRole === 1) return "FF0000"; // Admin
+    if (normalizedRole === 2) return "66CCFF"; // Mod
+    if (normalizedRole === 8) return "0000FF"; // Senior Mod
+    if (normalizedRole === 6) return "00AA00"; // Team Member Green
+    return "7D7D7D"; // Default user grey
+  }
+
   buildRoomUsersXml(roomPlayers) {
     const usersXml = roomPlayers
       .filter((player) => Number(player.playerId || 0) > 0 && player.username)
       .map((player) => {
-      let color = "7D7D7D"; // Default user grey
-      if (player.clientRole === 1) color = "FF0000"; // Admin
-      else if (player.clientRole === 2) color = "66CCFF"; // Mod
-      else if (player.clientRole === 8) color = "0000FF"; // Senior Mod
-      else if (player.clientRole === 6) color = "00AA00"; // Team Member Green
-      
+      const color = this.getUserNameColor(player.clientRole);
       return `<u i='${player.playerId}' un='${this.escapeXml(player.username)}' ti='${Number(player.teamId || 0)}' tid='${Number(player.teamId || 0)}' tf='${color}' ms='5' iv='0'/>`;
     }).join("");
     return `<ul>${usersXml}</ul>`;
@@ -2129,8 +2144,10 @@ export class TcpServer {
     return String(value).replace(/"/g, '\\"');
   }
 
-  buildUcuXml({ playerId, username }) {
-    return `<ul><u ul='0' i='${Number(playerId)}' un='${this.escapeXml(username)}' ti='2' tid='2' tf='7D7D7D' ms='5' iv='0'/></ul>`;
+  buildUcuXml({ playerId, username, teamId = 2, clientRole = 5 }) {
+    const color = this.getUserNameColor(clientRole);
+    const normalizedTeamId = Number(teamId || 0);
+    return `<ul><u ul='0' i='${Number(playerId)}' un='${this.escapeXml(username)}' ti='${normalizedTeamId}' tid='${normalizedTeamId}' tf='${color}' ms='5' iv='0'/></ul>`;
   }
 
   buildRclgXml({
