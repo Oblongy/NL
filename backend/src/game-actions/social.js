@@ -1,11 +1,16 @@
 import { escapeXml, failureBody, renderTeams, wrapSuccessData } from "../game-xml.js";
-import { resolveCallerSession } from "../game-actions-helpers.js";
+import { resolveCallerSession, resolveTargetPlayerByPublicId } from "../game-actions-helpers.js";
 import { FULL_CAR_CATALOG } from "../car-catalog.js";
 import {
+  countUnreadMailForRecipient,
+  createMailRecord,
+  deleteMailForRecipient,
+  getMailByIdForRecipient,
   listLeaderboardCars as listLeaderboardCarsFromService,
   listLeaderboardPlayers as listLeaderboardPlayersFromService,
   listLeaderboardTeams as listLeaderboardTeamsFromService,
   listMailForRecipient,
+  markMailReadForRecipient,
   listPlayersByIds,
   listRaceHistorySince as listRaceHistorySinceFromService,
   listRaceLogsSince as listRaceLogsSinceFromService,
@@ -678,14 +683,33 @@ function emptyLeaderboardXml(reportType) {
 
 export async function handleGetTotalNewMail(context) {
   const { supabase } = context;
+  let caller = null;
 
   if (supabase) {
-    const caller = await resolveCallerSession(context, "supabase:gettotalnewmail");
+    caller = await resolveCallerSession(context, "supabase:gettotalnewmail");
     if (!caller?.ok) {
       return {
         body: caller?.body || failureBody(),
         source: caller?.source || "supabase:gettotalnewmail:bad-session",
       };
+    }
+
+    try {
+      const unreadCount = await countUnreadMailForRecipient(supabase, {
+        recipientPlayerId: caller.playerId,
+        folder: "inbox",
+      });
+
+      return {
+        body: `"s", 1, "im", "${unreadCount}"`,
+        source: "supabase:gettotalnewmail",
+      };
+    } catch (error) {
+      context.logger?.error("Get total new mail error", {
+        playerId: caller.playerId,
+        error: error?.message || String(error),
+      });
+      return { body: failureBody(), source: "supabase:gettotalnewmail:error" };
     }
   }
 
@@ -709,6 +733,219 @@ export async function handleGetRemarks(context) {
     body: wrapSuccessData("<remarks/>"),
     source: "getremarks:empty",
   };
+}
+
+function renderEmailDetailXml(email, fallbackEmailId = 0) {
+  const emailId = Number(email?.id || fallbackEmailId || 0);
+  const senderPlayerId = Number(email?.sender_player_id || 0);
+  const createdAtSeconds = email?.created_at
+    ? Math.floor(new Date(email.created_at).getTime() / 1000)
+    : 0;
+
+  return (
+    `<email i='${emailId}' s='${escapeXml(email?.subject || "")}' ` +
+    `b='${escapeXml(email?.body || "")}' si='${senderPlayerId}' d='${createdAtSeconds}'/>`
+  );
+}
+
+export async function handleGetEmail(context) {
+  const { supabase, params } = context;
+  const emailId = Number(params.get("eid") || 0);
+
+  if (!supabase) {
+    return {
+      body: wrapSuccessData(renderEmailDetailXml(null, emailId)),
+      source: "generated:getemail:no-supabase",
+    };
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:getemail");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:getemail:bad-session" };
+  }
+
+  if (!emailId) {
+    return {
+      body: wrapSuccessData(renderEmailDetailXml(null, 0)),
+      source: "supabase:getemail:missing-id",
+    };
+  }
+
+  try {
+    const email = await getMailByIdForRecipient(supabase, {
+      mailId: emailId,
+      recipientPlayerId: caller.playerId,
+    });
+
+    return {
+      body: wrapSuccessData(renderEmailDetailXml(email, emailId)),
+      source: email ? "supabase:getemail" : "supabase:getemail:not-found",
+    };
+  } catch (error) {
+    context.logger?.error("Get email error", {
+      emailId,
+      playerId: caller.playerId,
+      error: error?.message || String(error),
+    });
+    return { body: failureBody(), source: "supabase:getemail:error" };
+  }
+}
+
+export async function handleMarkEmailRead(context) {
+  const { supabase, params } = context;
+  const emailId = Number(params.get("eid") || 0);
+
+  if (!supabase) {
+    return {
+      body: `"s", 1`,
+      source: "generated:markemailread:no-supabase",
+    };
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:markemailread");
+  if (!caller?.ok) {
+    return {
+      body: caller?.body || failureBody(),
+      source: caller?.source || "supabase:markemailread:bad-session",
+    };
+  }
+
+  if (!emailId) {
+    return {
+      body: `"s", 1`,
+      source: "supabase:markemailread:missing-id",
+    };
+  }
+
+  try {
+    const updated = await markMailReadForRecipient(supabase, {
+      mailId: emailId,
+      recipientPlayerId: caller.playerId,
+    });
+
+    return {
+      body: `"s", 1`,
+      source: updated ? "supabase:markemailread" : "supabase:markemailread:not-found",
+    };
+  } catch (error) {
+    context.logger?.error("Mark email read error", {
+      emailId,
+      playerId: caller.playerId,
+      error: error?.message || String(error),
+    });
+    return { body: failureBody(), source: "supabase:markemailread:error" };
+  }
+}
+
+export async function handleDeleteEmail(context) {
+  const { supabase, params } = context;
+  const emailId = String(params.get("eid") || "0");
+
+  if (!supabase) {
+    return {
+      body: `"s", 1, "eid", "${emailId}"`,
+      source: "generated:deleteemail:no-supabase",
+    };
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:deleteemail");
+  if (!caller?.ok) {
+    return {
+      body: caller?.body || failureBody(),
+      source: caller?.source || "supabase:deleteemail:bad-session",
+    };
+  }
+
+  try {
+    const deleted = await deleteMailForRecipient(supabase, {
+      mailId: Number(emailId),
+      recipientPlayerId: caller.playerId,
+    });
+
+    return {
+      body: `"s", 1, "eid", "${emailId}"`,
+      source: deleted ? "supabase:deleteemail" : "supabase:deleteemail:not-found",
+    };
+  } catch (error) {
+    context.logger?.error("Delete email error", {
+      emailId,
+      playerId: caller.playerId,
+      error: error?.message || String(error),
+    });
+    return { body: failureBody(), source: "supabase:deleteemail:error" };
+  }
+}
+
+export async function handleSendEmail(context) {
+  const { supabase, params } = context;
+  const targetPublicId = Number(params.get("i") || params.get("aid") || params.get("to") || 0);
+  const subject = String(params.get("s") || params.get("subject") || "");
+  const bodyText = String(params.get("b") || params.get("body") || params.get("m") || "");
+
+  if (!supabase) {
+    return {
+      body: wrapSuccessData(`<r s='1' id='${targetPublicId || 0}'/>`),
+      source: "generated:sendemail:no-supabase",
+    };
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:sendemail");
+  if (!caller?.ok) {
+    return {
+      body: caller?.body || failureBody(),
+      source: caller?.source || "supabase:sendemail:bad-session",
+    };
+  }
+
+  if (!targetPublicId) {
+    return {
+      body: wrapSuccessData(`<r s='0' id='0'/>`),
+      source: "supabase:sendemail:missing-target",
+    };
+  }
+
+  const targetPlayer = await resolveTargetPlayerByPublicId(supabase, targetPublicId);
+  if (!targetPlayer) {
+    return {
+      body: wrapSuccessData(`<r s='0' id='${targetPublicId}'/>`),
+      source: "supabase:sendemail:target-not-found",
+    };
+  }
+
+  try {
+    await createMailRecord(supabase, {
+      recipientPlayerId: targetPlayer.id,
+      senderPlayerId: caller.playerId,
+      folder: "inbox",
+      messageType: "player",
+      subject,
+      body: bodyText,
+      isRead: false,
+    });
+
+    // Store a sender-side copy so the existing folder model can surface sent mail.
+    await createMailRecord(supabase, {
+      recipientPlayerId: caller.playerId,
+      senderPlayerId: targetPlayer.id,
+      folder: "sent",
+      messageType: "player",
+      subject,
+      body: bodyText,
+      isRead: true,
+    });
+
+    return {
+      body: wrapSuccessData(`<r s='1' id='${targetPublicId}'/>`),
+      source: "supabase:sendemail",
+    };
+  } catch (error) {
+    context.logger?.error("Send email error", {
+      targetPublicId,
+      playerId: caller.playerId,
+      error: error?.message || String(error),
+    });
+    return { body: failureBody(), source: "supabase:sendemail:error" };
+  }
 }
 
 export async function handleGetEmailList(context) {

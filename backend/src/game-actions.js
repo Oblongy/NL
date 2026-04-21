@@ -6,9 +6,13 @@ import { buildWheelsTiresCatalogXml } from "./wheels-catalog.js";
 import { buildStaticCarsXml, FULL_CAR_CATALOG, getCatalogCarPrice } from "./car-catalog.js";
 import { randomUUID } from "node:crypto";
 import {
+  handleDeleteEmail as handleDeleteEmailImpl,
+  handleGetEmail as handleGetEmailImpl,
   handleGetLeaderboard as handleGetLeaderboardImpl,
   handleGetLeaderboardMenu as handleGetLeaderboardMenuImpl,
+  handleMarkEmailRead as handleMarkEmailReadImpl,
   handleGetNews as handleGetNewsImpl,
+  handleSendEmail as handleSendEmailImpl,
   handleGetSpotlightRacers as handleGetSpotlightRacersImpl,
   handleGetTotalNewMail as handleGetTotalNewMailImpl,
   handleGetRemarks as handleGetRemarksImpl,
@@ -2548,24 +2552,7 @@ async function handleUpdateDefaultCar(context) {
 }
 
 async function handleGetTotalNewMail(context) {
-  const { supabase } = context;
-
-  if (supabase) {
-    const caller = await resolveCallerSession(context, "supabase:gettotalnewmail");
-    if (!caller?.ok) {
-      return {
-        body: caller?.body || failureBody(),
-        source: caller?.source || "supabase:gettotalnewmail:bad-session",
-      };
-    }
-  }
-
-  // Response format: "s", 1, "im", "COUNT"
-  // For now, return 0 unread messages
-  return {
-    body: `"s", 1, "im", "0"`,
-    source: "gettotalnewmail:zero",
-  };
+  return handleGetTotalNewMailImpl(context);
 }
 
 async function handleGetRemarks(context) {
@@ -2649,6 +2636,22 @@ async function handleGetCarPrice(context) {
 
 async function handleGetEmailList(context) {
   return handleGetEmailListImpl(context);
+}
+
+async function handleGetEmail(context) {
+  return handleGetEmailImpl(context);
+}
+
+async function handleMarkEmailRead(context) {
+  return handleMarkEmailReadImpl(context);
+}
+
+async function handleDeleteEmail(context) {
+  return handleDeleteEmailImpl(context);
+}
+
+async function handleSendEmail(context) {
+  return handleSendEmailImpl(context);
 }
 
 async function handleGetBlackCardProgress(context) {
@@ -3935,22 +3938,10 @@ const handlers = {
   getwinsandlosses: handleGetWinsAndLosses,
   getblackcardprogress: handleGetBlackCardProgress,
   // Email actions
-  getemail: async (context) => {
-    const { params } = context;
-    const emailId = params.get("eid") || "0";
-    return { body: wrapSuccessData(`<email i='${emailId}' s='' b='' si='0' d='0'/>`), source: "stub:getemail" };
-  },
-  markemailread: async () => ({ body: `"s", 1`, source: "stub:markemailread" }),
-  deleteemail: async (context) => {
-    const { params } = context;
-    const eid = params.get("eid") || "0";
-    return { body: `"s", 1, "eid", "${eid}"`, source: "stub:deleteemail" };
-  },
-  sendemail: async (context) => {
-    const { params } = context;
-    const id = params.get("i") || "0";
-    return { body: wrapSuccessData(`<r s='1' id='${id}'/>`), source: "stub:sendemail" };
-  },
+  getemail: handleGetEmail,
+  markemailread: handleMarkEmailRead,
+  deleteemail: handleDeleteEmail,
+  sendemail: handleSendEmail,
   // Remarks
   addremark: async () => ({ body: `"s", 1`, source: "stub:addremark" }),
   deleteremark: async (context) => {
