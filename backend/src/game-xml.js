@@ -4,6 +4,8 @@ import { normalizeOwnedPartsXmlValue } from "./parts-xml.js";
 import {
   DEFAULT_COLOR_CODE,
   DEFAULT_PAINT_INDEX,
+  getDefaultPartsXmlForCar,
+  getDefaultWheelXmlForCar,
   normalizeOwnedWheelXmlValue,
 } from "./car-defaults.js";
 import { getPaintIdForColorCode } from "./paint-catalog-source.js";
@@ -177,6 +179,18 @@ export function renderRacerCar(car) {
 
 export function renderCars(cars) {
   return `<cars>${cars.map(renderCar).join("")}</cars>`;
+}
+
+export function renderShowroomCarBody(catalogCarId, options = {}) {
+  const syntheticCar = {
+    catalog_car_id: Number(catalogCarId || 0),
+    color_code: options.colorCode ?? DEFAULT_COLOR_CODE,
+    paint_index: Number(options.paintIndex ?? DEFAULT_PAINT_INDEX),
+    wheel_xml: getDefaultWheelXmlForCar(catalogCarId),
+    parts_xml: getDefaultPartsXmlForCar(catalogCarId),
+  };
+
+  return renderCarBody(syntheticCar);
 }
 
 export function renderRacerCars(cars) {

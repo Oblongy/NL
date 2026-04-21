@@ -33,6 +33,7 @@ import {
   renderOwnedGarageCar,
   renderOwnedGarageCarsWrapper,
   renderRacerCars,
+  renderShowroomCarBody,
   renderTeams,
   renderTwoRacerCars,
   renderUserSummaries,
@@ -3451,8 +3452,12 @@ function buildShowroomXml(locationId, starterOnly = false) {
         `cbl='0' cb='0' po='0' poc='0' led='' ` +
         `le='0' lea='999' les='0' lec='999' let='0' ` +
         `eo='${escapeXml(spec.eo)}' dt='${escapeXml(spec.dt)}' np='${escapeXml(spec.np)}' ct='${escapeXml(spec.ct)}' ` +
-        `et='${escapeXml(spec.et)}' tt='${escapeXml(spec.tt)}' sw='${escapeXml(spec.sw)}' st='${escapeXml(spec.st)}' y='${escapeXml(spec.y)}' ` +
+        `et='${escapeXml(spec.et)}' tt='${escapeXml(spec.tt)}' sw='${escapeXml(spec.sw)}' st='${escapeXml(spec.st)}' y='${escapeXml(spec.y)}'` +
         `>` +
+        renderShowroomCarBody(cid, {
+          colorCode: primarySwatch.colorCode,
+          paintIndex: primarySwatch.paintId,
+        }) +
         swatchNodes +
         `</c>`
       );
