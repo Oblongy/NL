@@ -19,6 +19,26 @@ export function normalizeOwnedPartsXmlValue(value) {
       }
     }
 
+    const slotMatch = attrs.match(/\b(?:ci|pi)='([^']*)'/i);
+    if (slotMatch) {
+      if (!/\bci=/.test(attrs)) {
+        attrs += ` ci='${slotMatch[1]}'`;
+      }
+      if (!/\bpi=/.test(attrs)) {
+        attrs += ` pi='${slotMatch[1]}'`;
+      }
+    }
+
+    const partTypeMatch = attrs.match(/\b(?:pt|t)='([^']*)'/i);
+    if (partTypeMatch) {
+      if (!/\bpt=/.test(attrs)) {
+        attrs += ` pt='${partTypeMatch[1]}'`;
+      }
+      if (!/\bt=/.test(attrs)) {
+        attrs += ` t='${partTypeMatch[1]}'`;
+      }
+    }
+
     return `<p${attrs}/>`;
   });
 }

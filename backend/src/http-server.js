@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, extname, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { decodeGameCodeQuery, encryptPayload } from "./nitto-cipher.js";
 import { handleGameAction } from "./game-actions.js";
@@ -162,6 +162,51 @@ function userDecalPath(filename) {
   return resolve(process.cwd(), "../cache/car/userDecals", sanitized);
 }
 
+function normalizeUserGraphicExt(value) {
+  const normalized = String(value || "").trim().toLowerCase().replace(/^\./, "");
+  return ["jpg", "jpeg", "png", "gif"].includes(normalized) ? normalized : "png";
+}
+
+function getContentTypeForUserDecal(filename) {
+  const normalizedExt = normalizeUserGraphicExt(extname(String(filename || "")));
+  switch (normalizedExt) {
+    case "jpg":
+    case "jpeg":
+      return "image/jpeg";
+    case "gif":
+      return "image/gif";
+    case "png":
+    default:
+      return "image/png";
+  }
+}
+
+function getUserGraphicUploadResponseAttrs(slotKey, decalId, extension) {
+  const normalizedSlot = String(slotKey || "").trim().toLowerCase();
+  const normalizedExt = normalizeUserGraphicExt(extension);
+  switch (normalizedSlot) {
+    case "hood":
+    case "h":
+    case "160":
+      return { h: decalId, hx: normalizedExt };
+    case "side":
+    case "s":
+    case "161":
+      return { s: decalId, sx: normalizedExt };
+    case "front":
+    case "f":
+    case "162":
+      return { f: decalId, fx: normalizedExt };
+    case "back":
+    case "rear":
+    case "b":
+    case "163":
+      return { b: decalId, bx: normalizedExt };
+    default:
+      return { i: decalId, fx: normalizedExt };
+  }
+}
+
 function serveCompatAsset(res, pathname) {
   let filePath = null;
   let contentType = "application/octet-stream";
@@ -181,9 +226,7 @@ function serveCompatAsset(res, pathname) {
   const userDecalMatch = pathname.match(/^\/cache\/car\/userDecals\/([^/]+)$/i);
   if (!filePath && userDecalMatch) {
     filePath = userDecalPath(userDecalMatch[1]);
-    contentType = userDecalMatch[1].toLowerCase().endsWith(".swf")
-      ? "application/x-shockwave-flash"
-      : "application/octet-stream";
+    contentType = getContentTypeForUserDecal(userDecalMatch[1]);
   }
 
   if (!filePath && /^\/newuserform\.swf$/i.test(pathname)) {
@@ -351,7 +394,8 @@ export function createHttpServer({ config, logger, supabase, services = {}, fixt
             const rawDecalId = Date.now() % 100000;
             const decalId = String(rawDecalId).replace(/[^0-9]/g, '');
             
-            let targetPath = userDecalPath(`${decalId}.jpg`);
+            const requestExt = normalizeUserGraphicExt(requestUrl.searchParams.get("ext") || extname(filenameMatch[1] || ""));
+            let targetPath = userDecalPath(`${decalId}.${requestExt}`);
             let responseBody = `<r s='1' i='${decalId}'/>`;
 
             if (pendingUpload?.type === "avatars" && pendingUpload.targetId) {
@@ -390,10 +434,17 @@ export function createHttpServer({ config, logger, supabase, services = {}, fixt
                 fieldName,
                 bytes: fileData.length,
                 type: pendingUpload?.type || "userDecals",
+                extension: requestExt,
                 targetPath,
               });
             } catch (err) {
               logger.error("Failed to save upload", { error: err.message, targetPath });
+            }
+
+            if (requestUrl.pathname.toLowerCase().endsWith("usergraphicupload.aspx")) {
+              const attrs = getUserGraphicUploadResponseAttrs(requestUrl.searchParams.get("slot"), decalId, requestExt);
+              const serializedAttrs = Object.entries(attrs).map(([key, value]) => `${key}='${value}'`).join(" ");
+              responseBody = `<r s='1' ${serializedAttrs}/>`;
             }
 
             pendingUploadsByRemote.delete(remoteAddress);

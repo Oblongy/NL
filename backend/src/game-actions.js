@@ -132,6 +132,14 @@ function parsePartXmlAttributes(rawEntry) {
   return attrs;
 }
 
+function normalizeUserGraphicFileExt(value, fallback = "png") {
+  const normalized = String(value || "").trim().toLowerCase().replace(/^\./, "");
+  if (["jpg", "jpeg", "png", "gif"].includes(normalized)) {
+    return normalized;
+  }
+  return fallback;
+}
+
 function getPartsCatalogById() {
   if (partsCatalogById) {
     return partsCatalogById;
@@ -2387,6 +2395,7 @@ async function handleBuyPart(context) {
   const accountCarId = params.get("acid") || "";
   const partId = Number(params.get("pid") || 0);
   const decalId = params.get("did") || "";
+  const decalFileExt = normalizeUserGraphicFileExt(params.get("fx") || "", "png");
   const partType = params.get("pt") || "";
   const partPrice = Number(params.get("pr") || 0);
 
@@ -2469,27 +2478,39 @@ async function handleBuyPart(context) {
         16301: "163",
       };
       const slotId = partSlotMap[partId] || String(catalogPart?.pi || "161");
+      let resolvedDecalFileExt = decalFileExt;
 
       try {
         const { existsSync, mkdirSync, readdirSync, renameSync, statSync } = await import("node:fs");
-        const { resolve } = await import("node:path");
+        const { extname, resolve } = await import("node:path");
         const decalDir = resolve(process.cwd(), "../cache/car/userDecals");
         mkdirSync(decalDir, { recursive: true });
-        const exactSourcePath = resolve(decalDir, `${decalId}.jpg`);
-        const targetPath = resolve(decalDir, `${slotId}_${decalId}.swf`);
+        const targetPath = resolve(decalDir, `${slotId}_${decalId}.${decalFileExt}`);
+        const exactSourceCandidates = [
+          resolve(decalDir, `${decalId}.${decalFileExt}`),
+          resolve(decalDir, `${decalId}.png`),
+          resolve(decalDir, `${decalId}.jpg`),
+          resolve(decalDir, `${decalId}.jpeg`),
+          resolve(decalDir, `${decalId}.gif`),
+        ];
+        const exactSourcePath = exactSourceCandidates.find((candidate) => existsSync(candidate)) || "";
         let sourcePath = existsSync(exactSourcePath) ? exactSourcePath : "";
+        if (sourcePath) {
+          resolvedDecalFileExt = normalizeUserGraphicFileExt(extname(sourcePath), decalFileExt);
+        }
 
         if (!sourcePath) {
           const recentUpload = consumeRecentDecalUpload({ remoteAddress, slotId });
           if (recentUpload?.targetPath && existsSync(recentUpload.targetPath)) {
             sourcePath = recentUpload.targetPath;
+            resolvedDecalFileExt = normalizeUserGraphicFileExt(extname(recentUpload.targetPath), decalFileExt);
           }
         }
 
         if (!sourcePath) {
           const now = Date.now();
           const fallbackUpload = readdirSync(decalDir)
-            .filter((file) => file.endsWith(".jpg"))
+            .filter((file) => /\.(png|jpe?g|gif)$/i.test(file))
             .map((file) => {
               const filePath = resolve(decalDir, file);
               return {
@@ -2502,6 +2523,7 @@ async function handleBuyPart(context) {
 
           sourcePath = fallbackUpload?.filePath || "";
           if (sourcePath) {
+            resolvedDecalFileExt = normalizeUserGraphicFileExt(extname(sourcePath), decalFileExt);
             logger?.warn("Using recent upload fallback for custom graphic", {
               decalId,
               slotId,
@@ -2512,7 +2534,8 @@ async function handleBuyPart(context) {
         }
 
         if (sourcePath) {
-          renameSync(sourcePath, targetPath);
+          const normalizedTargetPath = resolve(decalDir, `${slotId}_${decalId}.${resolvedDecalFileExt}`);
+          renameSync(sourcePath, normalizedTargetPath);
         } else {
           logger?.warn("Custom graphic source upload missing", {
             decalId,
@@ -2525,7 +2548,7 @@ async function handleBuyPart(context) {
         logger?.error("Failed to rename decal", { error: err.message });
       }
 
-      const installedPartXml = `<p ai='${installId}' i='${partId}' pi='${slotId}' t='c' n='Custom Graphic' in='1' cc='0' pdi='${decalId}' di='${decalId}' ps=''/>`;
+      const installedPartXml = `<p ai='${installId}' i='${partId}' ci='${slotId}' pi='${slotId}' pt='c' t='c' n='Custom Graphic' in='1' cc='0' pdi='${decalId}' di='${decalId}' fe='${resolvedDecalFileExt}' ps=''/>`;
       const partsXml = upsertInstalledPartXml(car.parts_xml || "", slotId, installedPartXml);
       try {
         await saveCarPartsXml(supabase, accountCarId, partsXml);

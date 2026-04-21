@@ -117,7 +117,7 @@ function renderFallbackWheelPartXml(car, wheelXml, partsXml) {
     ? "2"
     : normalizedWheelId;
 
-  return `<p i='${normalizedPartId}' pi='14' n='${partName}' in='1' cc='' pdi='${partDesignId}' di='${normalizedWheelId}' t='c' ps='${normalizedWheelSize}'/>`;
+  return `<p i='${normalizedPartId}' ci='14' pi='14' n='${partName}' in='1' cc='' pdi='${partDesignId}' di='${normalizedWheelId}' pt='c' t='c' ps='${normalizedWheelSize}'/>`;
 }
 
 function renderFallbackPaintStateXml(car, partsXml) {
