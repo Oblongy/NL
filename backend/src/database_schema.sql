@@ -222,6 +222,39 @@ CREATE INDEX IF NOT EXISTS idx_game_player_remarks_author
   ON game_player_remarks(author_player_id, created_at DESC);
 
 -- ============================================================================
+-- GAME SUPPORT TICKETS TABLE
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS game_support_tickets (
+  id BIGSERIAL PRIMARY KEY,
+  ticket_number VARCHAR(32) NOT NULL UNIQUE,
+  support_id INTEGER NOT NULL DEFAULT 0,
+  requester_player_id BIGINT REFERENCES game_players(id) ON DELETE SET NULL,
+  requester_username VARCHAR(64) NOT NULL DEFAULT '',
+  requester_email VARCHAR(255) NOT NULL DEFAULT '',
+  offender_player_id BIGINT REFERENCES game_players(id) ON DELETE SET NULL,
+  offender_username VARCHAR(64) NOT NULL DEFAULT '',
+  subject TEXT NOT NULL DEFAULT '',
+  detail_primary TEXT NOT NULL DEFAULT '',
+  detail_secondary TEXT NOT NULL DEFAULT '',
+  status VARCHAR(16) NOT NULL DEFAULT 'open',
+  resolution VARCHAR(16) NOT NULL DEFAULT '',
+  handled_by_player_id BIGINT REFERENCES game_players(id) ON DELETE SET NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  CONSTRAINT chk_game_support_tickets_status
+    CHECK (status IN ('open', 'closed')),
+  CONSTRAINT chk_game_support_tickets_resolution
+    CHECK (resolution IN ('', 'warned', 'banned', 'dismissed'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_game_support_tickets_requester
+  ON game_support_tickets(requester_player_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_game_support_tickets_offender
+  ON game_support_tickets(offender_player_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_game_support_tickets_ticket_number
+  ON game_support_tickets(ticket_number);
+
+-- ============================================================================
 -- HELPER FUNCTIONS
 -- ============================================================================
 
@@ -262,6 +295,12 @@ CREATE TRIGGER update_game_team_members_updated_at
 DROP TRIGGER IF EXISTS update_game_player_remarks_updated_at ON game_player_remarks;
 CREATE TRIGGER update_game_player_remarks_updated_at
   BEFORE UPDATE ON game_player_remarks
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_game_support_tickets_updated_at ON game_support_tickets;
+CREATE TRIGGER update_game_support_tickets_updated_at
+  BEFORE UPDATE ON game_support_tickets
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 

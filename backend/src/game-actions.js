@@ -5159,7 +5159,7 @@ async function handleGetRacerSearch(context) {
 }
 
 async function handleGetSupport(context) {
-  const { params } = context;
+  const { supabase, params, logger } = context;
   const supportId = Number(params.get("sid") || 0);
   const callId = Number(params.get("i") || 0);
   const offenderUsername = String(params.get("offun") || "").trim();
@@ -5171,19 +5171,94 @@ async function handleGetSupport(context) {
   const subject = offenderUsername || playerName || email || "support";
   const detail = notes1 || notes2 || `Support request ${supportId}`;
   const message = `Submitted ${subject}: ${detail}`.slice(0, 240);
+  let source = `generated:getsupport:sid=${supportId}`;
+
+  if (supabase) {
+    try {
+      let callerPlayer = null;
+      const aid = Number(params.get("aid") || 0);
+      const sk = String(params.get("sk") || "");
+      if (aid > 0 && sk && sk !== "undefined") {
+        const caller = await resolveCallerSession(context, "supabase:getsupport");
+        if (caller?.ok) {
+          callerPlayer = caller.player;
+        }
+      }
+
+      const offenderPlayer = offenderUsername ? await getPlayerByUsername(supabase, offenderUsername) : null;
+      const requesterUsername = playerName || callerPlayer?.username || "";
+      const { error } = await supabase.from("game_support_tickets").insert({
+        ticket_number: ticketNumber,
+        support_id: supportId,
+        requester_player_id: callerPlayer?.id || null,
+        requester_username: requesterUsername,
+        requester_email: email,
+        offender_player_id: offenderPlayer?.id || null,
+        offender_username: offenderUsername || offenderPlayer?.username || "",
+        subject,
+        detail_primary: notes1,
+        detail_secondary: notes2,
+        status: "open",
+        resolution: "",
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      source = `supabase:getsupport:sid=${supportId}`;
+    } catch (error) {
+      logger?.warn("GetSupport persistence unavailable", {
+        error: error?.message || String(error || ""),
+        supportId,
+      });
+      source = `generated:getsupport:sid=${supportId}:fallback`;
+    }
+  }
 
   return {
     body: `"s", 1, "m", "${escapeXml(message)}", "i", ${callId}, "t", "${ticketNumber}"`,
-    source: `generated:getsupport:sid=${supportId}`,
+    source,
   };
 }
 
 async function handleGetMisconductCount(context) {
-  const { params } = context;
+  const { supabase, params, logger } = context;
   const offenderAccountId = Number(params.get("oid") || params.get("id") || 0);
+  let openReports = 0;
+  let totalBanned = 0;
+
+  if (supabase && offenderAccountId > 0) {
+    try {
+      const [{ count: openCount, error: openError }, { count: bannedCount, error: bannedError }] = await Promise.all([
+        supabase
+          .from("game_support_tickets")
+          .select("id", { count: "exact", head: true })
+          .eq("offender_player_id", offenderAccountId)
+          .eq("status", "open"),
+        supabase
+          .from("game_support_tickets")
+          .select("id", { count: "exact", head: true })
+          .eq("offender_player_id", offenderAccountId)
+          .eq("resolution", "banned"),
+      ]);
+
+      if (openError) throw openError;
+      if (bannedError) throw bannedError;
+
+      openReports = Number(openCount || 0);
+      totalBanned = Number(bannedCount || 0);
+    } catch (error) {
+      logger?.warn("GetMisconductCount persistence unavailable", {
+        error: error?.message || String(error || ""),
+        offenderAccountId,
+      });
+    }
+  }
+
   return {
-    body: `"id", ${offenderAccountId}, "r", 0, "b", 0`,
-    source: "generated:getmisconductcount",
+    body: `"id", ${offenderAccountId}, "r", ${openReports}, "b", ${totalBanned}`,
+    source: supabase ? "supabase:getmisconductcount" : "generated:getmisconductcount",
   };
 }
 
