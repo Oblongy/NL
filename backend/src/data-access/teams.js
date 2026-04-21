@@ -59,7 +59,11 @@ export async function createTeam(supabase, input = {}) {
     );
   }
 
-  const ownerPlayerId = Number(input.ownerPlayerId ?? input.owner_player_id || 0);
+  const ownerPlayerId = Number(
+    input.ownerPlayerId !== undefined && input.ownerPlayerId !== null
+      ? input.ownerPlayerId
+      : (input.owner_player_id || 0),
+  );
   if (team && ownerPlayerId > 0) {
     try {
       team = await updateTeamRecord(supabase, team.id, { ownerPlayerId });
