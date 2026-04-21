@@ -303,7 +303,7 @@ export async function handleBuyDyno(context) {
   if (player.has_dyno === 1 || player.has_dyno === true) {
     return {
       body:
-        `"s", 1, "b", "${player.money}", ` +
+        `"s", "1", "b", "${player.money}", ` +
         `"bs", "${DEFAULT_DYNO_PURCHASE_STATE.boostSetting}", ` +
         `"mp", "${DEFAULT_DYNO_PURCHASE_STATE.maxPsi}", ` +
         `"cs", "${DEFAULT_DYNO_PURCHASE_STATE.chipSetting}", ` +
@@ -317,7 +317,7 @@ export async function handleBuyDyno(context) {
   const newBalance = Number(player.money) - dynoPrice;
 
   if (newBalance < 0) {
-    return { body: `"s", -2`, source: "supabase:buydyno:insufficient-funds" };
+    return { body: `"s", "-2"`, source: "supabase:buydyno:insufficient-funds" };
   }
 
   try {
@@ -329,7 +329,7 @@ export async function handleBuyDyno(context) {
 
   return {
     body:
-      `"s", 1, "b", "${newBalance}", ` +
+      `"s", "1", "b", "${newBalance}", ` +
       `"bs", "${DEFAULT_DYNO_PURCHASE_STATE.boostSetting}", ` +
       `"mp", "${DEFAULT_DYNO_PURCHASE_STATE.maxPsi}", ` +
       `"cs", "${DEFAULT_DYNO_PURCHASE_STATE.chipSetting}", ` +

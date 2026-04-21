@@ -223,12 +223,14 @@ function getPersistedDynoState(car) {
     : DEFAULT_DYNO_PURCHASE_STATE.redLine;
   const carrier = findTuneCarrierPartEntry(car?.parts_xml || "");
   const attrs = carrier?.attrs || {};
+  const rawShiftLightRpm = readNumericPartAttr(attrs, "slr", DEFAULT_DYNO_PURCHASE_STATE.shiftLightRpm);
+  const safeShiftLightRpm = Math.max(1000, Math.min(rawShiftLightRpm, derivedRedLine));
 
   return {
     boostSetting: readNumericPartAttr(attrs, "bs", DEFAULT_DYNO_PURCHASE_STATE.boostSetting),
     maxPsi: readNumericPartAttr(attrs, "mp", DEFAULT_DYNO_PURCHASE_STATE.maxPsi),
     chipSetting: readNumericPartAttr(attrs, "cs", DEFAULT_DYNO_PURCHASE_STATE.chipSetting),
-    shiftLightRpm: readNumericPartAttr(attrs, "slr", DEFAULT_DYNO_PURCHASE_STATE.shiftLightRpm),
+    shiftLightRpm: safeShiftLightRpm,
     redLine: readNumericPartAttr(attrs, "rl", derivedRedLine),
   };
 }
@@ -2325,7 +2327,7 @@ async function handleBuyDyno(context) {
   if (player.has_dyno === 1 || player.has_dyno === true) {
     return {
       body:
-        `"s", 1, "b", "${player.money}", ` +
+        `"s", "1", "b", "${player.money}", ` +
         `"bs", "${dynoState.boostSetting}", ` +
         `"mp", "${dynoState.maxPsi}", ` +
         `"cs", "${dynoState.chipSetting}", ` +
@@ -2339,7 +2341,7 @@ async function handleBuyDyno(context) {
   const newBalance = Number(player.money) - dynoPrice;
 
   if (newBalance < 0) {
-    return { body: `"s", -2`, source: "supabase:buydyno:insufficient-funds" };
+    return { body: `"s", "-2"`, source: "supabase:buydyno:insufficient-funds" };
   }
 
   try {
@@ -2353,7 +2355,7 @@ async function handleBuyDyno(context) {
   // (s, b, bs, mp, cs, sl, rl)
   return {
     body:
-      `"s", 1, "b", "${newBalance}", ` +
+      `"s", "1", "b", "${newBalance}", ` +
       `"bs", "${dynoState.boostSetting}", ` +
       `"mp", "${dynoState.maxPsi}", ` +
       `"cs", "${dynoState.chipSetting}", ` +
