@@ -2051,17 +2051,21 @@ export class TcpServer {
     // this repo sometimes placed the room id in field #1, so keep that only as
     // a defensive fallback.
     const requestedRoomId = Number(parts[2] || 0);
+    const fallbackRoomId = Number(parts[1] || 0);
+
+    // The tournament strip can still funnel the follow-up JRC packet through a
+    // generic room id of `1`. Preserve the strip selection and override that
+    // legacy room id before the generic known-room fallback claims it.
+    if (Number(conn?.lastRequestedStripId || 0) === 7 && (requestedRoomId === 1 || fallbackRoomId === 1)) {
+      return Number(this.getLiveTournamentEvent()?.roomId || 2);
+    }
+
     if (this.isKnownRoomId(requestedRoomId)) {
       return requestedRoomId;
     }
 
-    const fallbackRoomId = Number(parts[1] || 0);
     if (this.isKnownRoomId(fallbackRoomId)) {
       return fallbackRoomId;
-    }
-
-    if (Number(conn?.lastRequestedStripId || 0) === 7 && (requestedRoomId === 1 || fallbackRoomId === 1)) {
-      return Number(this.getLiveTournamentEvent()?.roomId || 2);
     }
 
     const playerId = Number(conn.playerId || 0);
