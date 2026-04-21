@@ -16,6 +16,11 @@ import {
   handleGetBlackCardProgress as handleGetBlackCardProgressImpl,
 } from "./game-actions/social.js";
 import {
+  handleGetCarPartsBin as handleGetCarPartsBinImpl,
+  handleGetPartsBin as handleGetPartsBinImpl,
+  handleInstallPart as handleInstallPartImpl,
+} from "./game-actions/parts.js";
+import {
   escapeXml,
   failureBody,
   renderOwnedGarageCar,
@@ -3964,12 +3969,12 @@ const handlers = {
   },
   repairparts: async () => ({ body: `"s", 2`, source: "stub:repairparts" }),
   // Garage / parts bin
-  getcarpartsbin: async () => ({ body: wrapSuccessData(`<parts/>`), source: "stub:getcarpartsbin" }),
-  getpartsbin: async () => ({ body: wrapSuccessData(`<parts/>`), source: "stub:getpartsbin" }),
+  getcarpartsbin: handleGetCarPartsBinImpl,
+  getpartsbin: handleGetPartsBinImpl,
   sellcarpart: async () => ({ body: `"s", 1`, source: "stub:sellcarpart" }),
   sellenginepart: async () => ({ body: `"s", 1`, source: "stub:sellenginepart" }),
   sellengine: async () => ({ body: `"s", 1`, source: "stub:sellengine" }),
-  installpart: async () => ({ body: wrapSuccessData(`<r s='1' b='0'/>`), source: "stub:installpart" }),
+  installpart: handleInstallPartImpl,
   installenginepart: async () => ({ body: wrapSuccessData(`<r s='1' b='0'/>`), source: "stub:installenginepart" }),
   swapengine: async () => ({ body: wrapSuccessData(`<r s='1' b='0'/>`), source: "stub:swapengine" }),
   // Account / profile

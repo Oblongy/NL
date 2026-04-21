@@ -119,6 +119,82 @@ export function buildPartsInventoryXml(items) {
   return `<n2>${partsXml}</n2>`;
 }
 
+function buildGarageBinPartXml(attrs = {}) {
+  const partId = Number(attrs.i || 0);
+  const catalogPart = partId ? getPartsCatalogById().get(partId) : null;
+  const slotId = String(attrs.pi || attrs.ci || catalogPart?.pi || "");
+  const partType = String(attrs.t || attrs.pt || catalogPart?.t || "");
+  if (!partId || !slotId || !partType) {
+    return "";
+  }
+
+  return buildInstalledCatalogPartXml(catalogPart || {}, attrs.ai || createInstalledPartId(), {
+    i: attrs.i ?? catalogPart?.i ?? "",
+    pi: slotId,
+    t: partType,
+    n: attrs.n ?? catalogPart?.n ?? "",
+    p: attrs.p ?? catalogPart?.p ?? "0",
+    pp: attrs.pp ?? catalogPart?.pp ?? "0",
+    g: attrs.g ?? catalogPart?.g ?? "",
+    di: attrs.di ?? catalogPart?.di ?? "",
+    pdi: attrs.pdi ?? attrs.di ?? catalogPart?.pdi ?? catalogPart?.di ?? "",
+    b: attrs.b ?? catalogPart?.b ?? "",
+    bn: attrs.bn ?? catalogPart?.bn ?? "",
+    mn: attrs.mn ?? catalogPart?.mn ?? "",
+    l: attrs.l ?? catalogPart?.l ?? "100",
+    in: attrs.in ?? "1",
+    mo: attrs.mo ?? catalogPart?.mo ?? "0",
+    hp: attrs.hp ?? catalogPart?.hp ?? "0",
+    tq: attrs.tq ?? catalogPart?.tq ?? "0",
+    wt: attrs.wt ?? catalogPart?.wt ?? "0",
+    cc: attrs.cc ?? catalogPart?.cc ?? "",
+    ps: attrs.ps ?? catalogPart?.ps ?? "",
+  });
+}
+
+function buildGarageInstalledPartItems(partsXml) {
+  const items = [];
+  let match;
+  while ((match = PART_XML_ENTRY_REGEX.exec(String(partsXml || ""))) !== null) {
+    const attrs = parsePartXmlAttributes(match[0]);
+    const xml = buildGarageBinPartXml(attrs);
+    if (!xml) {
+      continue;
+    }
+    items.push({
+      id: attrs.ai || `${attrs.i || "part"}-${items.length + 1}`,
+      xml,
+    });
+  }
+  PART_XML_ENTRY_REGEX.lastIndex = 0;
+  return items;
+}
+
+function buildSparePartsInventoryItems(inventoryRows) {
+  const catalog = getPartsCatalogById();
+  const items = [];
+
+  for (const row of inventoryRows) {
+    const catalogPart = catalog.get(Number(row.part_catalog_id || 0));
+    if (!catalogPart) {
+      continue;
+    }
+
+    const quantity = Math.max(1, Number(row.quantity || 1));
+    for (let index = 0; index < quantity; index += 1) {
+      const syntheticId = index === 0 ? Number(row.id) : `${row.id}-${index + 1}`;
+      items.push({
+        id: syntheticId,
+        xml: buildInstalledCatalogPartXml(catalogPart, syntheticId, {
+          in: "0",
+        }),
+      });
+    }
+  }
+
+  return items;
+}
+
 export async function handleGetAllParts(context) {
   const { supabase } = context;
 
@@ -309,7 +385,7 @@ export async function handleBuyEnginePart(context) {
 }
 
 export async function handleGetCarPartsBin(context) {
-  const { supabase } = context;
+  const { supabase, params } = context;
   if (!supabase) {
     return null;
   }
@@ -319,31 +395,46 @@ export async function handleGetCarPartsBin(context) {
     return { body: caller?.body || failureBody(), source: caller?.source || "supabase:getcarpartsbin:bad-session" };
   }
 
-  const inventory = await listPartsInventoryForPlayer(supabase, caller.playerId);
-  const catalog = getPartsCatalogById();
-  const items = [];
-
-  for (const row of inventory) {
-    const catalogPart = catalog.get(Number(row.part_catalog_id || 0));
-    if (!catalogPart) {
-      continue;
-    }
-
-    const quantity = Math.max(1, Number(row.quantity || 1));
-    for (let index = 0; index < quantity; index += 1) {
-      const syntheticId = index === 0 ? Number(row.id) : `${row.id}-${index + 1}`;
-      items.push({
-        id: syntheticId,
-        xml: buildInstalledCatalogPartXml(catalogPart, syntheticId, {
-          in: "0",
-        }),
-      });
-    }
+  const accountCarId = Number(params.get("acid") || 0);
+  if (!accountCarId) {
+    return { body: failureBody(), source: "supabase:getcarpartsbin:missing-car" };
   }
+
+  const [car, inventory] = await Promise.all([
+    getCarById(supabase, accountCarId),
+    listPartsInventoryForPlayer(supabase, caller.playerId),
+  ]);
+
+  if (!car || Number(car.player_id) !== Number(caller.playerId)) {
+    return { body: failureBody(), source: "supabase:getcarpartsbin:no-car" };
+  }
+
+  const items = [
+    ...buildGarageInstalledPartItems(car.parts_xml || ""),
+    ...buildSparePartsInventoryItems(inventory),
+  ];
 
   return {
     body: wrapSuccessData(buildPartsInventoryXml(items)),
     source: "supabase:getcarpartsbin",
+  };
+}
+
+export async function handleGetPartsBin(context) {
+  const { supabase } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:getpartsbin");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:getpartsbin:bad-session" };
+  }
+
+  const inventory = await listPartsInventoryForPlayer(supabase, caller.playerId);
+  return {
+    body: wrapSuccessData(buildPartsInventoryXml(buildSparePartsInventoryItems(inventory))),
+    source: "supabase:getpartsbin",
   };
 }
 
