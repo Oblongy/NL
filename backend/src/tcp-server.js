@@ -644,6 +644,14 @@ export class TcpServer {
       } else if (messageType === "RO") {
         this.handleRaceOpen(conn);
 
+      // --- RIVRT: Rivals reaction time ---
+      } else if (messageType === "RIVRT") {
+        this.handleRivalsReactionTime(conn, parts);
+
+      // --- M: Race meta / lane state ---
+      } else if (messageType === "M") {
+        this.handleRaceMeta(conn, parts);
+
       // --- GK / JK: KOTH queue query / join ---
       } else if (messageType === "GK") {
         this.handleKingOfHillQueue(conn);
@@ -2081,6 +2089,15 @@ export class TcpServer {
     // Once both players have opened, allow telemetry to flow
     if (race.players.every((entry) => entry.opened) && !race.sequenceStarted) {
       race.sequenceStarted = true;
+      if (!race.rivalsReadyBroadcasted) {
+        race.rivalsReadyBroadcasted = true;
+        for (const participant of race.players) {
+          const participantConn = this.getRaceParticipantConnection(participant);
+          if (participantConn) {
+            this.sendMessage(participantConn, '"ac", "RIVRDY", "s", 1');
+          }
+        }
+      }
       this.logger.info("TCP race sequence started - telemetry enabled", { raceId: race.id });
     }
   }
