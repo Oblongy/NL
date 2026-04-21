@@ -282,7 +282,6 @@ export class TcpServer {
       // --- RD: Race done / result data ---
       } else if (messageType === "RD") {
         this.logger.info("TCP RD received", { connId: conn.id, parts: parts.length });
-        this.sendMessage(conn, '"ac", "RD", "s", 1');
         
         // Apply engine wear even if race is missing (per protocol spec)
         const race = conn.raceId ? this.races.get(conn.raceId) : null;
@@ -295,6 +294,7 @@ export class TcpServer {
               race.finishResults = new Map();
             }
             race.finishResults.set(Number(participant.playerId), this.parseRaceDoneMetrics(parts));
+            this.broadcastRaceDone(race, participant.playerId);
           }
           const completionPlayerId = Number(participant?.playerId || playerId || 0);
 
@@ -838,16 +838,15 @@ export class TcpServer {
     return Number.isFinite(ranked[0]?.totalTime) ? ranked[0].playerId : 0;
   }
 
-  buildRaceResultXml(race, winnerPlayerId) {
+  buildRaceSummaryXml(race, winnerPlayerId) {
     const [p1, p2] = race.players;
     const p1Result = race.finishResults?.get(Number(p1?.playerId)) || null;
     const p2Result = race.finishResults?.get(Number(p2?.playerId)) || null;
-    const scWin = 50;
-    const scLoss = 10;
-    const sc1Gain = winnerPlayerId && Number(p1?.playerId) === winnerPlayerId ? scWin : scLoss;
-    const sc2Gain = winnerPlayerId && Number(p2?.playerId) === winnerPlayerId ? scWin : scLoss;
+    return `<r r1id='${p1?.playerId || 0}' r2id='${p2?.playerId || 0}' wid='${winnerPlayerId || 0}' rt1='${p1Result?.rt ?? "-1"}' et1='${p1Result?.et ?? "-1"}' ts1='${p1Result?.ts ?? "-1"}' rt2='${p2Result?.rt ?? "-1"}' et2='${p2Result?.et ?? "-1"}' ts2='${p2Result?.ts ?? "-1"}' m1='0' m2='0' c1='0' c2='0' h1='0' h2='0'/>`;
+  }
 
-    return `<r wid='${winnerPlayerId || 0}' r1id='${p1?.playerId || 0}' r2id='${p2?.playerId || 0}' rt1='${p1Result?.rt ?? "-1"}' et1='${p1Result?.et ?? "-1"}' ts1='${p1Result?.ts ?? "-1"}' rt2='${p2Result?.rt ?? "-1"}' et2='${p2Result?.et ?? "-1"}' ts2='${p2Result?.ts ?? "-1"}' c1='${sc1Gain}' c2='${sc2Gain}' h1='0' h2='0' td='0'/>`;
+  buildRaceDoneXml(playerId, result) {
+    return `<r i='${Number(playerId || 0)}' et='${result?.et ?? "-1"}' ts='${result?.ts ?? "-1"}'/>`;
   }
 
   maybeAwardRaceScore(race, winnerPlayerId) {
@@ -882,6 +881,27 @@ export class TcpServer {
     });
   }
 
+  broadcastRaceDone(race, playerId) {
+    if (!race) {
+      return;
+    }
+    const result = race.finishResults?.get(Number(playerId)) || null;
+    if (!result) {
+      return;
+    }
+    const escapedXml = this.escapeForTcp(this.buildRaceDoneXml(playerId, result));
+    for (const participant of race.players) {
+      const connectionIds = [...new Set([participant.connId, participant.raceConnId].filter(Boolean))];
+      for (const connectionId of connectionIds) {
+        const participantConn = this.connections.get(connectionId);
+        if (!participantConn) {
+          continue;
+        }
+        this.sendMessage(participantConn, `"ac", "RD", "d", "${escapedXml}"`);
+      }
+    }
+  }
+
   broadcastRaceResult(race, winnerPlayerId) {
     if (!race || race.resultBroadcasted) {
       return;
@@ -891,7 +911,7 @@ export class TcpServer {
     race.winnerPlayerId = winnerPlayerId || race.winnerPlayerId || 0;
     this.maybeAwardRaceScore(race, race.winnerPlayerId);
 
-    const escapedXml = this.escapeForTcp(this.buildRaceResultXml(race, race.winnerPlayerId));
+    const escapedXml = this.escapeForTcp(this.buildRaceSummaryXml(race, race.winnerPlayerId));
     for (const participant of race.players) {
       const connectionIds = [...new Set([participant.connId, participant.raceConnId].filter(Boolean))];
       for (const connectionId of connectionIds) {
@@ -899,8 +919,7 @@ export class TcpServer {
         if (!participantConn) {
           continue;
         }
-        this.sendMessage(participantConn, `"ac", "UR", "d", "${escapedXml}"`);
-        this.sendMessage(participantConn, '"ac", "OR", "s", 1');
+        this.sendMessage(participantConn, `"ac", "RW", "d", "${escapedXml}"`);
       }
     }
   }
@@ -955,11 +974,10 @@ export class TcpServer {
   maybeBroadcastRivalsReady(race) {
     if (!race) return;
     if (!race.players.every((entry) => entry.opened)) return;
-    if (!this.hasAllRaceMeta(race)) return;
     if (race.rivalsReadyBroadcasted) return;
 
     race.rivalsReadyBroadcasted = true;
-    this.setRacePhase(race, "TREE_ARMED", "both-opened-and-staged");
+    this.setRacePhase(race, "TREE_ARMED", "both-opened");
     for (const participant of race.players) {
       const participantConn = this.getRaceParticipantConnection(participant);
       if (participantConn) {
@@ -972,14 +990,12 @@ export class TcpServer {
   maybeStartRaceSequence(race, trigger = "") {
     if (!race || race.sequenceStarted) return;
     if (!race.players.every((entry) => entry.opened)) return;
-    if (!this.hasAllRaceMeta(race)) return;
-    if (!this.hasAllRivalsReadyAcks(race)) return;
 
     race.sequenceStarted = true;
-    this.setRacePhase(race, "RACING", trigger || "all-ready-acks");
+    this.setRacePhase(race, "RACING", trigger || "both-opened");
     this.logger.info("TCP race sequence started", {
       raceId: race.id,
-      trigger: trigger || "all-ready-acks",
+      trigger: trigger || "both-opened",
       stagedCount: race.stagedCount || 0,
       rivalsReadyAcks: Array.from(race.rivalsReadyAcks.keys()),
     });
@@ -1070,11 +1086,6 @@ export class TcpServer {
     }
 
     if (!this.isRaceReadyForTelemetry(race)) {
-      return;
-    }
-
-    // Suppress pre-staged telemetry from the live opponent-IO path.
-    if (!this.hasAllRaceMeta(race)) {
       return;
     }
 
@@ -1242,7 +1253,7 @@ export class TcpServer {
       }
     }
 
-    if (this.hasAllRaceMeta(race)) {
+    if (this.hasAllRaceMeta(race) && !race.sequenceStarted) {
       this.setRacePhase(race, "STAGED", "meta-from-both");
     }
     this.maybeBroadcastRivalsReady(race);
@@ -2331,7 +2342,9 @@ export class TcpServer {
       race.winnerPlayerId = winnerPlayerId;
     }
 
-    this.sendMessage(conn, '"ac", "RR", "s", 1');
+    this.sendMessage(conn, '"ac", "RR", "s", 1, "t", 0, "t2", 0');
+    this.sendMessage(conn, `"ac", "UR", "td", 0, "guid", "${this.escapeForTcp(String(race.id || `${conn.playerId || 0}:${race.trackId || 32}`))}"`);
+    this.sendMessage(conn, '"ac", "OR", "td", 0');
 
     if (race.finishResults?.size >= race.players.length) {
       this.tryBroadcastRaceResult(race, race.winnerPlayerId || this.determineRaceWinnerFromResults(race));
