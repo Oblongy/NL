@@ -1991,10 +1991,10 @@ export class TcpServer {
 
     // Notify the target client using the same RCLG XML shape the 10.0.03 lobby
     // uses for incoming challenges (see RivalsChallengePanel.addChallenge()).
-    const ucuXml = this.buildUcuXml({
-      playerId: requesterPlayerId,
-      username: conn.username || "Player",
-    });
+    //
+    // Do not invent a separate UCU user-add packet here. Both racers are already
+    // present in the same room snapshot, and the synthetic UCU caused the client
+    // to create a ghost/invisible duplicate user entry on challenge send.
     const rclgXml = this.buildRclgXml({
       challengerPlayerId: requesterPlayerId,
       challengerCarId: requesterCarId,
@@ -2003,8 +2003,6 @@ export class TcpServer {
       bracketTime,
       raceGuid,
     });
-
-    this.sendMessage(targetConn, `"ac", "UCU", "d", "${this.escapeForTcp(ucuXml)}"`);
     this.sendMessage(targetConn, `"ac", "RCLG", "d", "${this.escapeForTcp(rclgXml)}"`);
     
     this.logger.info("TCP RRQ challenge sent to target", {
@@ -2274,19 +2272,64 @@ export class TcpServer {
       return;
     }
 
-    if (Number(conn.playerId || 0) === pending.challenger.playerId) {
-      pending.ready.challenger = true;
-    } else if (Number(conn.playerId || 0) === pending.challenged.playerId) {
-      pending.ready.challenged = true;
-    }
+    const responderPlayerId = Number(conn.playerId || 0);
+    const accepted = Number(parts[1] || 1) === 1;
+    const responderBracketTime = Number(parts[2] ?? -1);
 
-    this.sendMessage(conn, `"ac", "RRS", "s", 1, "i", "${pending.id}"`);
-    this.logger.info("TCP RRS accepted challenge", {
-      connId: conn.id,
-      raceGuid: pending.id,
-      challengerReady: pending.ready.challenger,
-      challengedReady: pending.ready.challenged,
-    });
+    if (responderPlayerId === pending.challenger.playerId) {
+      pending.ready.challenger = accepted;
+      if (Number.isFinite(responderBracketTime) && responderBracketTime > 0) {
+        pending.bracketTime = responderBracketTime;
+      }
+      this.sendMessage(conn, `"ac", "RRS", "s", ${accepted ? 1 : 0}, "i", "${pending.id}"`);
+      this.logger.info("TCP RRS updated challenger pending challenge state", {
+        connId: conn.id,
+        raceGuid: pending.id,
+        accepted,
+        responderBracketTime,
+        challengerReady: pending.ready.challenger,
+        challengedReady: pending.ready.challenged,
+      });
+    } else if (responderPlayerId === pending.challenged.playerId) {
+      if (!accepted) {
+        this.pendingRaceChallenges.delete(pending.id);
+        this.sendMessage(conn, `"ac", "RRS", "s", 1, "i", "${pending.id}"`);
+        const challengerConn = this.connections.get(pending.challenger.connId);
+        if (challengerConn) {
+          this.sendMessage(challengerConn, `"ac", "RRS", "s", 0, "i", "${pending.id}"`);
+        }
+        this.logger.info("TCP RRS declined pending challenge", {
+          connId: conn.id,
+          raceGuid: pending.id,
+          responderPlayerId,
+        });
+        return;
+      }
+
+      pending.ready.challenged = true;
+      if (pending.bracketTime > -1) {
+        pending.challenged.bracketTime = Number.isFinite(responderBracketTime) && responderBracketTime > 0
+          ? responderBracketTime
+          : -1;
+      }
+      this.sendMessage(conn, `"ac", "RRS", "s", 1, "i", "${pending.id}"`);
+      this.logger.info("TCP RRS accepted pending challenge", {
+        connId: conn.id,
+        raceGuid: pending.id,
+        responderPlayerId,
+        challengerReady: pending.ready.challenger,
+        challengedReady: pending.ready.challenged,
+        challengerBracketTime: pending.bracketTime,
+        challengedBracketTime: pending.challenged.bracketTime ?? -1,
+      });
+    } else {
+      this.logger.warn("TCP RRS ignored from non-participant on pending challenge", {
+        connId: conn.id,
+        responderPlayerId,
+        raceGuid: pending.id,
+      });
+      return;
+    }
 
     if (!pending.ready.challenger || !pending.ready.challenged) {
       return;
