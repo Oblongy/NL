@@ -3384,7 +3384,7 @@ function getCapturedTimingCurveProfile(spec) {
  * Community-server captures show this is a compact torque-style curve, not the
  * quarter-mile position-delta array used for computer opponents.
  */
-const TEMP_USE_LEGACY_CAPTURED_TIMING_FOR_TESTING = true;
+const TEMP_USE_LEGACY_CAPTURED_TIMING_FOR_TESTING = false;
 
 function applyTimingDeltas(values, deltas) {
   let currentValue = values[values.length - 1];
