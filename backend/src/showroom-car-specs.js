@@ -1,5 +1,11 @@
 import { getStaticShowroomCarSpecs } from "./catalog-data-source.js";
 
+const SHOWROOM_SPEC_ALIASES = new Map([
+  // The static catalog reuses some legacy ids for alternate dealership stock.
+  // Practice/getonecarengine need a showroom physics spec for the stored id.
+  ["125", "98"], // Nissan Skyline GT-R (R33-style spec)
+]);
+
 function normalizeEngineString(engine) {
   return String(engine || "").trim().toLowerCase();
 }
@@ -67,11 +73,16 @@ function buildShowroomCarSpecs() {
 export const SHOWROOM_CAR_SPECS = buildShowroomCarSpecs();
 
 export function getShowroomCarSpec(carId) {
-  return SHOWROOM_CAR_SPECS.get(String(carId || "")) || null;
+  const normalizedCarId = String(carId || "");
+  return (
+    SHOWROOM_CAR_SPECS.get(normalizedCarId) ||
+    SHOWROOM_CAR_SPECS.get(SHOWROOM_SPEC_ALIASES.get(normalizedCarId) || "") ||
+    null
+  );
 }
 
 export function hasShowroomCarSpec(carId) {
-  return SHOWROOM_CAR_SPECS.has(String(carId || ""));
+  return !!getShowroomCarSpec(carId);
 }
 
 export function getShowroomCarInduction(carId) {
