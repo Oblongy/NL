@@ -2261,6 +2261,46 @@ async function handleGetAllCars(context) {
   };
 }
 
+async function handleGetOneCar(context) {
+  const { supabase, params, logger } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:getonecar");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:getonecar:bad-session" };
+  }
+
+  const requestedCarId = Number(params.get("acid") || 0);
+  const cars = await ensurePlayerHasGarageCar(supabase, caller.playerId, {
+    catalogCarId: DEFAULT_STARTER_CATALOG_CAR_ID,
+    wheelXml: getDefaultWheelXmlForCar(DEFAULT_STARTER_CATALOG_CAR_ID),
+    partsXml: DEFAULT_STOCK_PARTS_XML,
+  });
+  const garageCars = decorateCarsWithTestDriveState(caller.playerId, cars);
+  const resolvedCar = (
+    requestedCarId > 0
+      ? garageCars.find((car) => Number(car.game_car_id) === requestedCarId || Number(car.account_car_id || 0) === requestedCarId)
+      : null
+  ) || garageCars.find((car) => car.selected) || garageCars[0] || null;
+
+  if (!resolvedCar) {
+    return { body: failureBody(), source: "supabase:getonecar:no-car" };
+  }
+
+  logger?.info("GetOneCar returning car", {
+    requestedCarId,
+    returnedCarId: resolvedCar.game_car_id,
+    partsXmlLength: resolvedCar.parts_xml?.length || 0,
+  });
+
+  return {
+    body: wrapSuccessData(renderOwnedGarageCar(resolvedCar)),
+    source: "supabase:getonecar",
+  };
+}
+
 async function handleGetAllParts(context) {
   const { supabase } = context;
 
@@ -4721,7 +4761,7 @@ const handlers = {
   getallotherusercars: handleGetAllOtherUserCars,
   gettworacerscars: handleGetTwoRacersCars,
   getallcars: handleGetAllCars,
-  getonecar: handleGetAllCars, // same shape as getallcars, returns the player's car(s)
+  getonecar: handleGetOneCar,
   getallcats: async () => {
     return { body: PARTS_CATEGORIES_BODY, source: "static:getallcats" };
   },
