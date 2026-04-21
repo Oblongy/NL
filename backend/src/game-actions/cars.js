@@ -100,6 +100,58 @@ const DEFAULT_DYNO_PURCHASE_STATE = Object.freeze({
   redLine: 7800,
 });
 
+function applyTimingDeltas(values, deltas) {
+  let currentValue = values[values.length - 1];
+  for (const delta of deltas) {
+    currentValue += delta;
+    values.push(currentValue);
+  }
+}
+
+// Exact legacy timing curve captured from the original client/server flow.
+// Keep it isolated so we can revert the extracted cars module in one place
+// without touching the active monolithic timing generation path.
+function generateLegacyTimingArray() {
+  const values = Array(9).fill(273);
+
+  values.push(375);
+
+  applyTimingDeltas(values, [
+    12, 11, 12, 11, 11,
+    12, 11, 12, 11, 12,
+    11, 12, 11, 12, 11,
+    12, 11, 12, 11, 12,
+  ]);
+
+  applyTimingDeltas(values, [
+    9,
+    3, 2, 3, 2, 2,
+    3, 2, 3, 2, 3,
+    2, 3, 2, 2, 3,
+    2, 3, 2, 3, 2,
+    2, 3, 2, 3, 2,
+    3, 2, 0,
+  ]);
+
+  applyTimingDeltas(values, [
+    -8, -7,
+    -8, -8, -8, -8, -8,
+    -8, -8, -8, -8, -8,
+    -8, -8, -7,
+    -8, -9, -8, -9, -8,
+    -9, -9, -8, -9, -8,
+    -9, -8, -9, -8, -9,
+    -8, -9, -8, -9, -8,
+    -9, -8, -9, -8, -9,
+  ]);
+
+  if (values.length !== 100) {
+    throw new Error(`Expected 100 timing values, got ${values.length}`);
+  }
+
+  return values;
+}
+
 export function getCatalogCarRecord(catalogCarId) {
   return FULL_CAR_CATALOG.find(([cid]) => Number(cid) === Number(catalogCarId)) || null;
 }
@@ -196,7 +248,7 @@ export async function handleGetOneCarEngine(context) {
       const pistonMatch = partsXml.match(/<p[^>]*\bci='190'[^>]*\bdi='(\d+)'[^>]*\/>/i);
       const compressionLevel = pistonMatch ? Number(pistonMatch[1]) : 0;
 
-      const timing = [273, 273, 273, 273, 273, 273, 273, 273, 273, 375, 387, 398, 410, 421, 432, 444, 455, 467, 478, 490, 501, 513, 524, 536, 547, 559, 570, 582, 593, 605, 614, 617, 619, 622, 624, 626, 629, 631, 634, 636, 639, 641, 644, 646, 648, 651, 653, 656, 658, 661, 663, 665, 668, 670, 673, 675, 678, 680, 680, 672, 665, 657, 649, 641, 633, 625, 617, 609, 601, 593, 585, 577, 569, 561, 554, 546, 537, 529, 520, 512, 503, 494, 486, 477, 469, 460, 452, 443, 435, 426, 418, 409, 401, 392, 384, 375, 367, 358, 350, 341];
+      const timing = generateLegacyTimingArray();
 
       const engineXml =
         `<n2 es='1' sl='7200' sg='0' rc='0' tmp='0' r='3257' v='2.2398523985239853' ` +
@@ -214,7 +266,7 @@ export async function handleGetOneCarEngine(context) {
     }
   }
 
-  const timing = [273, 273, 273, 273, 273, 273, 273, 273, 273, 375, 387, 398, 410, 421, 432, 444, 455, 467, 478, 490, 501, 513, 524, 536, 547, 559, 570, 582, 593, 605, 614, 617, 619, 622, 624, 626, 629, 631, 634, 636, 639, 641, 644, 646, 648, 651, 653, 656, 658, 661, 663, 665, 668, 670, 673, 675, 678, 680, 680, 672, 665, 657, 649, 641, 633, 625, 617, 609, 601, 593, 585, 577, 569, 561, 554, 546, 537, 529, 520, 512, 503, 494, 486, 477, 469, 460, 452, 443, 435, 426, 418, 409, 401, 392, 384, 375, 367, 358, 350, 341];
+  const timing = generateLegacyTimingArray();
 
   const engineXml =
     `<n2 es='1' sl='7200' sg='0' rc='0' tmp='0' r='3257' v='2.2398523985239853' ` +
