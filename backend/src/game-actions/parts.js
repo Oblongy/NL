@@ -6,6 +6,7 @@ import {
   getPlayerById,
   updatePlayerMoney,
   getCarById,
+  listCarsForPlayer,
   listPartsInventoryForPlayer,
   getPartInventoryItemById,
   addPartInventoryItem,
@@ -193,6 +194,32 @@ function buildSparePartsInventoryItems(inventoryRows) {
   }
 
   return items;
+}
+
+async function resolveGaragePartsBinCar(supabase, playerId, requestedCarId) {
+  const numericRequestedCarId = Number(requestedCarId || 0);
+  if (!supabase || !playerId) {
+    return null;
+  }
+
+  const cars = await listCarsForPlayer(supabase, playerId);
+  if (cars.length === 0) {
+    return null;
+  }
+
+  if (numericRequestedCarId > 0) {
+    const directMatch = cars.find((car) => Number(car.game_car_id) === numericRequestedCarId);
+    if (directMatch) {
+      return directMatch;
+    }
+
+    const legacyMatch = cars.find((car) => Number(car.account_car_id || 0) === numericRequestedCarId);
+    if (legacyMatch) {
+      return legacyMatch;
+    }
+  }
+
+  return cars.find((car) => car.selected) || cars[0];
 }
 
 export async function handleGetAllParts(context) {
@@ -385,7 +412,7 @@ export async function handleBuyEnginePart(context) {
 }
 
 export async function handleGetCarPartsBin(context) {
-  const { supabase, params } = context;
+  const { supabase, params, logger } = context;
   if (!supabase) {
     return null;
   }
@@ -395,24 +422,28 @@ export async function handleGetCarPartsBin(context) {
     return { body: caller?.body || failureBody(), source: caller?.source || "supabase:getcarpartsbin:bad-session" };
   }
 
-  const accountCarId = Number(params.get("acid") || 0);
-  if (!accountCarId) {
-    return { body: failureBody(), source: "supabase:getcarpartsbin:missing-car" };
+  const requestedCarId = Number(params.get("acid") || 0);
+  const car = await resolveGaragePartsBinCar(supabase, caller.playerId, requestedCarId);
+  if (!car) {
+    logger?.info("GetCarPartsBin could not resolve owned car", {
+      playerId: caller.playerId,
+      requestedCarId,
+    });
+    return {
+      body: wrapSuccessData(buildPartsInventoryXml([])),
+      source: "supabase:getcarpartsbin:no-car",
+    };
   }
 
-  const [car, inventory] = await Promise.all([
-    getCarById(supabase, accountCarId),
-    listPartsInventoryForPlayer(supabase, caller.playerId),
-  ]);
-
-  if (!car || Number(car.player_id) !== Number(caller.playerId)) {
-    return { body: failureBody(), source: "supabase:getcarpartsbin:no-car" };
-  }
-
-  const items = [
-    ...buildGarageInstalledPartItems(car.parts_xml || ""),
-    ...buildSparePartsInventoryItems(inventory),
-  ];
+  const items = buildGarageInstalledPartItems(car.parts_xml || "");
+  logger?.info("GetCarPartsBin resolved installed parts", {
+    playerId: caller.playerId,
+    requestedCarId,
+    resolvedGameCarId: car.game_car_id,
+    resolvedAccountCarId: car.account_car_id,
+    installedPartCount: items.length,
+    partsXmlLength: String(car.parts_xml || "").length,
+  });
 
   return {
     body: wrapSuccessData(buildPartsInventoryXml(items)),
