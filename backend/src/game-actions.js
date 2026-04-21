@@ -3285,6 +3285,13 @@ function getCarBuildFlags(car) {
   return { boostType, nosSize, compressionLevel };
 }
 
+function getDriveableBoostField(boostType) {
+  const numericBoost = Number(boostType);
+  // The legacy Flash practice client expects `b` to stay numeric. String
+  // flags like "T" / "S" bubble into NaN client-side and break launch state.
+  return Number.isFinite(numericBoost) ? numericBoost : 0;
+}
+
 function buildDriveableEngineXml({ catalogCarId, accountCarId, boostType, nosSize, compressionLevel, engineSound }) {
   const spec = getShowroomCarSpec(catalogCarId);
   if (!spec) {
@@ -3304,13 +3311,31 @@ function buildDriveableEngineXml({ catalogCarId, accountCarId, boostType, nosSiz
   const gear4 = "1";
   const gear5 = "0.861";
   const finalDrive = "4.058";
+  const boostField = getDriveableBoostField(boostType);
+  const stableCompression = Number.isFinite(Number(compressionLevel)) && Number(compressionLevel) > 0
+    ? Number(compressionLevel)
+    : 11;
+  // The older garage/practice payload always shipped `es='1'`, and boosted
+  // cars only started breaking once we began varying this field per induction.
+  const stableEngineSound = 1;
+  // The Flash launch logic has proven sensitive to these fields drifting from
+  // the older stable payload shape, especially on the neutral-to-first
+  // transition. Keep them pinned to the legacy values and only vary the safer
+  // per-car fields like power, torque, and weight-derived `r`.
+  const legacyLaunchProfile = {
+    sl: 7200,
+    a: 6800,
+    n: 7600,
+    o: 7800,
+    aa: 4,
+  };
 
   return (
-    `<n2 es='${engineSound}' sl='${n2.sl}' sg='0' rc='0' tmp='0' r='${n2.r}' v='2.2398523985239853' ` +
-    `a='${n2.a}' n='${n2.n}' o='${n2.o}' s='1.208' b='${boostType}' p='0.15' c='${compressionLevel}' e='${nosSize}' d='T' ` +
+    `<n2 es='${stableEngineSound}' sl='${legacyLaunchProfile.sl}' sg='0' rc='0' tmp='0' r='${n2.r}' v='2.2398523985239853' ` +
+    `a='${legacyLaunchProfile.a}' n='${legacyLaunchProfile.n}' o='${legacyLaunchProfile.o}' s='1.208' b='${boostField}' p='0.15' c='${stableCompression}' e='${nosSize}' d='T' ` +
     `f='${gear1}' g='${gear2}' h='${gear3}' i='${gear4}' j='${gear5}' k='0' l='${finalDrive}' ` +
     `q='${horsepower}' m='${torque}' t='100' u='28' w='0.144' x='41.2' y='${torque}' z='${horsepower}' ` +
-    `aa='${n2.aa}' ab='${accountCarId}' ac='9' ad='0' ae='100' af='100' ag='100' ah='100' ai='100' ` +
+    `aa='${legacyLaunchProfile.aa}' ab='${accountCarId}' ac='9' ad='0' ae='100' af='100' ag='100' ah='100' ai='100' ` +
     `aj='0' ak='0' al='0' am='0' an='0' ao='100' ap='0' aq='0' ar='1' as='0' ` +
     `at='100' au='100' av='0' aw='100' ax='0'><r g1='${gear1}' g2='${gear2}' g3='${gear3}' g4='${gear4}' g5='${gear5}' g6='0'/></n2>`
   );
