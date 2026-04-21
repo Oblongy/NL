@@ -303,12 +303,12 @@ export async function handleBuyDyno(context) {
   if (player.has_dyno === 1 || player.has_dyno === true) {
     return {
       body:
-        `"s", 1, "b", ${player.money}, ` +
-        `"bs", ${DEFAULT_DYNO_PURCHASE_STATE.boostSetting}, ` +
-        `"mp", ${DEFAULT_DYNO_PURCHASE_STATE.maxPsi}, ` +
-        `"cs", ${DEFAULT_DYNO_PURCHASE_STATE.chipSetting}, ` +
-        `"sl", ${DEFAULT_DYNO_PURCHASE_STATE.shiftLightRpm}, ` +
-        `"rl", ${DEFAULT_DYNO_PURCHASE_STATE.redLine}`,
+        `"s", 1, "b", "${player.money}", ` +
+        `"bs", "${DEFAULT_DYNO_PURCHASE_STATE.boostSetting}", ` +
+        `"mp", "${DEFAULT_DYNO_PURCHASE_STATE.maxPsi}", ` +
+        `"cs", "${DEFAULT_DYNO_PURCHASE_STATE.chipSetting}", ` +
+        `"sl", "${DEFAULT_DYNO_PURCHASE_STATE.shiftLightRpm}", ` +
+        `"rl", "${DEFAULT_DYNO_PURCHASE_STATE.redLine}"`,
       source: "supabase:buydyno:already-owned",
     };
   }
@@ -329,12 +329,12 @@ export async function handleBuyDyno(context) {
 
   return {
     body:
-      `"s", 1, "b", ${newBalance}, ` +
-      `"bs", ${DEFAULT_DYNO_PURCHASE_STATE.boostSetting}, ` +
-      `"mp", ${DEFAULT_DYNO_PURCHASE_STATE.maxPsi}, ` +
-      `"cs", ${DEFAULT_DYNO_PURCHASE_STATE.chipSetting}, ` +
-      `"sl", ${DEFAULT_DYNO_PURCHASE_STATE.shiftLightRpm}, ` +
-      `"rl", ${DEFAULT_DYNO_PURCHASE_STATE.redLine}`,
+      `"s", 1, "b", "${newBalance}", ` +
+      `"bs", "${DEFAULT_DYNO_PURCHASE_STATE.boostSetting}", ` +
+      `"mp", "${DEFAULT_DYNO_PURCHASE_STATE.maxPsi}", ` +
+      `"cs", "${DEFAULT_DYNO_PURCHASE_STATE.chipSetting}", ` +
+      `"sl", "${DEFAULT_DYNO_PURCHASE_STATE.shiftLightRpm}", ` +
+      `"rl", "${DEFAULT_DYNO_PURCHASE_STATE.redLine}"`,
     source: "supabase:buydyno",
   };
 }
