@@ -3735,11 +3735,7 @@ async function handlePractice(context) {
     };
   }
 
-  // Practice remains client-side fragile for forced-induction bootstrap data.
-  // Keep the practice payload naturally-aspirated-compatible while preserving
-  // the car's catalog-derived performance in the timing/spec fields below.
-  const practiceBoostType = "0";
-  const engineSound = 1;
+  const engineSound = boostType === "T" ? 2 : boostType === "S" ? 3 : 1;
 
   const catalogCarId = String(car?.catalog_car_id || "");
   if (!hasShowroomCarSpec(catalogCarId)) {
@@ -3753,7 +3749,7 @@ async function handlePractice(context) {
 
   const carStats =
     `<n2 es='${engineSound}' sl='${n2.sl}' sg='0' rc='0' tmp='0' r='${n2.r}' v='0' ` +
-    `a='${n2.a}' n='${n2.n}' o='${n2.o}' s='0.854' b='${practiceBoostType}' p='1.8' c='0' e='${nosSize}' d='N' ` +
+    `a='${n2.a}' n='${n2.n}' o='${n2.o}' s='0.854' b='${boostType}' p='1.8' c='0' e='${nosSize}' d='N' ` +
     `f='${n2.f}' g='${n2.g}' h='${n2.h}' i='${n2.i}' j='${n2.j}' k='0' l='${n2.l}' ` +
     `q='0' m='0' t='0' u='10' w='0' x='${n2.x}' y='${n2.y}' z='${n2.z}' ` +
     `aa='${n2.aa}' ab='${accountCarId}' ac='0' ad='0' ` +
@@ -3767,7 +3763,6 @@ async function handlePractice(context) {
     carId: accountCarId,
     catalogCarId,
     boostType,
-    practiceBoostType,
     nosSize,
     bodyLength: body.length,
   });
