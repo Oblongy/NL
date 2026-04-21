@@ -2124,11 +2124,24 @@ export class TcpServer {
     const requestedRoomId = Number(parts[2] || 0);
     const fallbackRoomId = Number(parts[1] || 0);
 
-    // The tournament strip can still funnel the follow-up JRC packet through a
-    // generic room id of `1`. Preserve the strip selection and override that
-    // legacy room id before the generic known-room fallback claims it.
-    if (Number(conn?.lastRequestedStripId || 0) === 7 && (requestedRoomId === 1 || fallbackRoomId === 1)) {
-      return Number(this.getLiveTournamentEvent()?.roomId || 2);
+    const lastRequestedStripId = Number(conn?.lastRequestedStripId || 0);
+    const isGenericRoomJoin = requestedRoomId === 1 || fallbackRoomId === 1;
+
+    // Some lobby strips still send a generic room id of `1` in the follow-up
+    // JRC packet. Preserve the LRCR2 strip selection before the generic
+    // fallback claims Team Rivals and silently puts the player in the wrong
+    // strip. This matters for Newbie Rivals, which otherwise lands in room 1.
+    if (lastRequestedStripId > 0 && isGenericRoomJoin) {
+      if (lastRequestedStripId === 7) {
+        return Number(this.getLiveTournamentEvent()?.roomId || 2);
+      }
+
+      const stripRoom = this.getRoomDefinitions().find(
+        (room) => Number(room.stripId ?? room.roomId) === lastRequestedStripId,
+      );
+      if (stripRoom?.roomId) {
+        return Number(stripRoom.roomId);
+      }
     }
 
     if (this.isKnownRoomId(requestedRoomId)) {
