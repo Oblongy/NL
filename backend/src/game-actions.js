@@ -2211,9 +2211,10 @@ async function handleGetTwoRacersCars(context) {
     };
   }
 
-  const gameCarIds = [params.get("r1acid"), params.get("r2acid")]
+  const requestedCarIds = [params.get("r1acid"), params.get("r2acid")]
     .map((value) => Number(value || 0))
-    .filter((value) => Number.isFinite(value) && value > 0);
+    .filter((value) => Number.isFinite(value));
+  const gameCarIds = requestedCarIds.filter((value) => value > 0);
 
   if (gameCarIds.length === 0) {
     return { body: failureBody(), source: "supabase:gettworacerscars:missing-cars" };
@@ -2224,6 +2225,18 @@ async function handleGetTwoRacersCars(context) {
   const orderedCars = gameCarIds
     .map((gameCarId) => carsById.get(gameCarId) || buildComputerTournamentVirtualCar(gameCarId))
     .filter(Boolean);
+
+  // The tournament qualify flow requests (myCarId, 0) but still reuses the
+  // two-racer XML structure. Mirror the player's car into lane 2 so the client
+  // always has childNodes[0] and childNodes[1] available during that flow.
+  if (requestedCarIds.length >= 2 && Number(requestedCarIds[1] || 0) <= 0 && orderedCars.length === 1) {
+    const primaryCar = orderedCars[0];
+    orderedCars.push({
+      ...primaryCar,
+      game_car_id: Number(primaryCar.game_car_id),
+      account_car_id: Number(primaryCar.account_car_id || primaryCar.game_car_id),
+    });
+  }
 
   return {
     body: wrapSuccessData(renderTwoRacerCars(orderedCars)),
@@ -4377,6 +4390,55 @@ function getComputerTournamentOpponentProfile(session) {
   };
 }
 
+function buildLegacyRaceChatUsersXml(roomPlayers = []) {
+  const usersXml = roomPlayers
+    .filter((player) => Number(player?.playerId || 0) > 0 && String(player?.username || "").length > 0)
+    .map((player) => {
+      const clientRole = Number(player?.clientRole || 0);
+      let tf = "7D7D7D";
+      if (clientRole === 1) tf = "FF0000";
+      else if (clientRole === 2) tf = "66CCFF";
+      else if (clientRole === 8) tf = "0000FF";
+      else if (clientRole === 6) tf = "00AA00";
+
+      return (
+        `<u i='${Number(player.playerId)}' un='${escapeXml(player.username)}' ` +
+        `ti='${Number(player.teamId || 0)}' tid='${Number(player.teamId || 0)}' ` +
+        `tf='${tf}' ms='${Number(player.clientRole || 5)}' iv='0'/>`
+      );
+    })
+    .join("");
+
+  return `<ul>${usersXml}</ul>`;
+}
+
+async function handleListRaceChatUsers(context) {
+  const { services } = context;
+  const caller = await resolveCallerSession(context, "generated:listracechatusers");
+  if (!caller?.ok) {
+    return caller;
+  }
+
+  const tcpServer = services?.tcpServer;
+  if (!tcpServer?.connections || !tcpServer?.rooms) {
+    return {
+      body: wrapSuccessData("<ul></ul>"),
+      source: "generated:listracechatusers:no-tcp",
+    };
+  }
+
+  const activeConn = [...tcpServer.connections.values()].find(
+    (candidate) => Number(candidate?.playerId || 0) === Number(caller.playerId),
+  );
+  const roomId = Number(activeConn?.roomId || 0);
+  const roomPlayers = roomId > 0 ? tcpServer.rooms.get(roomId) || [] : [];
+
+  return {
+    body: wrapSuccessData(buildLegacyRaceChatUsersXml(roomPlayers)),
+    source: roomId > 0 ? `generated:listracechatusers:room=${roomId}` : "generated:listracechatusers:no-room",
+  };
+}
+
 function buildComputerTournamentVirtualCar(gameCarId) {
   const numericId = Number(gameCarId || 0);
   if (numericId < 6000 || numericId >= 7000) {
@@ -4921,6 +4983,8 @@ const handlers = {
   getbuddies: handleGetBuddies,
   getbuddylist: handleGetBuddies,
   buddylist: handleGetBuddies,
+  listracechatusers: handleListRaceChatUsers,
+  leaveracechat: async () => ({ body: `"s", 1`, source: "generated:leaveracechat" }),
   // --- Uploads ---
   uploadrequest: handleUploadRequest,
   // --- Race ---

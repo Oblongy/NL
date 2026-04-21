@@ -72,6 +72,7 @@ export class TcpServer {
     // O(1) lookups for player->connection and player->race mappings
     this.connIdByPlayerId = new Map();
     this.raceIdByPlayerId = new Map();
+    this.liveTournamentState = null;
     
     // Cleanup stale challenges every 5 minutes
     this.challengeCleanupInterval = setInterval(() => {
@@ -287,6 +288,31 @@ export class TcpServer {
       // --- HTI: Heartbeat ---
       } else if (messageType === "HTI") {
         this.sendMessage(conn, `"ac", "HTI", "s", "${this.buildTournamentInfoXml(conn)}"`);
+      } else if (messageType === "HTGET32") {
+        this.sendMessage(conn, `"ac", "HTGET32", "d", "${this.escapeForTcp(this.buildLiveTournamentTop32Xml(conn))}"`);
+      } else if (messageType === "HTGETTREE") {
+        this.sendMessage(conn, `"ac", "HTGETTREE", "d", "${this.escapeForTcp(this.buildLiveTournamentTreeXml(conn))}"`);
+      } else if (messageType === "HTJOIN") {
+        this.handleLiveTournamentJoin(conn, { spectate: false, parts });
+      } else if (messageType === "HTSPECTATE") {
+        this.handleLiveTournamentJoin(conn, { spectate: true, parts });
+      } else if (messageType === "HTQUIT") {
+        this.leaveRoom(conn);
+        this.sendMessage(conn, '"ac", "HTQUIT", "s", 1');
+      } else if (messageType === "HTINFO") {
+        this.sendMessage(conn, `"ac", "HTINFO", "d", "${this.escapeForTcp(this.buildTournamentInfoXml(conn))}"`);
+      } else if (messageType === "HTQREADY") {
+        this.sendMessage(conn, '"ac", "HTQREADY", "s", 1');
+      } else if (messageType === "HTQD") {
+        this.sendMessage(conn, '"ac", "HTQD", "s", 1');
+      } else if (messageType === "HTQRT") {
+        this.sendMessage(conn, '"ac", "HTQRT", "s", 1');
+      } else if (messageType === "HTREADY") {
+        this.sendMessage(conn, '"ac", "HTREADY", "s", 1');
+      } else if (messageType === "HTRT") {
+        this.sendMessage(conn, '"ac", "HTRT", "s", 1');
+      } else if (messageType === "HTD") {
+        this.sendMessage(conn, `"ac", "HTD", "d", "${this.escapeForTcp(this.buildLiveTournamentRaceResultXml(conn))}"`);
 
       // --- S / I: In-race position sync --- sanitize and relay to opponent, don't ack
       } else if (messageType === "S" || messageType === "I") {
@@ -1724,6 +1750,63 @@ export class TcpServer {
     };
   }
 
+  getLiveTournamentState(conn = null) {
+    const event = this.getLiveTournamentEvent();
+    const now = Date.now();
+    const cached = this.liveTournamentState;
+    if (cached && now - cached.createdAt < 60_000) {
+      if (conn?.playerId && !cached.roster.some((entry) => Number(entry.id) === Number(conn.playerId))) {
+        cached.roster[0] = {
+          id: Number(conn.playerId),
+          username: conn.username || `Player ${conn.playerId}`,
+          rt: 0.548,
+          et: 14.882,
+          bt: 0,
+        };
+      }
+      return cached;
+    }
+
+    const roster = Array.from({ length: event.maxPlayers }, (_, index) => ({
+      id: 7000 + index + 1,
+      username: `tourneyL ${String(index + 1).padStart(2, "0")}`,
+      rt: 0.52 + (index % 7) * 0.01,
+      et: 12.9 + index * 0.037,
+      bt: 0,
+    }));
+    if (conn?.playerId) {
+      roster[0] = {
+        id: Number(conn.playerId),
+        username: conn.username || `Player ${conn.playerId}`,
+        rt: 0.548,
+        et: 14.882,
+        bt: 0,
+      };
+    }
+
+    const round1 = [];
+    for (let index = 0; index < 16; index += 1) {
+      const left = roster[index];
+      const right = roster[index + 16];
+      round1.push({
+        matchId: index + 1,
+        winnerId: 0,
+        racers: [
+          { i: left.id, u: left.username, w: 0 },
+          { i: right.id, u: right.username, w: 0 },
+        ],
+      });
+    }
+
+    this.liveTournamentState = {
+      createdAt: now,
+      event,
+      roster,
+      rounds: [{ roundId: 1, matches: round1 }],
+    };
+    return this.liveTournamentState;
+  }
+
   buildTournamentInfoXml(_conn, { ut = Math.floor(Date.now() / 1000) } = {}) {
     const event = this.getLiveTournamentEvent();
     return (
@@ -1732,6 +1815,41 @@ export class TcpServer {
       `tstr='${this.escapeXml(event.timeLabel)}' b='${event.bracketDialIn}' ` +
       `mp='${event.maxPlayers}' pp='${event.purse}' ct='${event.entryType}' ` +
       `c='${event.entryCost}'/>`
+    );
+  }
+
+  buildLiveTournamentTop32Xml(conn) {
+    const state = this.getLiveTournamentState(conn);
+    const rows = state.roster.map((entry) =>
+      `<r i='${entry.id}' u='${this.escapeXml(entry.username)}' rt='${entry.rt.toFixed(3)}' et='${entry.et.toFixed(3)}' bt='${entry.bt.toFixed(3)}'/>`
+    ).join("");
+    return `<n2>${rows}</n2>`;
+  }
+
+  buildLiveTournamentTreeXml(conn) {
+    const state = this.getLiveTournamentState(conn);
+    const roundsXml = state.rounds.map((round) => {
+      const matchesXml = round.matches.map((match) => {
+        const racersXml = match.racers
+          .map((racer) => `<u i='${racer.i}' u='${this.escapeXml(racer.u)}' w='${racer.w}'/>`)
+          .join("");
+        return `<m i='${match.matchId}' w='${match.winnerId}'>${racersXml}</m>`;
+      }).join("");
+      return `<r i='${round.roundId}'>${matchesXml}</r>`;
+    }).join("");
+    return `<n2>${roundsXml}</n2>`;
+  }
+
+  buildLiveTournamentRaceResultXml(conn) {
+    const state = this.getLiveTournamentState(conn);
+    const lane1 = state.roster[0];
+    const lane2 = state.roster[1];
+    const winnerId = Number(lane1.id);
+    return (
+      `<r r1id='${lane1.id}' r2id='${lane2.id}' wid='${winnerId}' ` +
+      `rt1='${lane1.rt.toFixed(3)}' et1='${lane1.et.toFixed(3)}' ts1='109.50' ` +
+      `rt2='${lane2.rt.toFixed(3)}' et2='${lane2.et.toFixed(3)}' ts2='108.90' ` +
+      `c1='5' c2='0' m1='2500' m2='0' h1='0' h2='0'/>`
     );
   }
 
@@ -1800,6 +1918,45 @@ export class TcpServer {
       return `<u i='${player.playerId}' un='${this.escapeXml(player.username)}' ti='${Number(player.teamId || 0)}' tid='${Number(player.teamId || 0)}' tf='${color}' ms='5' iv='0'/>`;
     }).join("");
     return `<ul>${usersXml}</ul>`;
+  }
+
+  handleLiveTournamentJoin(conn, { spectate = false, parts = [] } = {}) {
+    const event = this.getLiveTournamentEvent();
+    const roomId = Number(event.roomId || 2);
+    const playerId = Number(conn.playerId || 0);
+    if (!playerId) {
+      this.sendMessage(conn, `"ac", "${spectate ? "HTSPECTATE" : "HTJOIN"}", "s", 0`);
+      return;
+    }
+
+    const currentRoom = this.rooms.get(roomId) || [];
+    const filtered = currentRoom.filter((player) => Number(player.playerId) !== playerId && player.connId !== conn.id);
+    filtered.push({
+      connId: conn.id,
+      playerId,
+      username: conn.username || "Player",
+      carId: Number(conn.carId || parts[2] || 0),
+      teamId: Number(conn.teamId || 0),
+      teamRole: conn.teamRole || "",
+      clientRole: conn.clientRole || 5,
+    });
+    this.rooms.set(roomId, filtered);
+    conn.roomId = roomId;
+    conn.liveTournamentSpectator = !!spectate;
+
+    if (this.raceRoomRegistry && playerId > 0) {
+      this.raceRoomRegistry.addPlayer(roomId, {
+        id: playerId,
+        publicId: getPublicIdForPlayer({ id: playerId }),
+        name: conn.username || "Player",
+      });
+    }
+
+    this.sendMessage(
+      conn,
+      `"ac", "${spectate ? "HTSPECTATE" : "HTJOIN"}", "s", 1, "rid", ${roomId}, "eid", ${Number(event.id || 0)}`
+    );
+    this.sendRoomSnapshot(conn, filtered);
   }
 
   isKingOfTheHillRoomType(roomType) {
