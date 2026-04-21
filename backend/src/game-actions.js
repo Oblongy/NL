@@ -2336,12 +2336,12 @@ async function handleBuyDyno(context) {
   if (player.has_dyno === 1 || player.has_dyno === true) {
     return {
       body:
-        `"s", "1", "b", "${player.money}", ` +
-        `"bs", "${dynoState.boostSetting}", ` +
-        `"mp", "${dynoState.maxPsi}", ` +
-        `"cs", "${dynoState.chipSetting}", ` +
-        `"sl", "${dynoState.shiftLightRpm}", ` +
-        `"rl", "${dynoState.redLine}"`,
+        `"s", 1, "b", ${Number(player.money)}, ` +
+        `"bs", ${Number(dynoState.boostSetting)}, ` +
+        `"mp", ${Number(dynoState.maxPsi)}, ` +
+        `"cs", ${Number(dynoState.chipSetting)}, ` +
+        `"sl", ${Number(dynoState.shiftLightRpm)}, ` +
+        `"rl", ${Number(dynoState.redLine)}`,
       source: "supabase:buydyno:already-owned",
     };
   }
@@ -2364,12 +2364,12 @@ async function handleBuyDyno(context) {
   // (s, b, bs, mp, cs, sl, rl)
   return {
     body:
-      `"s", "1", "b", "${newBalance}", ` +
-      `"bs", "${dynoState.boostSetting}", ` +
-      `"mp", "${dynoState.maxPsi}", ` +
-      `"cs", "${dynoState.chipSetting}", ` +
-      `"sl", "${dynoState.shiftLightRpm}", ` +
-      `"rl", "${dynoState.redLine}"`,
+      `"s", 1, "b", ${newBalance}, ` +
+      `"bs", ${Number(dynoState.boostSetting)}, ` +
+      `"mp", ${Number(dynoState.maxPsi)}, ` +
+      `"cs", ${Number(dynoState.chipSetting)}, ` +
+      `"sl", ${Number(dynoState.shiftLightRpm)}, ` +
+      `"rl", ${Number(dynoState.redLine)}`,
     source: "supabase:buydyno",
   };
 }
@@ -2681,7 +2681,7 @@ async function handleBuyCar(context) {
   await updatePlayerMoney(supabase, caller.playerId, newBalance);
 
   return {
-    body: `"s", 2, "m", "${newBalance}", "d", "<r i='${createdCar.game_car_id}' ai='${createdCar.game_car_id}' ci='${catalogCarId}'/>"`,
+    body: `"s", 2, "m", ${newBalance}, "d", "<r i='${createdCar.game_car_id}' ai='${createdCar.game_car_id}' ci='${catalogCarId}'/>"`,
     source: "supabase:buycar",
   };
 }
@@ -2963,7 +2963,7 @@ async function handleBuyTestDriveCar(context) {
     clearActiveTestDriveCar(caller.playerId);
     await clearCarTestDriveState(supabase, activeTestDrive.gameCarId);
     return {
-      body: `"s", 1, "m", "${newPointsBalance}"`,
+      body: `"s", 1, "m", ${newPointsBalance}`,
       source: "buytestdrivecar:points",
     };
   }
@@ -2977,7 +2977,7 @@ async function handleBuyTestDriveCar(context) {
   clearActiveTestDriveCar(caller.playerId);
   await clearCarTestDriveState(supabase, activeTestDrive.gameCarId);
   return {
-    body: `"s", 2, "m", "${newMoneyBalance}"`,
+    body: `"s", 2, "m", ${newMoneyBalance}`,
     source: "buytestdrivecar:money",
   };
 }
@@ -3931,7 +3931,7 @@ async function handleChangeBoost(context) {
     return { body: `"s", "-3"`, source: "supabase:changeboost:save-failed" };
   }
 
-  return { body: `"s", "1"`, source: "supabase:changeboost" };
+  return { body: `"s", 1`, source: "supabase:changeboost" };
 }
 
 async function handleChangeAirFuel(context) {
@@ -3969,7 +3969,7 @@ async function handleChangeAirFuel(context) {
     return { body: `"s", "-3"`, source: "supabase:changeairfuel:save-failed" };
   }
 
-  return { body: `"s", "1"`, source: "supabase:changeairfuel" };
+  return { body: `"s", 1`, source: "supabase:changeairfuel" };
 }
 
 async function handleChangeShiftLightRpm(context) {
@@ -4001,7 +4001,7 @@ async function handleChangeShiftLightRpm(context) {
   }
 
   return {
-    body: `"s", "1", "r", "${Math.round(requestedRpm)}"`,
+    body: `"s", 1, "r", ${Math.round(requestedRpm)}`,
     source: "supabase:changeshiftlightrpm",
   };
 }
@@ -4095,7 +4095,7 @@ async function handleBuyGears(context) {
     return { body: `"s", "-8"`, source: "supabase:buygears:save-failed" };
   }
 
-  return { body: `"s", "1"`, source: "supabase:buygears" };
+  return { body: `"s", 2, "b", ${newBalance}`, source: "supabase:buygears" };
 }
 
 async function handlePractice(context) {
