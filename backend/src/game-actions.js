@@ -5131,7 +5131,9 @@ async function handleGetSpotlightRacers(context) {
 
 async function handleGetRacerSearch(context) {
   const { supabase, params, logger } = context;
-  const username = params.get("u") || params.get("un") || params.get("username") || "";
+  const username = String(
+    params.get("st") || params.get("u") || params.get("un") || params.get("username") || "",
+  ).replace(/[\r\n\t]+/g, " ").trim();
 
   if (!supabase || !username) {
     logger.warn("Racer search: no username provided");
@@ -5157,10 +5159,31 @@ async function handleGetRacerSearch(context) {
 }
 
 async function handleGetSupport(context) {
-  // Support request handler for moderator tools and player reports
+  const { params } = context;
+  const supportId = Number(params.get("sid") || 0);
+  const callId = Number(params.get("i") || 0);
+  const offenderUsername = String(params.get("offun") || "").trim();
+  const playerName = String(params.get("pn") || "").trim();
+  const notes1 = String(params.get("n1") || "").trim();
+  const notes2 = String(params.get("n2") || "").trim();
+  const email = String(params.get("em") || "").trim();
+  const ticketNumber = String(Date.now()).slice(-8);
+  const subject = offenderUsername || playerName || email || "support";
+  const detail = notes1 || notes2 || `Support request ${supportId}`;
+  const message = `Submitted ${subject}: ${detail}`.slice(0, 240);
+
   return {
-    body: `"s", 1`,
-    source: "stub:getsupport",
+    body: `"s", 1, "m", "${escapeXml(message)}", "i", ${callId}, "t", "${ticketNumber}"`,
+    source: `generated:getsupport:sid=${supportId}`,
+  };
+}
+
+async function handleGetMisconductCount(context) {
+  const { params } = context;
+  const offenderAccountId = Number(params.get("oid") || params.get("id") || 0);
+  return {
+    body: `"id", ${offenderAccountId}, "r", 0, "b", 0`,
+    source: "generated:getmisconductcount",
   };
 }
 
@@ -5740,6 +5763,7 @@ const handlers = {
   getelectionresult: handleGetElectionResult,
   electionvote: handleElectionVote,
   racersearch: handleGetRacerSearch,
+  getmisconductcount: handleGetMisconductCount,
   getsupport: handleGetSupport,
   getdescription: handleGetDescription,
   getavatarage: handleGetAvatarAge,
