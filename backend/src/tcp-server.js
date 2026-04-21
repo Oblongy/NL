@@ -1932,9 +1932,9 @@ export class TcpServer {
   buildRoomQueueXml(roomPlayers, roomId = null) {
     const roomType = this.getRoomDefinition(roomId)?.type || "";
 
-    // Team Rivals room snapshots should start empty until actual challenge
-    // records are pushed; generic 1v1 rows confuse the Team Rivals room movie.
-    if (roomType === "team") {
+    // Rivals-style room snapshots should start empty until actual challenge
+    // records are pushed; generic self-paired rows confuse the room movie.
+    if (roomType === "team" || roomType === "newbie") {
       const roomState = this.raceRoomRegistry?.get(roomId);
       if (roomState?.teamRivalsQueueXml) {
         return String(roomState.teamRivalsQueueXml);
