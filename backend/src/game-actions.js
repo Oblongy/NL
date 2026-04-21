@@ -4399,6 +4399,92 @@ async function handleCompletePollQuestion(context) {
   };
 }
 
+function buildInactiveElectionScheduleXml() {
+  const now = Math.floor(Date.now() / 1000);
+  const day = 24 * 60 * 60;
+  const mk = (offsetDays) => String(now + offsetDays * day);
+  return (
+    `<e>` +
+    `<q>1</q>` +
+    `<nomdates>Check back later</nomdates>` +
+    `<eliminationdates>Check back later</eliminationdates>` +
+    `<finalvotedates>Check back later</finalvotedates>` +
+    `<currentdate>${mk(0)}</currentdate>` +
+    `<promobeg>${mk(-7)}</promobeg>` +
+    `<promoend>${mk(-6)}</promoend>` +
+    `<nomclosedbeg>${mk(-5)}</nomclosedbeg>` +
+    `<nomclosedend>${mk(-4)}</nomclosedend>` +
+    `<nomannouncebeg>${mk(-3)}</nomannouncebeg>` +
+    `<nomannounceend>${mk(-2)}</nomannounceend>` +
+    `<nombeg>${mk(-1)}</nombeg>` +
+    `<nomend>${mk(0)}</nomend>` +
+    `<voting>` +
+    `<1>` +
+    `<interviewbeg>${mk(1)}</interviewbeg><interviewend>${mk(2)}</interviewend>` +
+    `<votingbeg>${mk(3)}</votingbeg><votingend>${mk(4)}</votingend>` +
+    `<votingclosedbeg>${mk(5)}</votingclosedbeg><votingclosedend>${mk(6)}</votingclosedend>` +
+    `<votingresults>${mk(7)}</votingresults>` +
+    `</1>` +
+    `<2>` +
+    `<interviewbeg>${mk(8)}</interviewbeg><interviewend>${mk(9)}</interviewend>` +
+    `<votingbeg>${mk(10)}</votingbeg><votingend>${mk(11)}</votingend>` +
+    `<votingclosedbeg>${mk(12)}</votingclosedbeg><votingclosedend>${mk(13)}</votingclosedend>` +
+    `<votingresults>${mk(14)}</votingresults>` +
+    `</2>` +
+    `<3>` +
+    `<interviewbeg>${mk(15)}</interviewbeg><interviewend>${mk(16)}</interviewend>` +
+    `<votingbeg>${mk(17)}</votingbeg><votingend>${mk(18)}</votingend>` +
+    `<votingclosedbeg>${mk(19)}</votingclosedbeg><votingclosedend>${mk(20)}</votingclosedend>` +
+    `<votingresults>${mk(21)}</votingresults>` +
+    `</3>` +
+    `</voting>` +
+    `</e>`
+  );
+}
+
+async function handleGetElectionPhase(context) {
+  const requestedId = Number(context.params.get("i") || 1) || 1;
+  return {
+    body: `"s", 0, "phase", 0, "timeRemainingInPhase", 0, "i", ${requestedId}`,
+    source: "generated:getelectionphase:inactive",
+  };
+}
+
+async function handleGetElectionSchedule() {
+  return {
+    body: wrapSuccessData(buildInactiveElectionScheduleXml()),
+    source: "generated:getelectionschedule:inactive",
+  };
+}
+
+async function handleGetNominateCount() {
+  return {
+    body: `"c", 0`,
+    source: "generated:getnominatecount:inactive",
+  };
+}
+
+async function handleNominate() {
+  return {
+    body: `"s", 0, "e", "No active election."`,
+    source: "generated:nominate:inactive",
+  };
+}
+
+async function handleGetElectionResult() {
+  return {
+    body: wrapSuccessData(`<r s='0'><e>No active election.</e></r>`),
+    source: "generated:getelectionresult:inactive",
+  };
+}
+
+async function handleElectionVote() {
+  return {
+    body: `"s", 0, "e", "No active election."`,
+    source: "generated:electionvote:inactive",
+  };
+}
+
 async function handleTeamInfo(context) {
   const { supabase, params, services } = context;
   if (!supabase) {
@@ -4597,6 +4683,12 @@ const handlers = {
   getleaderboard: handleGetLeaderboard,
   getnews: handleGetNews,
   getspotlightracers: handleGetSpotlightRacers,
+  getelectionphase: handleGetElectionPhase,
+  getelectionschedule: handleGetElectionSchedule,
+  getnominatecount: handleGetNominateCount,
+  nominate: handleNominate,
+  getelectionresult: handleGetElectionResult,
+  electionvote: handleElectionVote,
   racersearch: handleGetRacerSearch,
   getsupport: handleGetSupport,
   getdescription: handleGetDescription,

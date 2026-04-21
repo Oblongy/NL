@@ -186,8 +186,13 @@ function serveCompatAsset(res, pathname) {
       : "application/octet-stream";
   }
 
-  // Serve car body, wheel, brand, badge SWFs from the local cache folder
-  const cacheSwfMatch = pathname.match(/^\/cache\/(car\/(?!userDecals)[^?#]+\.swf|brands\/[^?#]+\.swf|badges\/[^?#]+\.swf)$/i);
+  if (!filePath && /^\/newuserform\.swf$/i.test(pathname)) {
+    filePath = resolve(process.cwd(), "../cache/misc/newuserform.swf");
+    contentType = "application/x-shockwave-flash";
+  }
+
+  // Serve cached SWFs from the local cache folder.
+  const cacheSwfMatch = pathname.match(/^\/cache\/(car\/(?!userDecals)[^?#]+\.swf|brands\/[^?#]+\.swf|badges\/[^?#]+\.swf|misc\/[^?#]+\.swf)$/i);
   if (!filePath && cacheSwfMatch) {
     const safePath = cacheSwfMatch[1].replace(/\.\./g, "");
     filePath = resolve(process.cwd(), "../cache", safePath);
