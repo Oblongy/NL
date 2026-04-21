@@ -22,6 +22,29 @@ const FACTORY_INDUCTION_PART_ID_BY_KIND = Object.freeze({
   TT: 269,
   S: 208,
 });
+const DEFAULT_SHOWROOM_VISIBLE_PARTS_BY_CAR_ID = Object.freeze({
+  4: Object.freeze([
+    Object.freeze({ categoryId: 13, designId: 1, partSize: "10", name: "Stock Tires" }),
+    Object.freeze({ categoryId: 71, designId: 1, name: "Stock Hood" }),
+    Object.freeze({ categoryId: 76, designId: 1, name: "Stock Headlights" }),
+    Object.freeze({ categoryId: 77, designId: 1, name: "Stock Tail Lights" }),
+    Object.freeze({ categoryId: 128, designId: 1, name: "Stock Front Bumper" }),
+    Object.freeze({ categoryId: 129, designId: 1, name: "Stock Side Skirts" }),
+    Object.freeze({ categoryId: 130, designId: 1, name: "Stock Rear Bumper" }),
+    Object.freeze({ categoryId: 140, designId: 1, name: "Stock Grille" }),
+  ]),
+  6: Object.freeze([
+    Object.freeze({ categoryId: 13, designId: 1, partSize: "10", name: "Stock Tires" }),
+    Object.freeze({ categoryId: 65, designId: 1, name: "Stock Spoiler" }),
+    Object.freeze({ categoryId: 71, designId: 1, name: "Stock Hood" }),
+    Object.freeze({ categoryId: 76, designId: 1, name: "Stock Headlights" }),
+    Object.freeze({ categoryId: 77, designId: 1, name: "Stock Tail Lights" }),
+    Object.freeze({ categoryId: 128, designId: 1, name: "Stock Front Bumper" }),
+    Object.freeze({ categoryId: 129, designId: 1, name: "Stock Side Skirts" }),
+    Object.freeze({ categoryId: 130, designId: 1, name: "Stock Rear Bumper" }),
+    Object.freeze({ categoryId: 140, designId: 1, name: "Stock Grille" }),
+  ]),
+});
 
 let partsCatalogById = null;
 let stockWheelFitmentsByCarId = null;
@@ -126,6 +149,46 @@ function buildInstalledCatalogPartXml(catalogPart) {
   return `<p ${serialized}/>`;
 }
 
+function buildSyntheticVisiblePartXml(catalogCarId, entry, index) {
+  const categoryId = Number(entry?.categoryId || 0);
+  const designId = String(entry?.designId || 1);
+  if (!categoryId) {
+    return "";
+  }
+
+  const syntheticPartId = 900000 + Number(catalogCarId || 0) * 100 + Number(index || 0);
+  const attrs = {
+    ai: `stock${catalogCarId}_${categoryId}`,
+    i: syntheticPartId,
+    ci: categoryId,
+    pt: "c",
+    n: entry?.name || `Stock Part ${categoryId}`,
+    p: "0",
+    pp: "0",
+    g: "C",
+    di: designId,
+    pdi: designId,
+    b: "setup",
+    bn: "Setup",
+    mn: entry?.name || `Stock Part ${categoryId}`,
+    l: "100",
+    in: "1",
+    mo: "0",
+    hp: "0",
+    tq: "0",
+    wt: "0",
+    cc: "",
+    ps: entry?.partSize || "",
+  };
+
+  const orderedKeys = ["ai", "i", "ci", "pt", "n", "p", "pp", "g", "di", "pdi", "b", "bn", "mn", "l", "in", "mo", "hp", "tq", "wt", "cc", "ps"];
+  const serialized = orderedKeys
+    .filter((key) => attrs[key] !== "" && attrs[key] !== undefined)
+    .map((key) => `${key}='${attrs[key]}'`)
+    .join(" ");
+  return `<p ${serialized}/>`;
+}
+
 export function getDefaultPartsXmlForCar(catalogCarId) {
   const inductionKind = getShowroomCarInduction(catalogCarId);
   const partId = FACTORY_INDUCTION_PART_ID_BY_KIND[inductionKind];
@@ -134,6 +197,16 @@ export function getDefaultPartsXmlForCar(catalogCarId) {
   }
 
   return buildInstalledCatalogPartXml(getPartsCatalogById().get(partId));
+}
+
+export function getDefaultShowroomPartsXmlForCar(catalogCarId) {
+  const visibleParts = DEFAULT_SHOWROOM_VISIBLE_PARTS_BY_CAR_ID[String(catalogCarId || "")] || [];
+  const visiblePartsXml = visibleParts
+    .map((entry, index) => buildSyntheticVisiblePartXml(catalogCarId, entry, index + 1))
+    .join("");
+  const defaultPerformancePartsXml = getDefaultPartsXmlForCar(catalogCarId);
+
+  return `${visiblePartsXml}${defaultPerformancePartsXml}`;
 }
 
 export function getDefaultWheelFitmentForCar(catalogCarId) {
