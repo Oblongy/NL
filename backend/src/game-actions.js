@@ -1939,7 +1939,7 @@ async function handleTeamRivalsOk(context) {
 }
 
 async function handleLogin(context) {
-  const { supabase, params, logger } = context;
+  const { supabase, params, logger, services } = context;
   if (!supabase) {
     return null;
   }
@@ -1973,9 +1973,11 @@ async function handleLogin(context) {
     });
     const garageCars = decorateCarsWithTestDriveState(player.id, cars);
     const sessionKey = await createLoginSession({ supabase, playerId: player.id });
+    const pollXml = services?.homePollState?.renderPollNodeForPlayer?.(player.id);
     return {
       body: buildLoginBody(player, garageCars, null, sessionKey, logger, {
         testDriveCar: buildTestDriveLoginState(player.id, garageCars),
+        pollXml,
       }),
       source: "supabase:login",
     };
@@ -4377,25 +4379,55 @@ async function handleGetBuddies(context) {
 }
 
 async function handleCompletePollQuestion(context) {
-  const { logger, params } = context;
+  const { logger, params, services } = context;
   const caller = await resolveCallerSession(context, "supabase:completepollquestion");
   if (!caller?.ok) {
     return caller;
   }
 
-  const answerId = Number(params.get("said"));
-  const questionId = Number(params.get("sqid"));
+  const surveyId = Number(
+    params.get("sid") || params.get("ssid") || params.get("surveyid") || params.get("surveyId"),
+  );
+  const answerId = Number(params.get("said") || params.get("oid") || params.get("answerid") || params.get("answerId"));
+  const questionId = Number(params.get("sqid") || params.get("qid") || params.get("questionid") || params.get("questionId"));
+  const pollState = services?.homePollState;
 
-  logger.info("Ignoring completed poll submission for inactive poll", {
+  if (!pollState) {
+    logger.warn("Home poll submission ignored because poll state is unavailable", {
+      playerId: caller.playerId,
+      publicId: caller.publicId,
+      surveyId: Number.isFinite(surveyId) && surveyId > 0 ? surveyId : null,
+      answerId: Number.isFinite(answerId) && answerId > 0 ? answerId : null,
+      questionId: Number.isFinite(questionId) && questionId > 0 ? questionId : null,
+    });
+
+    return {
+      body: `"s", -1`,
+      source: "generated:completepollquestion:missing-state",
+    };
+  }
+
+  const submission = pollState.submitAnswer({
+    playerId: caller.playerId,
+    surveyId,
+    questionId,
+    answerId,
+  });
+
+  logger.info("Home poll submission processed", {
     playerId: caller.playerId,
     publicId: caller.publicId,
+    surveyId: Number.isFinite(surveyId) && surveyId > 0 ? surveyId : null,
     answerId: Number.isFinite(answerId) && answerId > 0 ? answerId : null,
     questionId: Number.isFinite(questionId) && questionId > 0 ? questionId : null,
+    ok: submission.ok,
+    code: submission.code,
+    reason: submission.reason,
   });
 
   return {
-    body: `"s", 1`,
-    source: "generated:completepollquestion:noop",
+    body: `"s", ${submission.code}`,
+    source: `generated:completepollquestion:${submission.reason}`,
   };
 }
 

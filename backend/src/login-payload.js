@@ -141,16 +141,23 @@ function renderDynoNode(player) {
   return "<n id='dyno' p='500'/>";
 }
 
-const STATIC_INTRO_XML =
-  "<n id='intro'>" +
-  "<n id='dailyLogin'><s><d a='0'/><d a='0'/><d a='0'/><d a='0'/><d a='0'/><d i=''/></s></n>" +
-  "<n id='pwc'><x/></n>" +
-  "<n id='banner'><outer><inner/></outer></n>" +
-  "<n id='poll'><s/></n>" +
-  "<n id='dailyChallenge'><s>" +
-    "<x ct='5' w='3' c='0' et='2027-01-01 23:59:59' tt='0' tr='0' bp='5000' mp='5000' pp='50' ptp='0' eptp='0' sc='100' pn='Daily Win Bonus' imf='' ci='0' pa='500'/>" +
-  "</s></n>" +
-  "<s/></n>";
+const STATIC_EMPTY_POLL_XML = "<n id='poll'><s/></n>";
+
+function renderIntroXml(options = {}) {
+  const pollXml = options.pollXml || STATIC_EMPTY_POLL_XML;
+
+  return (
+    "<n id='intro'>" +
+    "<n id='dailyLogin'><s><d a='0'/><d a='0'/><d a='0'/><d a='0'/><d a='0'/><d i=''/></s></n>" +
+    "<n id='pwc'><x/></n>" +
+    "<n id='banner'><outer><inner/></outer></n>" +
+    pollXml +
+    "<n id='dailyChallenge'><s>" +
+      "<x ct='5' w='3' c='0' et='2027-01-01 23:59:59' tt='0' tr='0' bp='5000' mp='5000' pp='50' ptp='0' eptp='0' sc='100' pn='Daily Win Bonus' imf='' ci='0' pa='500'/>" +
+    "</s></n>" +
+    "<s/></n>"
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Per-player nodes
@@ -217,7 +224,7 @@ export function buildLoginBody(player, cars, _templateBody, sessionKey, logger, 
     STATIC_BROADCAST_XML +
     buildStaticCarsXml() +
     renderImpoundNodes(options.testDriveCar || null) +
-    STATIC_INTRO_XML +
+    renderIntroXml({ pollXml: options.pollXml }) +
     "</ini>";
 
   const body = `"s", 1, "d", "${ini}"` + buildLoginTail(player, sessionKey);

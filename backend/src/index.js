@@ -7,6 +7,7 @@ import { RaceRoomRegistry } from "./race-room-registry.js";
 import { RaceManager } from "./race-manager.js";
 import { RivalsState } from "./rivals-state.js";
 import { TeamState } from "./team-state.js";
+import { createHomePollState } from "./home-poll-state.js";
 import { TcpNotify } from "./tcp-notify.js";
 import { TcpProxy } from "./tcp-proxy.js";
 import { TcpServer } from "./tcp-server.js";
@@ -18,6 +19,7 @@ const raceRoomRegistry = new RaceRoomRegistry();
 const raceManager = new RaceManager();
 const rivalsState = new RivalsState();
 const teamState = new TeamState();
+const homePollState = createHomePollState({ logger });
 const tcpProxy = new TcpProxy({ logger });
 
 // Create TCP server first (without notify)
@@ -43,6 +45,7 @@ tcpProxy.services = {
   raceManager,
   rivalsState,
   teamState,
+  homePollState,
   tcpNotify,
   tcpServer,
 };
@@ -56,6 +59,7 @@ const server = createHttpServer({
     raceManager,
     rivalsState,
     teamState,
+    homePollState,
     tcpNotify,
     tcpProxy,
     tcpServer,

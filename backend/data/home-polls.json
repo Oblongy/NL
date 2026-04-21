@@ -1,0 +1,22 @@
+{
+  "polls": [
+    {
+      "surveyId": 1,
+      "name": "April 2026 Home Poll",
+      "active": true,
+      "startAt": "2026-04-21T00:00:00-05:00",
+      "questions": [
+        {
+          "questionId": 1,
+          "question": "What should Nitto Legends prioritize next?",
+          "answers": [
+            { "answerId": 1, "answer": "More cars" },
+            { "answerId": 2, "answer": "More race features" },
+            { "answerId": 3, "answer": "Garage and tuning fixes" },
+            { "answerId": 4, "answer": "More events and rewards" }
+          ]
+        }
+      ]
+    }
+  ]
+}
