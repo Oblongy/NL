@@ -325,9 +325,15 @@ export class TcpServer {
           const allPlayersCompleted = race.players.every(p => completions.has(p.playerId));
           
           if (allPlayersCompleted) {
+            const computedWinnerPlayerId = this.determineRaceWinnerFromResults(race);
+            this.logger.info("TCP RD winner resolution", {
+              raceId: race.id,
+              reportedWinnerPlayerId: race.reportedWinnerPlayerId || 0,
+              computedWinnerPlayerId,
+            });
             this.tryBroadcastRaceResult(
               race,
-              race.winnerPlayerId || this.determineRaceWinnerFromResults(race),
+              computedWinnerPlayerId,
             );
             this.races.delete(race.id);
             this.raceCompletions.delete(race.id);
@@ -830,39 +836,99 @@ export class TcpServer {
       return 0;
     }
 
-    const ranked = race.players
+    const racers = race.players
       .map((participant) => {
-        const result = race.finishResults.get(Number(participant.playerId));
-        const reactionTime = Number(this.getRaceReactionTime(race, participant.playerId));
+        const playerId = Number(participant.playerId || 0);
+        const result = race.finishResults.get(playerId);
+        const reactionTime = Number(this.getRaceReactionTime(race, playerId));
         const elapsedTime = Number(result?.et ?? Number.POSITIVE_INFINITY);
+        const bracketTime = Number(participant.bracketTime ?? -1);
+        const breakoutMargin =
+          Number.isFinite(bracketTime) && bracketTime > 0 && Number.isFinite(elapsedTime)
+            ? bracketTime - elapsedTime
+            : Number.NEGATIVE_INFINITY;
+        const brokeOut = breakoutMargin > 0;
+        const validReaction = Number.isFinite(reactionTime) && reactionTime >= 0;
+        const validElapsed = Number.isFinite(elapsedTime) && elapsedTime >= 0;
+        const validRun = validReaction && validElapsed;
         const reportedTotal = Number(result?.totalTime ?? Number.POSITIVE_INFINITY);
         const totalTime = Number.isFinite(reportedTotal) && reportedTotal > 0
           ? reportedTotal
           : (
-            Number.isFinite(reactionTime) && reactionTime >= 0 &&
-            Number.isFinite(elapsedTime) && elapsedTime >= 0
+            validRun
               ? reactionTime + elapsedTime
-              : elapsedTime
+              : Number.POSITIVE_INFINITY
           );
+        const bracketScore =
+          validRun && Number.isFinite(bracketTime) && bracketTime > 0
+            ? reactionTime + Math.max(elapsedTime - bracketTime, 0)
+            : Number.POSITIVE_INFINITY;
+
         return {
-          playerId: Number(participant.playerId || 0),
-          totalTime,
+          playerId,
+          reactionTime,
           elapsedTime,
+          totalTime,
+          bracketTime,
+          bracketScore,
+          breakoutMargin,
+          brokeOut,
+          validRun,
         };
       })
       .filter((entry) => entry.playerId > 0);
 
-    ranked.sort((left, right) => {
-      if (left.totalTime !== right.totalTime) {
-        return left.totalTime - right.totalTime;
+    if (racers.length < 2) {
+      return 0;
+    }
+
+    const [left, right] = racers;
+    const isBracketRace =
+      racers.some((entry) => Number.isFinite(entry.bracketTime) && entry.bracketTime > 0);
+
+    if (!left.validRun && !right.validRun) {
+      return -2;
+    }
+    if (!left.validRun) {
+      return right.playerId;
+    }
+    if (!right.validRun) {
+      return left.playerId;
+    }
+
+    if (isBracketRace) {
+      if (left.brokeOut && !right.brokeOut) {
+        return right.playerId;
+      }
+      if (right.brokeOut && !left.brokeOut) {
+        return left.playerId;
+      }
+      if (left.brokeOut && right.brokeOut) {
+        if (left.breakoutMargin !== right.breakoutMargin) {
+          return left.breakoutMargin < right.breakoutMargin ? left.playerId : right.playerId;
+        }
+        if (left.reactionTime !== right.reactionTime) {
+          return left.reactionTime < right.reactionTime ? left.playerId : right.playerId;
+        }
+        return left.playerId < right.playerId ? left.playerId : right.playerId;
+      }
+
+      if (left.bracketScore !== right.bracketScore) {
+        return left.bracketScore < right.bracketScore ? left.playerId : right.playerId;
       }
       if (left.elapsedTime !== right.elapsedTime) {
-        return left.elapsedTime - right.elapsedTime;
+        return left.elapsedTime < right.elapsedTime ? left.playerId : right.playerId;
       }
-      return left.playerId - right.playerId;
-    });
+      return left.playerId < right.playerId ? left.playerId : right.playerId;
+    }
 
-    return Number.isFinite(ranked[0]?.totalTime) ? ranked[0].playerId : 0;
+    if (left.totalTime !== right.totalTime) {
+      return left.totalTime < right.totalTime ? left.playerId : right.playerId;
+    }
+    if (left.elapsedTime !== right.elapsedTime) {
+      return left.elapsedTime < right.elapsedTime ? left.playerId : right.playerId;
+    }
+    return left.playerId < right.playerId ? left.playerId : right.playerId;
   }
 
   buildRaceSummaryXml(race, winnerPlayerId) {
@@ -2543,7 +2609,7 @@ export class TcpServer {
 
     const winnerPlayerId = Number(parts[1] || 0);
     if (winnerPlayerId) {
-      race.winnerPlayerId = winnerPlayerId;
+      race.reportedWinnerPlayerId = winnerPlayerId;
     }
 
     this.sendMessage(conn, '"ac", "RR", "s", 1, "t", 0, "t2", 0');
@@ -2551,7 +2617,13 @@ export class TcpServer {
     this.sendMessage(conn, '"ac", "OR", "td", 0');
 
     if (race.finishResults?.size >= race.players.length) {
-      this.tryBroadcastRaceResult(race, race.winnerPlayerId || this.determineRaceWinnerFromResults(race));
+      const computedWinnerPlayerId = this.determineRaceWinnerFromResults(race);
+      this.logger.info("TCP RR winner resolution", {
+        raceId: race.id,
+        reportedWinnerPlayerId: race.reportedWinnerPlayerId || 0,
+        computedWinnerPlayerId,
+      });
+      this.tryBroadcastRaceResult(race, computedWinnerPlayerId);
     }
   }
 
