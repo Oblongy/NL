@@ -4908,6 +4908,7 @@ function getComputerTournamentOpponentProfile(session) {
   const elapsedTime = interpolate(tournament.minEt, tournament.maxEt, seededFraction(seedBase + 4));
   const trapSpeed = interpolate(tournament.minTrap, tournament.maxTrap, seededFraction(seedBase + 5));
   const bracketTime = computeComputerTournamentBracketTime(horsepower, weight);
+  const competitorId = 1000 + Number(tournament.id) * 100 + opponentIndex;
   const competitorCarId = 2000 + Number(tournament.id) * 100 + opponentIndex;
   const virtualCarId = 6000 + Number(tournament.id) * 100 + opponentIndex;
   const username = `${tournament.type} ${String(opponentIndex + 1).padStart(2, "0")}`;
@@ -4924,6 +4925,7 @@ function getComputerTournamentOpponentProfile(session) {
   return {
     opponentIndex,
     purse: Number(tournament.purse || 0) * (Number(session?.wins || 0) + 1),
+    competitorId,
     competitorCarId,
     virtualCarId,
     username,
@@ -5055,11 +5057,16 @@ function buildComputerTournamentFieldXml(tournamentId) {
 
 function buildComputerTournamentOpponentXml(session) {
   const opponent = getComputerTournamentOpponentProfile(session);
+  const baseBracketTime = Number(session?.bracketTime || 0);
+  const bkDiff = Number.isFinite(baseBracketTime) && baseBracketTime > 0
+    ? Number(formatMetric(opponent.bracketTime - baseBracketTime))
+    : 0;
 
   return {
     ...opponent,
+    bkDiff,
     xml:
-      `<r cid='${opponent.competitorCarId}' cacid='${opponent.virtualCarId}' ` +
+      `<r cid='${opponent.competitorId}' cacid='${opponent.virtualCarId}' ` +
       `bt='${formatMetric(opponent.bracketTime)}' rt='${formatMetric(opponent.reactionTime)}' ` +
       `et='${formatMetric(opponent.elapsedTime)}' ts='${formatMetric(opponent.trapSpeed, 2)}' ` +
       `pp='${opponent.pp}'/>`,
@@ -5888,7 +5895,7 @@ const handlers = {
     });
 
     return {
-      body: `"s", 1, "d", "${opponent.xml}"`,
+      body: `"s", 1, "d", "${opponent.xml}", "b", ${opponent.bkDiff}`,
       source: "generated:ctrt",
     };
   },

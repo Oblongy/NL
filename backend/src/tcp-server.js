@@ -308,6 +308,8 @@ export class TcpServer {
         const payload = this.buildLiveTournamentTreeXml(conn);
         this.logTournamentTcpPayload(conn, messageType, payload);
         this.sendMessage(conn, `"ac", "${messageType}", "d", "${this.escapeForTcp(payload)}"`);
+      } else if (messageType === "HQOK") {
+        this.sendMessage(conn, '"ac", "HQOK", "s", 1, "d", "", "t", 20');
       } else if (messageType === "HTJOIN") {
         this.handleLiveTournamentJoin(conn, { spectate: false, parts });
       } else if (messageType === "HTSPECTATE") {
@@ -418,6 +420,7 @@ export class TcpServer {
       // --- LRCR2: Get room list ---
       } else if (messageType === "LRCR2") {
         const requestedStripId = Number(parts[2] || parts[1] || 0);
+        conn.lastRequestedStripId = requestedStripId;
         this.sendMessage(conn,
           `"ac", "LRCR2", "d", "${this.escapeForTcp(this.buildLobbyRoomsXml(requestedStripId))}"`
         );
@@ -1885,6 +1888,11 @@ export class TcpServer {
     );
   }
 
+  buildLiveTournamentSpectateXml(_conn) {
+    const event = this.getLiveTournamentEvent();
+    return `<i n='${this.escapeXml(event.roomName || event.name || "Live Tournament")}'/>`;
+  }
+
   buildLobbyRoomsXml(stripId = 0) {
     const allRooms = this.getRoomDefinitions();
     const rooms = stripId > 0
@@ -1919,9 +1927,15 @@ export class TcpServer {
     // pairs. The 10.0.03 room movie expects at least one child node here and
     // reads `i` + `ci` directly when rendering the queue.
     if (roomType === "bracket_koth" || roomType === "h2h_koth") {
-      const queueXml = roomPlayers.map((player) =>
-        `<k i='${player.playerId}' ci='${player.carId}'/>`
-      ).join("");
+      const queueXml = roomPlayers
+        .map((player) => {
+          const playerConn = this.connections.get(player.connId);
+          if (!playerConn?.kingOfHillSelection) {
+            return "";
+          }
+          return `<k i='${player.playerId}' ks='0' ci='${playerConn.kingOfHillSelection.carId}'/>`;
+        })
+        .join("");
       return `<q>${queueXml}</q>`;
     }
 
@@ -1985,15 +1999,25 @@ export class TcpServer {
       });
     }
 
-    this.sendMessage(
-      conn,
-      `"ac", "${spectate ? "HTSPECTATE" : "HTJOIN"}", "s", 1, "rid", ${roomId}, "eid", ${Number(event.id || 0)}`
-    );
-    this.logTournamentTcpPayload(conn, spectate ? "HTSPECTATE" : "HTJOIN", `"s", 1, "rid", ${roomId}, "eid", ${Number(event.id || 0)}`, {
-      roomId,
-      eventId: Number(event.id || 0),
-      spectate: !!spectate,
-    });
+    if (spectate) {
+      const payload = this.buildLiveTournamentSpectateXml(conn);
+      this.sendMessage(conn, `"ac", "HTSPECTATE", "d", "${this.escapeForTcp(payload)}"`);
+      this.logTournamentTcpPayload(conn, "HTSPECTATE", payload, {
+        roomId,
+        eventId: Number(event.id || 0),
+        spectate: true,
+      });
+    } else {
+      this.sendMessage(
+        conn,
+        `"ac", "HTJOIN", "s", 1, "d", "", "rid", ${roomId}, "eid", ${Number(event.id || 0)}`
+      );
+      this.logTournamentTcpPayload(conn, "HTJOIN", `"s", 1, "d", "", "rid", ${roomId}, "eid", ${Number(event.id || 0)}`, {
+        roomId,
+        eventId: Number(event.id || 0),
+        spectate: false,
+      });
+    }
     this.sendRoomSnapshot(conn, filtered);
   }
 
@@ -2034,6 +2058,10 @@ export class TcpServer {
     const fallbackRoomId = Number(parts[1] || 0);
     if (this.isKnownRoomId(fallbackRoomId)) {
       return fallbackRoomId;
+    }
+
+    if (Number(conn?.lastRequestedStripId || 0) === 7 && (requestedRoomId === 1 || fallbackRoomId === 1)) {
+      return Number(this.getLiveTournamentEvent()?.roomId || 2);
     }
 
     const playerId = Number(conn.playerId || 0);
