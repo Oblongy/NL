@@ -320,7 +320,7 @@ export async function handleBuyPart(context) {
         logger?.error("Failed to rename decal", { error: err.message });
       }
 
-      const installedPartXml = `<p ai='${installId}' i='${partId}' ci='${slotId}' pt='c' n='Custom Graphic' in='1' cc='0' pdi='${decalId}' di='${decalId}' ps=''/>`;
+      const installedPartXml = `<p ai='${installId}' i='${partId}' pi='${slotId}' t='c' n='Custom Graphic' in='1' cc='0' pdi='${decalId}' di='${decalId}' ps=''/>`;
       const partsXml = upsertInstalledPartXml(car.parts_xml || "", slotId, installedPartXml);
       try {
         await saveCarPartsXml(supabase, accountCarId, partsXml);

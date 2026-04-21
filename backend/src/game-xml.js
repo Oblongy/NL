@@ -91,7 +91,7 @@ function resolvePaintIdForCar(car) {
 }
 
 function renderFallbackWheelPartXml(car, wheelXml, partsXml) {
-  if (/\bci='14'\b/i.test(partsXml)) {
+  if (/\b(?:ci|pi)='14'\b/i.test(partsXml)) {
     return "";
   }
 
@@ -117,7 +117,7 @@ function renderFallbackWheelPartXml(car, wheelXml, partsXml) {
     ? "2"
     : normalizedWheelId;
 
-  return `<p i='${normalizedPartId}' ci='14' n='${partName}' in='1' cc='' pdi='${partDesignId}' di='${normalizedWheelId}' pt='c' ps='${normalizedWheelSize}'/>`;
+  return `<p i='${normalizedPartId}' pi='14' n='${partName}' in='1' cc='' pdi='${partDesignId}' di='${normalizedWheelId}' t='c' ps='${normalizedWheelSize}'/>`;
 }
 
 function renderFallbackPaintStateXml(car, partsXml) {

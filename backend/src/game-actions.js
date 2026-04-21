@@ -2525,7 +2525,7 @@ async function handleBuyPart(context) {
         logger?.error("Failed to rename decal", { error: err.message });
       }
 
-      const installedPartXml = `<p ai='${installId}' i='${partId}' ci='${slotId}' pt='c' n='Custom Graphic' in='1' cc='0' pdi='${decalId}' di='${decalId}' ps=''/>`;
+      const installedPartXml = `<p ai='${installId}' i='${partId}' pi='${slotId}' t='c' n='Custom Graphic' in='1' cc='0' pdi='${decalId}' di='${decalId}' ps=''/>`;
       const partsXml = upsertInstalledPartXml(car.parts_xml || "", slotId, installedPartXml);
       try {
         await saveCarPartsXml(supabase, accountCarId, partsXml);
@@ -2545,7 +2545,7 @@ async function handleBuyPart(context) {
         } catch (error) {
           logger?.error("Failed to save wheel", { error, accountCarId, partId });
         }
-        // Also update parts_xml so the client sees ci='14' installed
+        // Also update parts_xml so the client sees the installed wheel slot state
         const installedPartXml = buildInstalledCatalogPartXml(catalogPart, installId, {
           t: "c",
           ps: wheelSize,
@@ -4336,8 +4336,8 @@ function buildComputerTournamentVirtualCar(gameCarId) {
     locked: 0,
     color_code: "FFFFFF",
     image_index: 0,
-    wheel_xml: "",
-    parts_xml: "",
+    wheel_xml: getDefaultWheelXmlForCar(Number(fallbackCatalogCar.id || catalogCarId || 1)),
+    parts_xml: getDefaultPartsXmlForCar(Number(fallbackCatalogCar.id || catalogCarId || 1)),
     horsepower: 0,
     weight: 0,
     transmission_type: Number(tournamentId) >= 2 ? "6-speed manual" : "5-speed manual",

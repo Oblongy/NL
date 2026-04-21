@@ -19,14 +19,6 @@ export function normalizeOwnedPartsXmlValue(value) {
       }
     }
 
-    if (!/\bci=/.test(attrs) && /\bpi=/.test(attrs)) {
-      attrs = attrs.replace(/\bpi=/, "ci=");
-    }
-
-    if (!/\bpt=/.test(attrs) && /\bt=/.test(attrs)) {
-      attrs = attrs.replace(/\bt=/, "pt=");
-    }
-
     return `<p${attrs}/>`;
   });
 }
