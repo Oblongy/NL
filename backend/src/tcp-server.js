@@ -30,6 +30,7 @@ import {
 const MESSAGE_DELIMITER = "\x04";
 const FIELD_DELIMITER = "\x1e";
 const DEFAULT_GLOBAL_CHAT_CLASS = 2;
+const RACE_STAGE_SETTLE_MS = 750;
 
 export class TcpServer {
   constructor({ logger, notify, proxy, supabase, raceRoomRegistry = null, port = 3724, host = "127.0.0.1" }) {
@@ -999,10 +1000,24 @@ export class TcpServer {
     if (!race) return;
     if (!race.players.every((entry) => entry.opened)) return;
     if (race.rivalsReadyBroadcasted) return;
-    if (!race.players.every((entry) => this.isStagedDistance(entry.lastDistance))) return;
+    if (!race.players.every((entry) => entry.isStaged)) {
+      race.allStagedSince = 0;
+      return;
+    }
+
+    const now = Date.now();
+    if (!race.allStagedSince) {
+      race.allStagedSince = now;
+      this.setRacePhase(race, "STAGED", "both-staged-hold");
+      return;
+    }
+
+    if (now - race.allStagedSince < RACE_STAGE_SETTLE_MS) {
+      return;
+    }
 
     race.rivalsReadyBroadcasted = true;
-    this.setRacePhase(race, "TREE_ARMED", "both-opened");
+    this.setRacePhase(race, "TREE_ARMED", "staged-hold-complete");
     for (const participant of race.players) {
       const participantConn = this.getRaceParticipantConnection(participant);
       if (participantConn) {
@@ -1157,6 +1172,13 @@ export class TcpServer {
     }
 
     sender.lastDistance = Number(distance);
+    sender.isStaged = this.isStagedDistance(sender.lastDistance);
+    if (!sender.isStaged) {
+      sender.stagedSince = 0;
+      race.allStagedSince = 0;
+    } else if (!sender.stagedSince) {
+      sender.stagedSince = Date.now();
+    }
     this.maybeBroadcastRivalsReady(race);
     this.maybeStartRaceSequence(race, "staging-complete");
 
@@ -2114,6 +2136,8 @@ export class TcpServer {
           sc: scA,
           ready: false,
           opened: false,
+          isStaged: false,
+          stagedSince: 0,
         },
         {
           connId: requestB.connId,
@@ -2124,6 +2148,8 @@ export class TcpServer {
           sc: scB,
           ready: false,
           opened: false,
+          isStaged: false,
+          stagedSince: 0,
         },
       ],
       announced: false,
@@ -2131,6 +2157,7 @@ export class TcpServer {
       createdAt: Date.now(),
       phase: "LOADED",
       stagedCount: 0,
+      allStagedSince: 0,
       sequenceStarted: false,
       metaByPlayer: new Map(),
       rivalsReadyAcks: new Map(),
@@ -2271,6 +2298,8 @@ export class TcpServer {
           bet: 0,
           ready: true,
           opened: false,
+          isStaged: false,
+          stagedSince: 0,
         },
         {
           connId: pending.challenged.connId,
@@ -2280,6 +2309,8 @@ export class TcpServer {
           bet: 0,
           ready: true,
           opened: false,
+          isStaged: false,
+          stagedSince: 0,
         },
       ],
       announced: true,
@@ -2287,6 +2318,7 @@ export class TcpServer {
       createdAt: Date.now(),
       phase: "LOADED",
       stagedCount: 0,
+      allStagedSince: 0,
       sequenceStarted: false,
       metaByPlayer: new Map(),
       rivalsReadyAcks: new Map(),
