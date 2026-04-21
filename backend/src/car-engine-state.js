@@ -56,6 +56,11 @@ export function getEngineTypeIdForCatalogCar(catalogCarId) {
 }
 
 export function getEngineTypeIdForCar(car) {
+  const explicitEngineTypeId = Number(car?.engine_type_id || car?.owned_engine?.engine_type_id || 0);
+  if (explicitEngineTypeId > 0) {
+    return explicitEngineTypeId;
+  }
+
   const partsBoostType = detectBoostTypeFromPartsXml(car?.parts_xml || "");
   if (partsBoostType !== "0") {
     return getEngineTypeIdFromBoostType(partsBoostType);
@@ -69,11 +74,9 @@ export function getBoostTypeForCar(car) {
 }
 
 export function getCarEngineIdentity(car) {
-  // This backend still has no separate owned-engine row. Keep `ae` stable per
-  // car so the client's engine-part flows stop reading the aero column as an
-  // engine id, and pair it with the inferred engine type id the client expects.
+  const ownedEngineId = Number(car?.owned_engine_id || car?.installed_engine_id || car?.owned_engine?.id || 0);
   return {
-    ae: Number(car?.account_car_id || car?.game_car_id || 0),
+    ae: ownedEngineId || Number(car?.account_car_id || car?.game_car_id || 0),
     et: getEngineTypeIdForCar(car),
   };
 }

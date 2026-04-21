@@ -348,6 +348,56 @@ export function buildPartsInventoryPatch(input = {}) {
   return patch;
 }
 
+export function parseOwnedEngineRecord(record) {
+  if (!record) {
+    return null;
+  }
+
+  return {
+    ...record,
+    id: toNumber(record.id, 0),
+    player_id: toNumber(record.player_id, 0),
+    installed_on_car_id: toNullableNumber(record.installed_on_car_id),
+    catalog_engine_part_id: toNumber(record.catalog_engine_part_id, 0),
+    engine_type_id: toNumber(record.engine_type_id, 1),
+    parts_xml: normalizeOwnedPartsXmlValue(record.parts_xml),
+    created_at: toTimestampString(record.created_at),
+    updated_at: toTimestampString(record.updated_at),
+  };
+}
+
+export function buildOwnedEngineInsert(input = {}) {
+  const playerId = toNumber(input.playerId ?? input.player_id, 0);
+  if (!playerId) {
+    return null;
+  }
+
+  return {
+    player_id: playerId,
+    installed_on_car_id: toNullableNumber(input.installedOnCarId ?? input.installed_on_car_id),
+    catalog_engine_part_id: toNumber(input.catalogEnginePartId ?? input.catalog_engine_part_id, 0),
+    engine_type_id: toNumber(input.engineTypeId ?? input.engine_type_id, 1),
+    parts_xml: normalizeOwnedPartsXmlValue(input.partsXml ?? input.parts_xml),
+  };
+}
+
+export function buildOwnedEnginePatch(input = {}) {
+  const patch = {};
+  if ("installedOnCarId" in input || "installed_on_car_id" in input) {
+    patch.installed_on_car_id = toNullableNumber(input.installedOnCarId ?? input.installed_on_car_id);
+  }
+  if ("catalogEnginePartId" in input || "catalog_engine_part_id" in input) {
+    patch.catalog_engine_part_id = toNumber(input.catalogEnginePartId ?? input.catalog_engine_part_id, 0);
+  }
+  if ("engineTypeId" in input || "engine_type_id" in input) {
+    patch.engine_type_id = toNumber(input.engineTypeId ?? input.engine_type_id, 1);
+  }
+  if ("partsXml" in input || "parts_xml" in input) {
+    patch.parts_xml = normalizeOwnedPartsXmlValue(input.partsXml ?? input.parts_xml);
+  }
+  return patch;
+}
+
 export function parseSessionRecord(record) {
   if (!record) {
     return null;

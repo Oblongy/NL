@@ -22,6 +22,7 @@ import {
   toNumericIds,
 } from "./shared.js";
 import { updatePlayerDefaultCar, updatePlayerRecord } from "./players.js";
+import { attachOwnedEnginesToCars } from "./engines.js";
 
 export const normalizeOwnedCarRecord = parseOwnedCarRecord;
 
@@ -99,7 +100,7 @@ async function repairLegacyCars(supabase, cars) {
     repairedCars.push(parseOwnedCarRecord(car));
   }
 
-  return repairedCars;
+  return attachOwnedEnginesToCars(supabase, repairedCars);
 }
 
 export async function createStarterCar(
@@ -252,13 +253,17 @@ export async function getCarById(supabase, gameCarId) {
     return null;
   }
 
-  return maybeSingle(
+  const car = await maybeSingle(
     supabase
       .from("game_cars")
       .select("*")
       .eq("game_car_id", Number(gameCarId)),
     parseOwnedCarRecord,
   );
+  if (!car) {
+    return null;
+  }
+  return (await attachOwnedEnginesToCars(supabase, [car]))[0] || null;
 }
 
 export async function listCarsByIds(supabase, gameCarIds = []) {
@@ -334,7 +339,7 @@ export async function saveCarPartsXml(supabase, gameCarId, partsXml) {
       .eq("game_car_id", Number(gameCarId))
       .select("*"),
     parseOwnedCarRecord,
-  );
+  ).then((car) => attachOwnedEnginesToCars(supabase, [car]).then((cars) => cars[0] || car));
 }
 
 export async function saveCarWheelXml(supabase, gameCarId, wheelXml) {
@@ -349,7 +354,7 @@ export async function saveCarWheelXml(supabase, gameCarId, wheelXml) {
       .eq("game_car_id", Number(gameCarId))
       .select("*"),
     parseOwnedCarRecord,
-  );
+  ).then((car) => attachOwnedEnginesToCars(supabase, [car]).then((cars) => cars[0] || car));
 }
 
 export async function listLeaderboardCars(supabase) {

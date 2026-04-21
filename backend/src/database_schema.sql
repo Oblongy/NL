@@ -119,6 +119,23 @@ CREATE TABLE IF NOT EXISTS game_parts_inventory (
 
 CREATE INDEX IF NOT EXISTS idx_game_parts_inventory_player ON game_parts_inventory(player_id);
 
+CREATE TABLE IF NOT EXISTS game_owned_engines (
+  id BIGSERIAL PRIMARY KEY,
+  player_id BIGINT NOT NULL REFERENCES game_players(id) ON DELETE CASCADE,
+  installed_on_car_id BIGINT REFERENCES game_cars(game_car_id) ON DELETE SET NULL,
+  catalog_engine_part_id INTEGER NOT NULL DEFAULT 0,
+  engine_type_id INTEGER NOT NULL DEFAULT 1,
+  parts_xml TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_game_owned_engines_player ON game_owned_engines(player_id);
+CREATE INDEX IF NOT EXISTS idx_game_owned_engines_car ON game_owned_engines(installed_on_car_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_game_owned_engines_one_per_car
+  ON game_owned_engines(installed_on_car_id)
+  WHERE installed_on_car_id IS NOT NULL;
+
 -- ============================================================================
 -- GAME SESSIONS TABLE
 -- ============================================================================
@@ -245,6 +262,12 @@ CREATE TRIGGER update_game_team_members_updated_at
 DROP TRIGGER IF EXISTS update_game_player_remarks_updated_at ON game_player_remarks;
 CREATE TRIGGER update_game_player_remarks_updated_at
   BEFORE UPDATE ON game_player_remarks
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_game_owned_engines_updated_at ON game_owned_engines;
+CREATE TRIGGER update_game_owned_engines_updated_at
+  BEFORE UPDATE ON game_owned_engines
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
