@@ -2747,12 +2747,7 @@ async function handleGetTwoRacersCars(context) {
   }
 
   const caller = await resolveCallerSession(context, "supabase:gettworacerscars");
-  if (!caller?.ok) {
-    return {
-      body: caller?.body || failureBody(),
-      source: caller?.source || "supabase:gettworacerscars:bad-session",
-    };
-  }
+  const callerPlayerId = caller?.ok ? caller.playerId : 0;
 
   const requestedCarIds = [params.get("r1acid"), params.get("r2acid")]
     .map((value) => Number(value || 0))
@@ -2785,12 +2780,12 @@ async function handleGetTwoRacersCars(context) {
   logTournamentPayload(context.logger, "gettworacerscars", responseXml, {
     requestedCarIds,
     resolvedGameCarIds: orderedCars.map((car) => Number(car?.game_car_id || 0)),
-    callerPlayerId: caller.playerId,
+    callerPlayerId,
   });
 
   return {
     body: wrapSuccessData(responseXml),
-    source: "supabase:gettworacerscars",
+    source: caller?.ok ? "supabase:gettworacerscars" : "supabase:gettworacerscars:anon-fallback",
   };
 }
 

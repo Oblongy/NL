@@ -276,14 +276,42 @@ export async function listCarsByIds(supabase, gameCarIds = []) {
     return [];
   }
 
-  const cars = await manyResult(
+  let cars = await manyResult(
     supabase
       .from("game_cars")
       .select("*")
       .in("game_car_id", ids),
     parseOwnedCarRecord,
   );
-  const sortedCars = sortByRequestedOrder(cars, ids, (car) => car.game_car_id);
+
+  if (cars.length < ids.length) {
+    const foundIds = new Set(cars.map((car) => Number(car?.game_car_id || 0)));
+    const missingIds = ids.filter((id) => !foundIds.has(id));
+    if (missingIds.length > 0) {
+      const legacyCars = await manyResult(
+        supabase
+          .from("game_cars")
+          .select("*")
+          .in("account_car_id", missingIds),
+        parseOwnedCarRecord,
+      );
+      if (legacyCars.length > 0) {
+        const byAccountId = new Map(legacyCars.map((car) => [Number(car?.account_car_id || 0), car]));
+        for (const missingId of missingIds) {
+          const legacyCar = byAccountId.get(missingId);
+          if (legacyCar) {
+            cars.push(legacyCar);
+          }
+        }
+      }
+    }
+  }
+
+  const sortedCars = sortByRequestedOrder(cars, ids, (car) => {
+    const gameCarId = Number(car?.game_car_id || 0);
+    const accountCarId = Number(car?.account_car_id || 0);
+    return ids.includes(gameCarId) ? gameCarId : accountCarId;
+  });
   return repairLegacyCars(supabase, sortedCars);
 }
 
