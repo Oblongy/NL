@@ -616,17 +616,10 @@ export class TcpServer {
             });
             return;
           }
-          // Acknowledge the race channel and push the race-start burst
+          // Acknowledge the race channel only. The client opens the tree
+          // sequence with a later RO message; sending RO/IO early leaves both
+          // racers stuck staged.
           this.sendMessage(conn, '"ac", "SRC", "s", 1');
-          this.sendMessage(conn, `"ac", "RRA", "d", "${this.escapeForTcp(this.buildRraXml({
-            challengerPlayerId: p1.playerId,
-            challengerCarId:    p1.carId,
-            challengedPlayerId: p2.playerId,
-            challengedCarId:    p2.carId,
-            trackId: srcRace.trackId || 32,
-          }))}"`);
-          this.sendMessage(conn, `"ac", "RO", "t", ${srcRace.trackId || 32}`);
-          this.sendInitialIoFrames(conn);
           this.logger.info("TCP SRC race initialized", { 
             connId: conn.id, 
             raceId: srcRace.id,
@@ -2082,9 +2075,8 @@ export class TcpServer {
     player.opened = true;
     this.logger.info("TCP RO received", { connId: conn.id, raceId: race.id, openedCount: race.players.filter((entry) => entry.opened).length });
 
-    // Send RO ack on this connection so the client knows to open the race channel (SRC).
+    // Ack the tree-open event only after the client explicitly sends RO.
     this.sendMessage(conn, '"ac", "RO", "t", 32');
-    this.sendInitialIoFrames(conn);
 
     // Once both players have opened, allow telemetry to flow
     if (race.players.every((entry) => entry.opened) && !race.sequenceStarted) {
@@ -2137,18 +2129,6 @@ export class TcpServer {
     const sc1 = playerOne.sc ?? 0;
     const sc2 = playerTwo.sc ?? 0;
     return `"ac", "RRA", "d", "<r r1id='${playerOne.playerId}' r2id='${playerTwo.playerId}' r1cid='${playerOne.carId}' r2cid='${playerTwo.carId}' b1='-1' b2='-1' bt='0' sc1='${sc1}' sc2='${sc2}' t='32'/>"`;
-  }
-
-  sendInitialIoFrames(conn) {
-    const frames = [
-      { d: "-13", v: "0", a: "0", t: "0" },
-      { d: "-12.863", v: "0.698", a: "36.072", t: "0" },
-      { d: "-12.709", v: "1.213", a: "31.555", t: "0" },
-    ];
-
-    for (const frame of frames) {
-      this.sendMessage(conn, `"ac", "IO", "d", ${frame.d}, "v", ${frame.v}, "a", ${frame.a}, "t", ${frame.t}`);
-    }
   }
 
   buildRacePairKey(playerAId, playerBId) {
