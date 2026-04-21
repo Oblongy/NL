@@ -139,6 +139,10 @@ function renderCarBody(car) {
   return `${wheelXml}${wheelPartXml}${partsXml}${paintStateXml}`;
 }
 
+function retagInstalledShowroomParts(xml) {
+  return String(xml || "").replace(/<p\b([^>]*\bin='1'[^>]*)\/>/gi, "<sp$1/>");
+}
+
 function renderCarNode(car, extraAttrs = {}) {
   const colorCode = normalizeColorCode(car.color_code);
   const paintId = Number(resolvePaintIdForCar(car)) || DEFAULT_PAINT_INDEX;
@@ -190,7 +194,7 @@ export function renderShowroomCarBody(catalogCarId, options = {}) {
     parts_xml: getDefaultShowroomPartsXmlForCar(catalogCarId),
   };
 
-  return renderCarBody(syntheticCar);
+  return retagInstalledShowroomParts(renderCarBody(syntheticCar));
 }
 
 export function renderRacerCars(cars) {

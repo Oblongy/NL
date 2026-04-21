@@ -30,7 +30,6 @@ const DEFAULT_SHOWROOM_VISIBLE_PARTS_BY_CAR_ID = Object.freeze({
     Object.freeze({ categoryId: 77, designId: 1, name: "Stock Tail Lights" }),
     Object.freeze({ categoryId: 128, designId: 1, name: "Stock Front Bumper" }),
     Object.freeze({ categoryId: 129, designId: 1, name: "Stock Side Skirts" }),
-    Object.freeze({ categoryId: 130, designId: 1, name: "Stock Rear Bumper" }),
     Object.freeze({ categoryId: 140, designId: 1, name: "Stock Grille" }),
   ]),
   6: Object.freeze([
@@ -41,7 +40,6 @@ const DEFAULT_SHOWROOM_VISIBLE_PARTS_BY_CAR_ID = Object.freeze({
     Object.freeze({ categoryId: 77, designId: 1, name: "Stock Tail Lights" }),
     Object.freeze({ categoryId: 128, designId: 1, name: "Stock Front Bumper" }),
     Object.freeze({ categoryId: 129, designId: 1, name: "Stock Side Skirts" }),
-    Object.freeze({ categoryId: 130, designId: 1, name: "Stock Rear Bumper" }),
     Object.freeze({ categoryId: 140, designId: 1, name: "Stock Grille" }),
   ]),
 });
