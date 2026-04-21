@@ -951,7 +951,17 @@ export class TcpServer {
 
   isStagedDistance(distance) {
     const numericDistance = Number(distance);
-    return Number.isFinite(numericDistance) && numericDistance > -2 && numericDistance < 1;
+    if (!Number.isFinite(numericDistance)) {
+      return false;
+    }
+
+    // Live clients report two stable prelaunch plateaus before the tree arms:
+    // some sit at the staged idle marker around -13 ft, while others creep up
+    // to the launch window just below 0. Accept both to avoid deadlocking
+    // RIVRDY when racers never enter the narrower legacy window together.
+    const isIdleStageMarker = Math.abs(numericDistance + 13) <= 0.75;
+    const isLaunchWindow = numericDistance > -2.5 && numericDistance < 1;
+    return isIdleStageMarker || isLaunchWindow;
   }
 
   determineRaceWinnerFromResults(race) {
