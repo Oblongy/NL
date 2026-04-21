@@ -135,43 +135,45 @@ export class TcpServer {
 
     socket.on("end", () => {
       this.logger.info("TCP connection ended", { connId, remoteAddr });
-      tcpActiveConnections.dec();
-      this.leaveRoom(conn);
-      // Clean up reverse lookups
-      if (conn.playerId) {
-        this.connIdByPlayerId.delete(conn.playerId);
-        this.raceIdByPlayerId.delete(conn.playerId);
-      }
-      this.connections.delete(connId);
+      this.cleanupConnection(conn);
     });
 
     socket.on("close", () => {
       this.logger.info("TCP connection closed", { connId, remoteAddr });
-      // Only cleanup if not already cleaned up by 'end' event
-      if (this.connections.has(connId)) {
-        tcpActiveConnections.dec();
-        this.leaveRoom(conn);
-        // Clean up reverse lookups
-        if (conn.playerId) {
-          this.connIdByPlayerId.delete(conn.playerId);
-          this.raceIdByPlayerId.delete(conn.playerId);
-        }
-        this.connections.delete(connId);
-      }
+      this.cleanupConnection(conn);
     });
 
     socket.on("error", (error) => {
       this.logger.error("TCP socket error", { connId, error: error.message });
-      tcpActiveConnections.dec();
+      this.cleanupConnection(conn, { countSocketError: true });
+    });
+  }
+
+  cleanupConnection(conn, { countSocketError = false } = {}) {
+    if (!conn || !this.connections.has(conn.id)) {
+      return;
+    }
+
+    tcpActiveConnections.dec();
+    if (countSocketError) {
       tcpErrors.inc({ category: "socket" });
-      this.leaveRoom(conn);
-      // Clean up reverse lookups
-      if (conn.playerId) {
+    }
+
+    this.leaveRoom(conn);
+    if (conn.playerId) {
+      const siblingConn = [...this.connections.values()].find(
+        (candidate) => candidate.id !== conn.id && Number(candidate.playerId || 0) === Number(conn.playerId),
+      );
+      if (siblingConn) {
+        if (this.connIdByPlayerId.get(conn.playerId) === conn.id) {
+          this.connIdByPlayerId.set(conn.playerId, siblingConn.id);
+        }
+      } else {
         this.connIdByPlayerId.delete(conn.playerId);
         this.raceIdByPlayerId.delete(conn.playerId);
       }
-      this.connections.delete(connId);
-    });
+    }
+    this.connections.delete(conn.id);
   }
 
   handleData(conn, data) {
@@ -284,7 +286,7 @@ export class TcpServer {
         
         // Apply engine wear even if race is missing (per protocol spec)
         const race = conn.raceId ? this.races.get(conn.raceId) : null;
-        const playerId = conn.playerId;
+        const playerId = Number(conn.playerId || 0);
         
         if (race) {
           const participant = this.findRaceParticipant(race, conn, { bindRaceConn: true });
@@ -294,12 +296,21 @@ export class TcpServer {
             }
             race.finishResults.set(Number(participant.playerId), this.parseRaceDoneMetrics(parts));
           }
+          const completionPlayerId = Number(participant?.playerId || playerId || 0);
 
           // Track completion for cleanup
           if (!this.raceCompletions.has(race.id)) {
             this.raceCompletions.set(race.id, new Set());
           }
-          this.raceCompletions.get(race.id).add(playerId);
+          if (completionPlayerId > 0) {
+            this.raceCompletions.get(race.id).add(completionPlayerId);
+          } else {
+            this.logger.warn("TCP RD missing completion player id", {
+              connId: conn.id,
+              raceId: race.id,
+              connPlayerId: conn.playerId,
+            });
+          }
           
           // Apply engine wear once per race
           if (!race.engineWearApplied) {
@@ -313,12 +324,10 @@ export class TcpServer {
           const allPlayersCompleted = race.players.every(p => completions.has(p.playerId));
           
           if (allPlayersCompleted) {
-            if (!race.resultBroadcasted) {
-              this.broadcastRaceResult(
-                race,
-                race.winnerPlayerId || this.determineRaceWinnerFromResults(race),
-              );
-            }
+            this.tryBroadcastRaceResult(
+              race,
+              race.winnerPlayerId || this.determineRaceWinnerFromResults(race),
+            );
             this.races.delete(race.id);
             this.raceCompletions.delete(race.id);
             this.logger.info("TCP race cleaned up", { raceId: race.id });
@@ -593,6 +602,7 @@ export class TcpServer {
           const racePlayer = srcRace.players.find(p => Number(p.playerId) === Number(conn.playerId));
           if (racePlayer) {
             const oldRaceConnId = racePlayer.raceConnId || null;
+            const isRaceChannelReconnect = Boolean(oldRaceConnId && oldRaceConnId !== conn.id);
             racePlayer.raceConnId = conn.id;
             this.raceIdByPlayerId.set(conn.playerId, srcRace.id);
             this.logger.info("TCP SRC race channel established", { 
@@ -603,6 +613,25 @@ export class TcpServer {
               playerId: conn.playerId,
               playerLane: racePlayer.lane
             });
+
+            if (isRaceChannelReconnect) {
+              srcRace.sequenceStarted = false;
+              srcRace.rivalsReadyBroadcasted = false;
+              srcRace.stagedCount = 0;
+              srcRace.metaByPlayer = new Map();
+              srcRace.rivalsReadyAcks = new Map();
+              srcRace.reactionTimes = new Map();
+              for (const participant of srcRace.players) {
+                participant.opened = false;
+              }
+              this.setRacePhase(srcRace, "LOADED", "race-channel-reconnected");
+              this.logger.info("TCP race handshake reset after race channel reconnect", {
+                raceId: srcRace.id,
+                playerId: conn.playerId,
+                oldRaceConnId,
+                newRaceConnId: conn.id,
+              });
+            }
           }
           
           const [p1, p2] = srcRace.players;
@@ -874,6 +903,14 @@ export class TcpServer {
         this.sendMessage(participantConn, '"ac", "OR", "s", 1');
       }
     }
+  }
+
+  tryBroadcastRaceResult(race, winnerPlayerId) {
+    if (!race || race.resultBroadcasted) {
+      return false;
+    }
+    this.broadcastRaceResult(race, winnerPlayerId);
+    return true;
   }
 
   isRaceReadyForTelemetry(race) {
@@ -1420,14 +1457,24 @@ export class TcpServer {
           if (player.raceConnId === conn.id) {
             player.raceConnId = null;
           }
+          if (player.connId === conn.id) {
+            const fallbackConnId =
+              player.raceConnId &&
+              player.raceConnId !== conn.id &&
+              this.connections.has(player.raceConnId)
+                ? player.raceConnId
+                : null;
+            player.connId = fallbackConnId;
+          }
         }
-        race.players = race.players.filter((player) => player.connId !== conn.id);
+        race.players = race.players.filter((player) => Boolean(player.connId || player.raceConnId));
         if (race.players.length === 0) {
           this.races.delete(conn.raceId);
           this.raceCompletions.delete(conn.raceId);
           this.logger.info("TCP race cleaned up (all players left)", { raceId: conn.raceId });
         }
       }
+      conn.raceId = null;
     }
     if (!conn.roomId) return;
     const roomId = Number(conn.roomId);
@@ -1903,9 +1950,21 @@ export class TcpServer {
 
   findConnectionByPlayerId(playerId, excludeRaceChannels = false) {
     if (!playerId) return null;
+    const normalizedPlayerId = Number(playerId);
+
+    const cachedConnId = this.connIdByPlayerId.get(normalizedPlayerId);
+    if (cachedConnId) {
+      const cachedConn = this.connections.get(cachedConnId);
+      if (cachedConn && Number(cachedConn.playerId || 0) === normalizedPlayerId) {
+        if (!excludeRaceChannels || cachedConn.roomId) {
+          return cachedConn;
+        }
+      }
+    }
+
     const matches = [];
     for (const [, candidate] of this.connections) {
-      if (Number(candidate.playerId || 0) === Number(playerId)) {
+      if (Number(candidate.playerId || 0) === normalizedPlayerId) {
         matches.push(candidate);
       }
     }
@@ -2274,8 +2333,8 @@ export class TcpServer {
 
     this.sendMessage(conn, '"ac", "RR", "s", 1');
 
-    if (race.finishResults?.size >= race.players.length && !race.resultBroadcasted) {
-      this.broadcastRaceResult(race, race.winnerPlayerId || this.determineRaceWinnerFromResults(race));
+    if (race.finishResults?.size >= race.players.length) {
+      this.tryBroadcastRaceResult(race, race.winnerPlayerId || this.determineRaceWinnerFromResults(race));
     }
   }
 
