@@ -89,6 +89,11 @@ const DEFAULT_DYNO_PURCHASE_STATE = Object.freeze({
   shiftLightRpm: 7200,
   redLine: 7800,
 });
+const DYNO_TUNE_CARRIER_SLOT_IDS = ["23", "2005", "2006", "174", "134", "26", "22", "2013"];
+const BOOST_CONTROLLER_SLOT_IDS = ["23", "2005"];
+const AFR_CONTROLLER_SLOT_IDS = ["2006", "174", "134"];
+const SHIFT_LIGHT_SLOT_IDS = ["26"];
+const GEAR_TUNE_SLOT_IDS = ["22", "2013"];
 const PART_XML_ENTRY_REGEX = /<p\b[^>]*\/>/g;
 const PART_XML_ATTR_REGEX = /(\w+)=['"]([^'"]*)['"]/g;
 const TEAM_RIVALS_ROOM_ID = 1;
@@ -168,6 +173,76 @@ function upsertInstalledPartXml(partsXml, slotId, partXml, slotAttr = "pi") {
   const pattern = new RegExp(`<p[^>]*\\b(?:${slotAttr}|ci)='${escapedSlotId}'[^>]*/>`, "g");
   const cleaned = source.replace(pattern, "");
   return `${cleaned}${partXml}`;
+}
+
+function listInstalledPartEntries(partsXml) {
+  const entries = [];
+  let match;
+  while ((match = PART_XML_ENTRY_REGEX.exec(String(partsXml || ""))) !== null) {
+    entries.push({
+      raw: match[0],
+      attrs: parsePartXmlAttributes(match[0]),
+    });
+  }
+  PART_XML_ENTRY_REGEX.lastIndex = 0;
+  return entries;
+}
+
+function serializePartXmlAttributes(attrs) {
+  return Object.entries(attrs)
+    .filter(([, value]) => value !== undefined && value !== null && value !== "")
+    .map(([key, value]) => `${key}='${escapeXml(String(value))}'`)
+    .join(" ");
+}
+
+function replaceInstalledPartEntry(partsXml, originalRaw, nextAttrs) {
+  return String(partsXml || "").replace(originalRaw, `<p ${serializePartXmlAttributes(nextAttrs)}/>`); 
+}
+
+function findInstalledPartEntryBySlots(partsXml, slotIds = []) {
+  const allowedSlots = new Set(slotIds.map((slotId) => String(slotId)));
+  return listInstalledPartEntries(partsXml).find(({ attrs }) => {
+    const slotId = String(attrs.ci || attrs.pi || "");
+    return allowedSlots.has(slotId);
+  }) || null;
+}
+
+function findTuneCarrierPartEntry(partsXml, preferredSlotIds = DYNO_TUNE_CARRIER_SLOT_IDS) {
+  return findInstalledPartEntryBySlots(partsXml, preferredSlotIds) || listInstalledPartEntries(partsXml)[0] || null;
+}
+
+function readNumericPartAttr(attrs, key, fallback) {
+  const numericValue = Number(attrs?.[key]);
+  return Number.isFinite(numericValue) ? numericValue : fallback;
+}
+
+function getPersistedDynoState(car) {
+  const catalogCarId = String(car?.catalog_car_id || "");
+  const derivedRedLine = catalogCarId && hasShowroomCarSpec(catalogCarId)
+    ? getCarRedLine(catalogCarId)
+    : DEFAULT_DYNO_PURCHASE_STATE.redLine;
+  const carrier = findTuneCarrierPartEntry(car?.parts_xml || "");
+  const attrs = carrier?.attrs || {};
+
+  return {
+    boostSetting: readNumericPartAttr(attrs, "bs", DEFAULT_DYNO_PURCHASE_STATE.boostSetting),
+    maxPsi: readNumericPartAttr(attrs, "mp", DEFAULT_DYNO_PURCHASE_STATE.maxPsi),
+    chipSetting: readNumericPartAttr(attrs, "cs", DEFAULT_DYNO_PURCHASE_STATE.chipSetting),
+    shiftLightRpm: readNumericPartAttr(attrs, "slr", DEFAULT_DYNO_PURCHASE_STATE.shiftLightRpm),
+    redLine: readNumericPartAttr(attrs, "rl", derivedRedLine),
+  };
+}
+
+function saveDynoTuneAttrsToPartsXml(partsXml, attrs, preferredSlotIds = DYNO_TUNE_CARRIER_SLOT_IDS) {
+  const carrier = findTuneCarrierPartEntry(partsXml, preferredSlotIds);
+  if (!carrier) {
+    return null;
+  }
+
+  return replaceInstalledPartEntry(partsXml, carrier.raw, {
+    ...carrier.attrs,
+    ...attrs,
+  });
 }
 
 function buildInstalledCatalogPartXml(catalogPart, installId, overrides = {}) {
@@ -2214,13 +2289,10 @@ async function handleGetOneCarEngine(context) {
     };
   }
   const timing = generateTimingArray(catalogCarId);
+  const gearRatios = getPersistedGearRatios(car);
   const engineXml = buildDriveableEngineXml({
     catalogCarId,
-    accountCarId,
-    boostType,
-    nosSize,
-    compressionLevel,
-    engineSound,
+    gearRatios,
   });
 
   return {
@@ -2246,15 +2318,19 @@ async function handleBuyDyno(context) {
     return { body: failureBody(), source: "supabase:buydyno:no-player" };
   }
 
+  const accountCarId = context.params.get("acid") || "";
+  const car = accountCarId ? await getCarById(supabase, accountCarId) : null;
+  const dynoState = car ? getPersistedDynoState(car) : DEFAULT_DYNO_PURCHASE_STATE;
+
   if (player.has_dyno === 1 || player.has_dyno === true) {
     return {
       body:
         `"s", 1, "b", "${player.money}", ` +
-        `"bs", "${DEFAULT_DYNO_PURCHASE_STATE.boostSetting}", ` +
-        `"mp", "${DEFAULT_DYNO_PURCHASE_STATE.maxPsi}", ` +
-        `"cs", "${DEFAULT_DYNO_PURCHASE_STATE.chipSetting}", ` +
-        `"sl", "${DEFAULT_DYNO_PURCHASE_STATE.shiftLightRpm}", ` +
-        `"rl", "${DEFAULT_DYNO_PURCHASE_STATE.redLine}"`,
+        `"bs", "${dynoState.boostSetting}", ` +
+        `"mp", "${dynoState.maxPsi}", ` +
+        `"cs", "${dynoState.chipSetting}", ` +
+        `"sl", "${dynoState.shiftLightRpm}", ` +
+        `"rl", "${dynoState.redLine}"`,
       source: "supabase:buydyno:already-owned",
     };
   }
@@ -2278,11 +2354,11 @@ async function handleBuyDyno(context) {
   return {
     body:
       `"s", 1, "b", "${newBalance}", ` +
-      `"bs", "${DEFAULT_DYNO_PURCHASE_STATE.boostSetting}", ` +
-      `"mp", "${DEFAULT_DYNO_PURCHASE_STATE.maxPsi}", ` +
-      `"cs", "${DEFAULT_DYNO_PURCHASE_STATE.chipSetting}", ` +
-      `"sl", "${DEFAULT_DYNO_PURCHASE_STATE.shiftLightRpm}", ` +
-      `"rl", "${DEFAULT_DYNO_PURCHASE_STATE.redLine}"`,
+      `"bs", "${dynoState.boostSetting}", ` +
+      `"mp", "${dynoState.maxPsi}", ` +
+      `"cs", "${dynoState.chipSetting}", ` +
+      `"sl", "${dynoState.shiftLightRpm}", ` +
+      `"rl", "${dynoState.redLine}"`,
     source: "supabase:buydyno",
   };
 }
@@ -3401,7 +3477,7 @@ function getCarRedLine(catalogCarId) {
  *   o = rev limiter (redline + 100-200)
  *   f/g/h/i/j/l = gear ratios from gearbox profile
  */
-function buildN2Fields(catalogCarId) {
+function buildN2Fields(catalogCarId, gearRatioOverrides = null) {
   const spec = getShowroomCarSpec(catalogCarId);
   if (!spec) {
     throw new Error(`Missing showroom spec for catalog car ${catalogCarId}`);
@@ -3454,14 +3530,58 @@ function buildN2Fields(catalogCarId) {
     transmissionStr, bodyTypeStr: spec.ct,
   });
   const ratios = raceSpec.gearbox.forwardRatios;
-  const f = ratios[0] ?? 3.587;
-  const g = ratios[1] ?? 2.022;
-  const h = ratios[2] ?? 1.384;
-  const i = ratios[3] ?? 1.000;
-  const j = ratios[4] ?? 0.861;
-  const l = raceSpec.gearbox.finalDrive;
+  const f = Number(gearRatioOverrides?.g1 ?? ratios[0] ?? 3.587);
+  const g = Number(gearRatioOverrides?.g2 ?? ratios[1] ?? 2.022);
+  const h = Number(gearRatioOverrides?.g3 ?? ratios[2] ?? 1.384);
+  const i = Number(gearRatioOverrides?.g4 ?? ratios[3] ?? 1.000);
+  const j = Number(gearRatioOverrides?.g5 ?? ratios[4] ?? 0.861);
+  const l = Number(gearRatioOverrides?.fg ?? raceSpec.gearbox.finalDrive);
 
   return { x, y, z, r, aa, sl, a, n, o, f, g, h, i, j, l };
+}
+
+function getDefaultGearRatiosForCar(car) {
+  const catalogCarId = String(car?.catalog_car_id || "");
+  const defaultRatios = {
+    g1: "3.587",
+    g2: "2.022",
+    g3: "1.384",
+    g4: "1",
+    g5: "0.861",
+    g6: "0",
+    fg: "4.058",
+  };
+
+  if (!catalogCarId || !hasShowroomCarSpec(catalogCarId)) {
+    return defaultRatios;
+  }
+
+  const n2 = buildN2Fields(catalogCarId);
+  return {
+    g1: String(n2.f ?? defaultRatios.g1),
+    g2: String(n2.g ?? defaultRatios.g2),
+    g3: String(n2.h ?? defaultRatios.g3),
+    g4: String(n2.i ?? defaultRatios.g4),
+    g5: String(n2.j ?? defaultRatios.g5),
+    g6: "0",
+    fg: String(n2.l ?? defaultRatios.fg),
+  };
+}
+
+function getPersistedGearRatios(car) {
+  const defaultRatios = getDefaultGearRatiosForCar(car);
+  const carrier = findTuneCarrierPartEntry(car?.parts_xml || "", GEAR_TUNE_SLOT_IDS);
+  const attrs = carrier?.attrs || {};
+
+  return {
+    g1: attrs.g1 || defaultRatios.g1,
+    g2: attrs.g2 || defaultRatios.g2,
+    g3: attrs.g3 || defaultRatios.g3,
+    g4: attrs.g4 || defaultRatios.g4,
+    g5: attrs.g5 || defaultRatios.g5,
+    g6: attrs.g6 || defaultRatios.g6,
+    fg: attrs.fg || defaultRatios.fg,
+  };
 }
 
 function getShowroomSpecTorque(spec, catalogCarId) {
@@ -3509,13 +3629,13 @@ function getDriveableBoostField(boostType) {
   return Number.isFinite(numericBoost) ? numericBoost : 0;
 }
 
-function buildDriveableEngineXml({ catalogCarId }) {
+function buildDriveableEngineXml({ catalogCarId, gearRatios = null }) {
   const spec = getShowroomCarSpec(catalogCarId);
   if (!spec) {
     throw new Error(`Missing showroom spec for catalog car ${catalogCarId}`);
   }
 
-  const n2 = buildN2Fields(catalogCarId);
+  const n2 = buildN2Fields(catalogCarId, gearRatios);
   const valveCount = n2.aa * 4;
 
   return (
@@ -3727,29 +3847,7 @@ async function handleGetGearInfo(context) {
     }
   }
 
-  let ratios = {
-    g1: "3.587",
-    g2: "2.022",
-    g3: "1.384",
-    g4: "1",
-    g5: "0.861",
-    g6: "0",
-    fg: "4.058",
-  };
-
-  const catalogCarId = String(car?.catalog_car_id || "");
-  if (catalogCarId && hasShowroomCarSpec(catalogCarId)) {
-    const n2 = buildN2Fields(catalogCarId);
-    ratios = {
-      g1: String(n2.f ?? ratios.g1),
-      g2: String(n2.g ?? ratios.g2),
-      g3: String(n2.h ?? ratios.g3),
-      g4: String(n2.i ?? ratios.g4),
-      g5: String(n2.j ?? ratios.g5),
-      g6: "0",
-      fg: String(n2.l ?? ratios.fg),
-    };
-  }
+  const ratios = getPersistedGearRatios(car);
 
   const gearRatios =
     `<g p='2500' pp='25'>` +
@@ -3759,6 +3857,238 @@ async function handleGetGearInfo(context) {
     body: wrapSuccessData(gearRatios),
     source: "generated:getgearinfo",
   };
+}
+
+async function resolveOwnedCarContext(context, sourceLabel) {
+  const { supabase, params } = context;
+  if (!supabase) {
+    return { ok: false, body: failureBody(), source: `${sourceLabel}:no-supabase` };
+  }
+
+  const caller = await resolveCallerSession(context, sourceLabel);
+  if (!caller?.ok) {
+    return { ok: false, body: caller?.body || failureBody(), source: caller?.source || `${sourceLabel}:bad-session` };
+  }
+
+  const accountCarId = params.get("acid") || "";
+  const car = accountCarId ? await getCarById(supabase, accountCarId) : null;
+  if (!car || Number(car.player_id) !== Number(caller.playerId)) {
+    return { ok: false, body: failureBody(), source: `${sourceLabel}:no-car` };
+  }
+
+  return { ok: true, caller, car, accountCarId };
+}
+
+async function persistCarTuneAttrs({ supabase, accountCarId, car, attrs, preferredSlotIds }) {
+  const nextPartsXml = saveDynoTuneAttrsToPartsXml(car.parts_xml || "", attrs, preferredSlotIds);
+  if (!nextPartsXml) {
+    return null;
+  }
+
+  await saveCarPartsXml(supabase, accountCarId, nextPartsXml);
+  return nextPartsXml;
+}
+
+async function handleChangeBoost(context) {
+  const { supabase, params } = context;
+  const resolved = await resolveOwnedCarContext(context, "supabase:changeboost");
+  if (!resolved?.ok) {
+    return resolved;
+  }
+
+  const requestedBoost = Number(params.get("bs") || 0);
+  if (!Number.isFinite(requestedBoost) || requestedBoost < 0 || requestedBoost > DEFAULT_DYNO_PURCHASE_STATE.maxPsi) {
+    return { body: `"s", "-2"`, source: "supabase:changeboost:invalid" };
+  }
+
+  const hasController = Boolean(
+    findInstalledPartEntryBySlots(resolved.car.parts_xml || "", BOOST_CONTROLLER_SLOT_IDS)
+    || findTuneCarrierPartEntry(resolved.car.parts_xml || ""),
+  );
+  if (!hasController) {
+    return { body: `"s", "-1"`, source: "supabase:changeboost:no-controller" };
+  }
+
+  try {
+    const nextPartsXml = await persistCarTuneAttrs({
+      supabase,
+      accountCarId: resolved.accountCarId,
+      car: resolved.car,
+      attrs: { bs: String(requestedBoost), mp: String(DEFAULT_DYNO_PURCHASE_STATE.maxPsi) },
+      preferredSlotIds: BOOST_CONTROLLER_SLOT_IDS,
+    });
+    if (!nextPartsXml) {
+      return { body: `"s", "-4"`, source: "supabase:changeboost:no-carrier" };
+    }
+  } catch (error) {
+    return { body: `"s", "-3"`, source: "supabase:changeboost:save-failed" };
+  }
+
+  return { body: `"s", "1"`, source: "supabase:changeboost" };
+}
+
+async function handleChangeAirFuel(context) {
+  const { supabase, params } = context;
+  const resolved = await resolveOwnedCarContext(context, "supabase:changeairfuel");
+  if (!resolved?.ok) {
+    return resolved;
+  }
+
+  const requestedAf = Number(params.get("af") || 0);
+  if (!Number.isFinite(requestedAf) || requestedAf < 0 || requestedAf > 100) {
+    return { body: `"s", "-2"`, source: "supabase:changeairfuel:invalid" };
+  }
+
+  const hasController = Boolean(
+    findInstalledPartEntryBySlots(resolved.car.parts_xml || "", AFR_CONTROLLER_SLOT_IDS)
+    || findTuneCarrierPartEntry(resolved.car.parts_xml || ""),
+  );
+  if (!hasController) {
+    return { body: `"s", "-1"`, source: "supabase:changeairfuel:no-controller" };
+  }
+
+  try {
+    const nextPartsXml = await persistCarTuneAttrs({
+      supabase,
+      accountCarId: resolved.accountCarId,
+      car: resolved.car,
+      attrs: { cs: String(requestedAf) },
+      preferredSlotIds: AFR_CONTROLLER_SLOT_IDS,
+    });
+    if (!nextPartsXml) {
+      return { body: `"s", "-4"`, source: "supabase:changeairfuel:no-carrier" };
+    }
+  } catch (error) {
+    return { body: `"s", "-3"`, source: "supabase:changeairfuel:save-failed" };
+  }
+
+  return { body: `"s", "1"`, source: "supabase:changeairfuel" };
+}
+
+async function handleChangeShiftLightRpm(context) {
+  const { supabase, params } = context;
+  const resolved = await resolveOwnedCarContext(context, "supabase:changeshiftlightrpm");
+  if (!resolved?.ok) {
+    return resolved;
+  }
+
+  const dynoState = getPersistedDynoState(resolved.car);
+  const requestedRpm = Number(params.get("slr") || 0);
+  if (!Number.isFinite(requestedRpm) || requestedRpm < 1000 || requestedRpm > Math.max(dynoState.redLine, 12000)) {
+    return { body: `"s", "-2"`, source: "supabase:changeshiftlightrpm:invalid" };
+  }
+
+  try {
+    const nextPartsXml = await persistCarTuneAttrs({
+      supabase,
+      accountCarId: resolved.accountCarId,
+      car: resolved.car,
+      attrs: { slr: String(Math.round(requestedRpm)), rl: String(dynoState.redLine) },
+      preferredSlotIds: SHIFT_LIGHT_SLOT_IDS,
+    });
+    if (!nextPartsXml) {
+      return { body: `"s", "-1"`, source: "supabase:changeshiftlightrpm:no-indicator" };
+    }
+  } catch (error) {
+    return { body: `"s", "-3"`, source: "supabase:changeshiftlightrpm:save-failed" };
+  }
+
+  return {
+    body: `"s", "1", "r", "${Math.round(requestedRpm)}"`,
+    source: "supabase:changeshiftlightrpm",
+  };
+}
+
+async function handleBuyGears(context) {
+  const { supabase, params } = context;
+  const resolved = await resolveOwnedCarContext(context, "supabase:buygears");
+  if (!resolved?.ok) {
+    return resolved;
+  }
+
+  const player = await getPlayerById(supabase, resolved.caller.playerId);
+  if (!player) {
+    return { body: failureBody(), source: "supabase:buygears:no-player" };
+  }
+
+  const gearPrice = 2500;
+  const newBalance = Number(player.money) - gearPrice;
+  if (newBalance < 0) {
+    return { body: `"s", "-2"`, source: "supabase:buygears:insufficient-funds" };
+  }
+
+  const submittedRatios = {
+    g1: params.get("g1") || "",
+    g2: params.get("g2") || "",
+    g3: params.get("g3") || "",
+    g4: params.get("g4") || "",
+    g5: params.get("g5") || "",
+    g6: params.get("g6") || "0",
+    fg: params.get("fg") || "",
+  };
+
+  if ([submittedRatios.g1, submittedRatios.g2, submittedRatios.g3, submittedRatios.g4, submittedRatios.g5, submittedRatios.fg].some((value) => value === "")) {
+    return { body: `"s", "-4"`, source: "supabase:buygears:incomplete" };
+  }
+
+  const numericRatios = Object.fromEntries(
+    Object.entries(submittedRatios).map(([key, value]) => [key, Number(value)]),
+  );
+
+  if (Object.values(numericRatios).some((value) => !Number.isFinite(value) || value < 0)) {
+    return { body: `"s", "-3"`, source: "supabase:buygears:invalid" };
+  }
+
+  if (Object.values(numericRatios).some((value) => value > 10)) {
+    return { body: `"s", "-6"`, source: "supabase:buygears:max-value" };
+  }
+
+  if (numericRatios.g1 < 2.5) {
+    return { body: `"s", "-9"`, source: "supabase:buygears:first-too-low" };
+  }
+
+  const orderedForwardRatios = [numericRatios.g1, numericRatios.g2, numericRatios.g3, numericRatios.g4, numericRatios.g5];
+  if (numericRatios.g6 > 0) {
+    orderedForwardRatios.push(numericRatios.g6);
+  }
+  for (let index = 0; index < orderedForwardRatios.length - 1; index += 1) {
+    if (orderedForwardRatios[index] <= orderedForwardRatios[index + 1]) {
+      return { body: `"s", "-5"`, source: "supabase:buygears:wrong-order" };
+    }
+  }
+
+  const defaultRatios = getDefaultGearRatiosForCar(resolved.car);
+  const defaultHasSixth = Number(defaultRatios.g6) > 0;
+  if (!defaultHasSixth && numericRatios.g6 > 0) {
+    return { body: `"s", "-7"`, source: "supabase:buygears:no-sixth-gear" };
+  }
+
+  try {
+    const nextPartsXml = await persistCarTuneAttrs({
+      supabase,
+      accountCarId: resolved.accountCarId,
+      car: resolved.car,
+      attrs: {
+        g1: submittedRatios.g1,
+        g2: submittedRatios.g2,
+        g3: submittedRatios.g3,
+        g4: submittedRatios.g4,
+        g5: submittedRatios.g5,
+        g6: defaultHasSixth ? submittedRatios.g6 : "0",
+        fg: submittedRatios.fg,
+      },
+      preferredSlotIds: GEAR_TUNE_SLOT_IDS,
+    });
+    if (!nextPartsXml) {
+      return { body: `"s", "-1"`, source: "supabase:buygears:no-engine" };
+    }
+
+    await updatePlayerMoney(supabase, resolved.caller.playerId, newBalance);
+  } catch (error) {
+    return { body: `"s", "-8"`, source: "supabase:buygears:save-failed" };
+  }
+
+  return { body: `"s", "1"`, source: "supabase:buygears" };
 }
 
 async function handlePractice(context) {
@@ -3809,13 +4139,10 @@ async function handlePractice(context) {
     };
   }
   const timing = generateTimingArray(catalogCarId);
+  const gearRatios = getPersistedGearRatios(car);
   const carStats = buildDriveableEngineXml({
     catalogCarId,
-    accountCarId,
-    boostType,
-    nosSize,
-    compressionLevel,
-    engineSound,
+    gearRatios,
   });
 
   const body = `"s", 1, "d", "${carStats}", "t", [${timing.join(', ')}]`;
@@ -4139,7 +4466,11 @@ const handlers = {
   },
   getonecarengine: handleGetOneCarEngine,
   getgearinfo: handleGetGearInfo,
+  buygears: handleBuyGears,
   buydyno: handleBuyDyno,
+  changeboost: handleChangeBoost,
+  changeairfuel: handleChangeAirFuel,
+  changeshiftlightrpm: handleChangeShiftLightRpm,
   loaddynograph: async () => {
     return {
       body: `"s", 1, "d", "<dyno/>"`,
