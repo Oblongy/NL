@@ -59,8 +59,6 @@ const STATIC_BADGES_XML = "<n id='badges'><b></b></n>";
 
 const STATIC_BANNERS_XML = "<n id='banners'><w></w></n>";
 
-const STATIC_DYNO_XML = "<n id='dyno' p='500'/>";
-
 const STATIC_GEARS_XML = "<n id='gears' p='2500' pp='25'/>";
 
 const STATIC_BROADCAST_XML =
@@ -134,6 +132,15 @@ function renderImpoundNodes(testDriveCar) {
   );
 }
 
+function renderDynoNode(player) {
+  const hasDyno = player.has_dyno === 1 || player.has_dyno === true;
+  if (hasDyno) {
+    return "<n id='dyno'/>";
+  }
+
+  return "<n id='dyno' p='500'/>";
+}
+
 const STATIC_INTRO_XML =
   "<n id='intro'>" +
   "<n id='dailyLogin'><s><d a='0'/><d a='0'/><d a='0'/><d a='0'/><d a='0'/><d i=''/></s></n>" +
@@ -204,7 +211,7 @@ export function buildLoginBody(player, cars, _templateBody, sessionKey, logger, 
     paintColorsXml +
     STATIC_BANNERS_XML +
     renderOwnedCarsNode(cars) +
-    STATIC_DYNO_XML +
+    renderDynoNode(player) +
     STATIC_BADGES_XML +
     STATIC_GEARS_XML +
     STATIC_BROADCAST_XML +

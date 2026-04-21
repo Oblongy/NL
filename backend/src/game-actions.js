@@ -80,7 +80,7 @@ import { getShowroomCarSpec, hasShowroomCarSpec } from "./showroom-car-specs.js"
 
 const DEFAULT_STARTER_CATALOG_CAR_ID = 1; // Acura Integra GSR
 const DEFAULT_STOCK_PARTS_XML = "";
-const TEST_DRIVE_DURATION_HOURS = 72;
+const TEST_DRIVE_DURATION_HOURS = 12;
 const DEFAULT_DYNO_PURCHASE_STATE = Object.freeze({
   boostSetting: 5,
   maxPsi: 10,
@@ -205,23 +205,23 @@ function buildInstalledCatalogPartXml(catalogPart, installId, overrides = {}) {
 function parseShowroomPurchaseCatalogCarId(params) {
   return Number(
     params.get("acid")
-      || params.get("ci")
-      || params.get("cid")
-      || params.get("carid")
-      || params.get("catalogid")
-      || params.get("i")
-      || params.get("id")
-      || 0,
+    || params.get("ci")
+    || params.get("cid")
+    || params.get("carid")
+    || params.get("catalogid")
+    || params.get("i")
+    || params.get("id")
+    || 0,
   );
 }
 
 function parseShowroomPurchasePrice(params) {
   return Number(
     params.get("pr")
-      || params.get("price")
-      || params.get("cp")
-      || params.get("p")
-      || 0,
+    || params.get("price")
+    || params.get("cp")
+    || params.get("p")
+    || 0,
   );
 }
 
@@ -1870,8 +1870,8 @@ async function handleLogin(context) {
     const player = await getPlayerByUsername(supabase, username);
 
     if (!player || !verifyGamePassword(password, player.password_hash)) {
-      logger.warn("Login failed: invalid credentials", { 
-        username, 
+      logger.warn("Login failed: invalid credentials", {
+        username,
         playerExists: !!player,
         passwordMatch: player ? verifyGamePassword(password, player.password_hash) : false
       });
@@ -2147,8 +2147,8 @@ async function handleGetAllCars(context) {
   });
   const garageCars = decorateCarsWithTestDriveState(caller.playerId, cars);
 
-  logger?.info("GetAllCars returning cars", { 
-    count: garageCars.length, 
+  logger?.info("GetAllCars returning cars", {
+    count: garageCars.length,
     carIds: garageCars.map(c => c.game_car_id),
     partsXmlLengths: garageCars.map(c => c.parts_xml?.length || 0)
   });
@@ -2532,14 +2532,14 @@ async function handleBuyCar(context) {
   }
 
   const existingCars = await listCarsForPlayer(supabase, caller.playerId);
-  
+
   // Allow color selection via 'cc' or 'c' parameter, default to silver
   const selectedColor = String(params.get("cc") || params.get("c") || "C0C0C0")
     .replace(/[^0-9A-F]/gi, "")
     .toUpperCase()
     .slice(0, 6) || "C0C0C0";
   const paintIndex = Number(getPaintIdForColorCode(selectedColor)) || 5;
-  
+
   const createdCar = await createOwnedCar(supabase, {
     playerId: caller.playerId,
     catalogCarId,
@@ -2951,11 +2951,11 @@ const LOCATION_MAX_PRICE = {
 
 // Dealer categories ported from scripts/data/dealers.py
 const DEALER_CATEGORIES = [
-  { i: "1001", pi: "0", n: "Toreno Showroom",       cl: "55AACC", l: "100" },
-  { i: "1002", pi: "0", n: "Newburge Showroom",     cl: "55CC55", l: "200" },
-  { i: "1003", pi: "0", n: "Creek Side Showroom",   cl: "CCAA55", l: "300" },
-  { i: "1004", pi: "0", n: "Vista Heights Showroom",cl: "CC5555", l: "400" },
-  { i: "1005", pi: "0", n: "Diamond Point Showroom",cl: "CC55CC", l: "500" },
+  { i: "1001", pi: "0", n: "Toreno Showroom", cl: "55AACC", l: "100" },
+  { i: "1002", pi: "0", n: "Newburge Showroom", cl: "55CC55", l: "200" },
+  { i: "1003", pi: "0", n: "Creek Side Showroom", cl: "CCAA55", l: "300" },
+  { i: "1004", pi: "0", n: "Vista Heights Showroom", cl: "CC5555", l: "400" },
+  { i: "1005", pi: "0", n: "Diamond Point Showroom", cl: "CC55CC", l: "500" },
 ];
 
 function getShowroomLocationForCarPrice(price) {
@@ -3899,10 +3899,10 @@ async function handleGetAvatarAge(context) {
   const { params } = context;
   const tidsParam = params.get("tids") || "";
   const tids = tidsParam.split(",").filter(Boolean).map(Number);
-  
+
   // Return avatar age for each team ID (age is always 0 for now)
   const result = tids.map(tid => [tid, 0]);
-  
+
   return {
     body: `"s", 1, "tids", [${result.map(pair => `[${pair.join(', ')}]`).join(', ')}]`,
     source: "stub:getavatarage",
@@ -3913,10 +3913,10 @@ async function handleGetTeamAvatarAge(context) {
   const { params } = context;
   const tidsParam = params.get("tids") || "";
   const tids = tidsParam.split(",").filter(Boolean).map(Number);
-  
+
   // Return avatar age for each team ID (age is always 0 for now)
   const result = tids.map(tid => [tid, 0]);
-  
+
   return {
     body: `"s", 1, "tids", [${result.map(pair => `[${pair.join(', ')}]`).join(', ')}]`,
     source: "stub:getteamavatarage",
@@ -4100,6 +4100,18 @@ const handlers = {
   getonecarengine: handleGetOneCarEngine,
   getgearinfo: handleGetGearInfo,
   buydyno: handleBuyDyno,
+  loaddynograph: async () => {
+    return {
+      body: `"s", 1, "d", "<dyno/>"`,
+      source: "stub:loaddynograph",
+    };
+  },
+  savedynograph: async () => {
+    return {
+      body: `"s", 1`,
+      source: "stub:savedynograph",
+    };
+  },
   buypart: handleBuyPart,
   buyenginepart: handleBuyEnginePart,
   // --- Showroom / Dealership ---
@@ -4347,17 +4359,17 @@ const handlers = {
     const { services, supabase } = context;
     const raceRoomRegistry = services?.raceRoomRegistry;
     const tcpNotify = services?.tcpNotify;
-    
+
     if (!raceRoomRegistry) {
       return { body: wrapSuccessData("<leave s='0'/>"), source: "leaveroom:no-registry" };
     }
-    
+
     // Get player info from session
     const caller = await resolveCallerSession(context, "leaveroom");
     if (!caller?.ok) {
       return { body: wrapSuccessData("<leave s='0'/>"), source: "leaveroom:bad-session" };
     }
-    
+
     // Get rooms player was in before removing
     const affectedRooms = [];
     for (const room of raceRoomRegistry.list()) {
@@ -4365,10 +4377,10 @@ const handlers = {
         affectedRooms.push(room.roomId);
       }
     }
-    
+
     // Remove player from all rooms
     const removedFrom = raceRoomRegistry.removePlayerFromAllRooms(caller.playerId);
-    
+
     return {
       body: wrapSuccessData(`<leave s='1' rooms='${removedFrom.length}'/>`),
       source: "generated:leaveroom",
@@ -4377,75 +4389,75 @@ const handlers = {
   setready: async (context) => {
     // Set player ready status in race room
     const { params, services, supabase } = context;
-      const raceManager = services?.raceManager;
+    const raceManager = services?.raceManager;
     const ready = params.get("ready") === "1" || params.get("ready") === "true";
     const raceRoomRegistry = services?.raceRoomRegistry;
     const tcpNotify = services?.tcpNotify;
-    
+
     if (!raceRoomRegistry) {
       return { body: wrapSuccessData("<ready s='0'/>"), source: "setready:no-registry" };
     }
-    
+
     // Get player info from session
     const caller = await resolveCallerSession(context, "setready");
     if (!caller?.ok) {
       return { body: wrapSuccessData("<ready s='0'/>"), source: "setready:bad-session" };
     }
-    
+
     // Find which room the player is in
     const room = raceRoomRegistry.getRoomByPlayer(caller.playerId);
     if (!room) {
       return { body: wrapSuccessData("<ready s='0' error='not_in_room'/>"), source: "setready:not-in-room" };
     }
-    
+
     // Set ready status
     const result = raceRoomRegistry.setPlayerReady(room.roomId, caller.playerId, ready);
     if (!result.success) {
       return { body: wrapSuccessData(`<ready s='0' error='${result.error}'/>`), source: `setready:${result.error}` };
     }
-    
+
     // Check if all players are ready and minimum players met
     const allReady = raceRoomRegistry.areAllPlayersReady(room.roomId);
     const minPlayers = 2; // Minimum players to start a race
     const canStart = allReady && result.room.players.length >= minPlayers;
-    
+
     if (canStart) {
-        const raceManager = services?.raceManager;
-        if (!raceManager) {
-          context.logger.warn("RaceManager not available, cannot start race.", { roomId: room.roomId });
-          return { body: wrapSuccessData("<ready s='0' error='no_race_manager'/>"), source: "setready:no-race-manager" };
-        }
+      const raceManager = services?.raceManager;
+      if (!raceManager) {
+        context.logger.warn("RaceManager not available, cannot start race.", { roomId: room.roomId });
+        return { body: wrapSuccessData("<ready s='0' error='no_race_manager'/>"), source: "setready:no-race-manager" };
+      }
 
-        // Create a new race instance
-        // For simplicity, let's assume a default trackId for now.
-        // In a real scenario, the trackId would likely come from the room configuration or player input.
-        const trackId = "default_track_01"; // Placeholder
-        const newRace = raceManager.createRace(
-          room.roomId,
-          room.type,
-          result.room.players,
-          trackId
-        );
-        newRace.startRace(); // Set the race status to running
+      // Create a new race instance
+      // For simplicity, let's assume a default trackId for now.
+      // In a real scenario, the trackId would likely come from the room configuration or player input.
+      const trackId = "default_track_01"; // Placeholder
+      const newRace = raceManager.createRace(
+        room.roomId,
+        room.type,
+        result.room.players,
+        trackId
+      );
+      newRace.startRace(); // Set the race status to running
 
-        context.logger.info("Race instance created and started", {
-          raceId: newRace.id,
-          roomId: room.roomId,
-          playerCount: result.room.players.length,
-        });
+      context.logger.info("Race instance created and started", {
+        raceId: newRace.id,
+        roomId: room.roomId,
+        playerCount: result.room.players.length,
+      });
 
-        // Update room status to "racing" and associate with the new race instance
-        result.room.status = "racing";
-        result.room.currentRaceId = newRace.id; // Store the race instance ID in the room
-        raceRoomRegistry.upsert(room.roomId, result.room);
+      // Update room status to "racing" and associate with the new race instance
+      result.room.status = "racing";
+      result.room.currentRaceId = newRace.id; // Store the race instance ID in the room
+      raceRoomRegistry.upsert(room.roomId, result.room);
 
-        // Notify players that race is starting, including the raceId
-        if (tcpNotify) {
-          // Assuming broadcastToRoom can handle additional data
-          tcpNotify.broadcastToRoom(room.roomId, { ...result.room, raceId: newRace.id }, "race_starting");
-        }
+      // Notify players that race is starting, including the raceId
+      if (tcpNotify) {
+        // Assuming broadcastToRoom can handle additional data
+        tcpNotify.broadcastToRoom(room.roomId, { ...result.room, raceId: newRace.id }, "race_starting");
+      }
     }
-    
+
     return {
       body: wrapSuccessData(`<ready s='1' ready='${ready ? 1 : 0}' canstart='${canStart ? 1 : 0}'/>`),
       source: "generated:setready",
