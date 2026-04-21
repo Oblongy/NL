@@ -187,6 +187,7 @@ export class TcpServer {
     }
 
     this.leaveRoom(conn);
+    this.handleRaceDisconnect(conn);
     if (conn.playerId) {
       const siblingConn = [...this.connections.values()].find(
         (candidate) => candidate.id !== conn.id && Number(candidate.playerId || 0) === Number(conn.playerId),
@@ -201,6 +202,57 @@ export class TcpServer {
       }
     }
     this.connections.delete(conn.id);
+  }
+
+  handleRaceDisconnect(conn) {
+    const playerId = Number(conn?.playerId || 0);
+    const raceId = String(conn?.raceId || "");
+    if (!playerId || !raceId) {
+      return;
+    }
+
+    const race = this.races.get(raceId);
+    if (!race || race.resultBroadcasted) {
+      return;
+    }
+
+    const disconnectedParticipant = race.players.find((participant) => Number(participant.playerId || 0) === playerId);
+    if (!disconnectedParticipant) {
+      return;
+    }
+
+    const siblingConn = [...this.connections.values()].find(
+      (candidate) =>
+        candidate.id !== conn.id &&
+        Number(candidate.playerId || 0) === playerId &&
+        (String(candidate.raceId || "") === raceId || Number(candidate.roomId || 0) > 0),
+    );
+    if (siblingConn) {
+      return;
+    }
+
+    const remainingParticipants = race.players.filter((participant) => Number(participant.playerId || 0) !== playerId);
+    if (remainingParticipants.length !== 1) {
+      return;
+    }
+
+    const winnerPlayerId = Number(remainingParticipants[0].playerId || 0);
+    if (!winnerPlayerId) {
+      return;
+    }
+
+    this.logger.info("TCP race resolved by disconnect", {
+      raceId,
+      disconnectedPlayerId: playerId,
+      winnerPlayerId,
+      phase: race.phase || "LOADED",
+    });
+
+    this.tryBroadcastRaceResult(race, winnerPlayerId);
+    this.races.delete(raceId);
+    this.raceCompletions.delete(raceId);
+    this.raceIdByPlayerId.delete(playerId);
+    this.raceIdByPlayerId.delete(winnerPlayerId);
   }
 
   handleData(conn, data) {
