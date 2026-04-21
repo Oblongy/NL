@@ -27,7 +27,7 @@ import {
   renderUserSummary,
   wrapSuccessData,
 } from "./game-xml.js";
-import { buildCarRaceSpec, simulateRun, getRedLine } from "./engine-physics.js";
+import { buildCarRaceSpec, getRedLine } from "./engine-physics.js";
 import { hashGamePassword, normalizeUsername, verifyGamePassword } from "./player-identity.js";
 import { getPublicIdForPlayer } from "./public-id.js";
 import { createLoginSession, getSessionPlayerId, validateOrCreateSession } from "./session.js";
@@ -3148,15 +3148,86 @@ function buildSpecFromShowroomSpec(catalogCarId) {
   });
 }
 
+function getCapturedTimingCurveProfile(spec) {
+  const engine = String(spec?.eo || "").toLowerCase();
+  const transmission = String(spec?.tt || "").toLowerCase();
+  const isV8 = engine.includes("v8") || engine.includes("hemi");
+  const isV10 = engine.includes("v10") || engine.includes("10-cyl");
+  const isV6 = engine.includes("v6");
+  const isRotary = engine.includes("rotary");
+  const isBoosted = engine.includes("turbo") || engine.includes("supercharged") || /\btt\b/.test(engine) || /\bsc\b/.test(engine) || /\bt\b/.test(engine);
+  const isSixSpeed = transmission.includes("6-speed");
+
+  if (isV8 || isV10) {
+    return {
+      startFactor: 0.4,
+      endFactor: isSixSpeed ? 0.406 : 0.404,
+      curvePower: 1.7,
+      length: 102,
+    };
+  }
+
+  if (isV6) {
+    return {
+      startFactor: 0.395,
+      endFactor: 0.425,
+      curvePower: 1.45,
+      length: 102,
+    };
+  }
+
+  if (isRotary) {
+    return {
+      startFactor: 0.39,
+      endFactor: 0.46,
+      curvePower: 1.2,
+      length: 102,
+    };
+  }
+
+  if (isBoosted) {
+    return {
+      startFactor: 0.4,
+      endFactor: 0.43,
+      curvePower: 1.35,
+      length: 102,
+    };
+  }
+
+  return {
+    startFactor: 0.4,
+    endFactor: 0.47,
+    curvePower: 1.15,
+    length: 102,
+  };
+}
+
 /**
- * Generate the timing array for a catalog car.
+ * Generate the live-style engine curve array for practice/getonecarengine.
  *
- * This stays on the physics simulation path only. We no longer replay or
- * scale a captured live timing curve here.
+ * Community-server captures show this is a compact torque-style curve, not the
+ * quarter-mile position-delta array used for computer opponents.
  */
 function generateTimingArray(catalogCarId) {
-  const raceSpec = buildSpecFromShowroomSpec(catalogCarId);
-  return simulateRun(raceSpec);
+  const spec = getShowroomCarSpec(catalogCarId);
+  if (!spec) {
+    throw new Error(`Missing showroom spec for catalog car ${catalogCarId}`);
+  }
+
+  const torque = getShowroomSpecTorque(spec, catalogCarId);
+  const profile = getCapturedTimingCurveProfile(spec);
+  const startValue = torque * profile.startFactor;
+  const endValue = Math.max(startValue + 1, torque * profile.endFactor);
+  const values = [];
+
+  for (let index = 0; index < profile.length; index += 1) {
+    const progress = profile.length <= 1 ? 1 : index / (profile.length - 1);
+    const eased = Math.pow(progress, profile.curvePower);
+    const value = startValue + ((endValue - startValue) * eased);
+    values.push(Math.max(1, Math.round(value)));
+  }
+
+  return values;
 }
 
 /**
@@ -3292,52 +3363,23 @@ function getDriveableBoostField(boostType) {
   return Number.isFinite(numericBoost) ? numericBoost : 0;
 }
 
-function buildDriveableEngineXml({ catalogCarId, accountCarId, boostType, nosSize, compressionLevel, engineSound }) {
+function buildDriveableEngineXml({ catalogCarId }) {
   const spec = getShowroomCarSpec(catalogCarId);
   if (!spec) {
     throw new Error(`Missing showroom spec for catalog car ${catalogCarId}`);
   }
 
   const n2 = buildN2Fields(catalogCarId);
-  const horsepower = getShowroomSpecHorsepower(spec, catalogCarId);
-  const torque = getShowroomSpecTorque(spec, catalogCarId);
-
-  // Practice/getonecarengine became unreliable once these legacy client-side
-  // launch fields were replaced with zeros. Keep the richer n2 shape the Flash
-  // client previously drove correctly from.
-  const gear1 = "3.587";
-  const gear2 = "2.022";
-  const gear3 = "1.384";
-  const gear4 = "1";
-  const gear5 = "0.861";
-  const finalDrive = "4.058";
-  const boostField = getDriveableBoostField(boostType);
-  const stableCompression = Number.isFinite(Number(compressionLevel)) && Number(compressionLevel) > 0
-    ? Number(compressionLevel)
-    : 11;
-  // The older garage/practice payload always shipped `es='1'`, and boosted
-  // cars only started breaking once we began varying this field per induction.
-  const stableEngineSound = 1;
-  // The Flash launch logic has proven sensitive to these fields drifting from
-  // the older stable payload shape, especially on the neutral-to-first
-  // transition. Keep them pinned to the legacy values and only vary the safer
-  // per-car fields like power, torque, and weight-derived `r`.
-  const legacyLaunchProfile = {
-    sl: 7200,
-    a: 6800,
-    n: 7600,
-    o: 7800,
-    aa: 4,
-  };
+  const valveCount = n2.aa * 4;
 
   return (
-    `<n2 es='${stableEngineSound}' sl='${legacyLaunchProfile.sl}' sg='0' rc='0' tmp='0' r='${n2.r}' v='2.2398523985239853' ` +
-    `a='${legacyLaunchProfile.a}' n='${legacyLaunchProfile.n}' o='${legacyLaunchProfile.o}' s='1.208' b='${boostField}' p='0.15' c='${stableCompression}' e='${nosSize}' d='T' ` +
-    `f='${gear1}' g='${gear2}' h='${gear3}' i='${gear4}' j='${gear5}' k='0' l='${finalDrive}' ` +
-    `q='${horsepower}' m='${torque}' t='100' u='28' w='0.144' x='41.2' y='${torque}' z='${horsepower}' ` +
-    `aa='${legacyLaunchProfile.aa}' ab='${accountCarId}' ac='9' ad='0' ae='100' af='100' ag='100' ah='100' ai='100' ` +
+    `<n2 es='1' sl='${n2.sl}' sg='0' rc='0' tmp='0' r='${n2.r}' v='0' ` +
+    `a='${n2.a}' n='${n2.n}' o='${n2.o}' s='0.854' b='0' p='1.8' c='0' e='0' d='N' ` +
+    `f='${n2.f}' g='${n2.g}' h='${n2.h}' i='${n2.i}' j='${n2.j}' k='0' l='${n2.l}' ` +
+    `q='0' m='0' t='0' u='10' w='0' x='${n2.x}' y='${n2.y}' z='${n2.z}' ` +
+    `aa='${n2.aa}' ab='${valveCount}' ac='0' ad='0' ae='100' af='100' ag='100' ah='100' ai='100' ` +
     `aj='0' ak='0' al='0' am='0' an='0' ao='100' ap='0' aq='0' ar='1' as='0' ` +
-    `at='100' au='100' av='0' aw='100' ax='0'><r g1='${gear1}' g2='${gear2}' g3='${gear3}' g4='${gear4}' g5='${gear5}' g6='0'/></n2>`
+    `at='100' au='100' av='0' aw='100' ax='0'/>`
   );
 }
 
