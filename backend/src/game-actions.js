@@ -162,6 +162,14 @@ function extractInfoXmlFromLoginBody(body) {
   return match?.[1] || "<ini></ini>";
 }
 
+function logTournamentPayload(logger, label, payload, meta = {}) {
+  logger?.info(`${label} payload`, {
+    ...meta,
+    payloadLength: String(payload || "").length,
+    payload,
+  });
+}
+
 function removeInstalledPartByAi(partsXml, installId) {
   const source = String(partsXml || "");
   const escapedInstallId = String(installId || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -2763,8 +2771,15 @@ async function handleGetTwoRacersCars(context) {
     });
   }
 
+  const responseXml = renderTwoRacerCars(orderedCars);
+  logTournamentPayload(context.logger, "gettworacerscars", responseXml, {
+    requestedCarIds,
+    resolvedGameCarIds: orderedCars.map((car) => Number(car?.game_car_id || 0)),
+    callerPlayerId: caller.playerId,
+  });
+
   return {
-    body: wrapSuccessData(renderTwoRacerCars(orderedCars)),
+    body: wrapSuccessData(responseXml),
     source: "supabase:gettworacerscars",
   };
 }
@@ -5227,6 +5242,12 @@ async function handleGetHumanTournaments(context) {
     `</e>` +
     `</n2>`;
 
+  logTournamentPayload(context.logger, "gethumantournaments", xml, {
+    eventId: event.id,
+    scheduleId: event.scheduleId,
+    status: event.status,
+  });
+
   return {
     body: wrapSuccessData(xml),
     source: "generated:gethumantournaments",
@@ -5814,6 +5835,12 @@ const handlers = {
       activeCarId,
       playerId: session.playerId,
     });
+    logTournamentPayload(logger, "ctct", `"s", 1`, {
+      tournamentKey: session.sessionKey,
+      bracketTime,
+      activeCarId,
+      playerId: session.playerId,
+    });
 
     return {
       body: `"s", 1`,
@@ -5847,6 +5874,14 @@ const handlers = {
       tournamentId: session.tournamentId,
       wins: session.wins,
       purse: opponent.purse,
+      requestedCarId,
+      opponentCompetitorCarId: opponent.competitorCarId,
+      opponentVirtualCarId: opponent.virtualCarId,
+    });
+    logTournamentPayload(logger, "ctrt", opponent.xml, {
+      tournamentKey: session.sessionKey,
+      tournamentId: session.tournamentId,
+      wins: session.wins,
       requestedCarId,
       opponentCompetitorCarId: opponent.competitorCarId,
       opponentVirtualCarId: opponent.virtualCarId,

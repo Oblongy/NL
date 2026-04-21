@@ -166,6 +166,16 @@ export class TcpServer {
     });
   }
 
+  logTournamentTcpPayload(conn, messageType, payload, meta = {}) {
+    this.logger.info(`TCP ${messageType} payload`, {
+      connId: conn?.id ?? null,
+      playerId: Number(conn?.playerId || 0) || null,
+      payloadLength: String(payload || "").length,
+      payload,
+      ...meta,
+    });
+  }
+
   cleanupConnection(conn, { countSocketError = false } = {}) {
     if (!conn || !this.connections.has(conn.id)) {
       return;
@@ -287,11 +297,17 @@ export class TcpServer {
 
       // --- HTI: Heartbeat ---
       } else if (messageType === "HTI") {
-        this.sendMessage(conn, `"ac", "HTI", "s", "${this.buildTournamentInfoXml(conn)}"`);
+        const payload = this.buildTournamentInfoXml(conn);
+        this.logTournamentTcpPayload(conn, "HTI", payload);
+        this.sendMessage(conn, `"ac", "HTI", "s", "${payload}"`);
       } else if (messageType === "HTGET32") {
-        this.sendMessage(conn, `"ac", "HTGET32", "d", "${this.escapeForTcp(this.buildLiveTournamentTop32Xml(conn))}"`);
+        const payload = this.buildLiveTournamentTop32Xml(conn);
+        this.logTournamentTcpPayload(conn, "HTGET32", payload);
+        this.sendMessage(conn, `"ac", "HTGET32", "d", "${this.escapeForTcp(payload)}"`);
       } else if (messageType === "HTGETTREE") {
-        this.sendMessage(conn, `"ac", "HTGETTREE", "d", "${this.escapeForTcp(this.buildLiveTournamentTreeXml(conn))}"`);
+        const payload = this.buildLiveTournamentTreeXml(conn);
+        this.logTournamentTcpPayload(conn, "HTGETTREE", payload);
+        this.sendMessage(conn, `"ac", "HTGETTREE", "d", "${this.escapeForTcp(payload)}"`);
       } else if (messageType === "HTJOIN") {
         this.handleLiveTournamentJoin(conn, { spectate: false, parts });
       } else if (messageType === "HTSPECTATE") {
@@ -300,7 +316,9 @@ export class TcpServer {
         this.leaveRoom(conn);
         this.sendMessage(conn, '"ac", "HTQUIT", "s", 1');
       } else if (messageType === "HTINFO") {
-        this.sendMessage(conn, `"ac", "HTINFO", "d", "${this.escapeForTcp(this.buildTournamentInfoXml(conn))}"`);
+        const payload = this.buildTournamentInfoXml(conn);
+        this.logTournamentTcpPayload(conn, "HTINFO", payload);
+        this.sendMessage(conn, `"ac", "HTINFO", "d", "${this.escapeForTcp(payload)}"`);
       } else if (messageType === "HTQREADY") {
         this.sendMessage(conn, '"ac", "HTQREADY", "s", 1');
       } else if (messageType === "HTQD") {
@@ -312,7 +330,9 @@ export class TcpServer {
       } else if (messageType === "HTRT") {
         this.sendMessage(conn, '"ac", "HTRT", "s", 1');
       } else if (messageType === "HTD") {
-        this.sendMessage(conn, `"ac", "HTD", "d", "${this.escapeForTcp(this.buildLiveTournamentRaceResultXml(conn))}"`);
+        const payload = this.buildLiveTournamentRaceResultXml(conn);
+        this.logTournamentTcpPayload(conn, "HTD", payload);
+        this.sendMessage(conn, `"ac", "HTD", "d", "${this.escapeForTcp(payload)}"`);
 
       // --- S / I: In-race position sync --- sanitize and relay to opponent, don't ack
       } else if (messageType === "S" || messageType === "I") {
@@ -1694,7 +1714,9 @@ export class TcpServer {
       // client can satisfy its socket-ready gate before it starts room flow.
       this.sendMessage(conn, '"ac", "L", "s", 1, "ni", 1000, "ns", 30, "tid", 1, "trp", 0, "trbp", 0, "lft", "0.5"');
       this.sendMessage(conn, '"ac", "GNL", "d", "<buddies></buddies>"');
-      this.sendMessage(conn, `"ac", "HTI", "s", "${this.buildTournamentInfoXml(conn, { ut })}"`);
+      const payload = this.buildTournamentInfoXml(conn, { ut });
+      this.logTournamentTcpPayload(conn, "HTI_BOOTSTRAP", payload, { source });
+      this.sendMessage(conn, `"ac", "HTI", "s", "${payload}"`);
       conn.bootstrapSent = true;
       this.logger.info("TCP initial lobby bootstrap sent", { connId: conn.id, source });
     }
@@ -1925,6 +1947,7 @@ export class TcpServer {
     const roomId = Number(event.roomId || 2);
     const playerId = Number(conn.playerId || 0);
     if (!playerId) {
+      this.logTournamentTcpPayload(conn, spectate ? "HTSPECTATE" : "HTJOIN", `"s", 0`, { spectate: !!spectate, reason: "missing-player" });
       this.sendMessage(conn, `"ac", "${spectate ? "HTSPECTATE" : "HTJOIN"}", "s", 0`);
       return;
     }
@@ -1956,6 +1979,11 @@ export class TcpServer {
       conn,
       `"ac", "${spectate ? "HTSPECTATE" : "HTJOIN"}", "s", 1, "rid", ${roomId}, "eid", ${Number(event.id || 0)}`
     );
+    this.logTournamentTcpPayload(conn, spectate ? "HTSPECTATE" : "HTJOIN", `"s", 1, "rid", ${roomId}, "eid", ${Number(event.id || 0)}`, {
+      roomId,
+      eventId: Number(event.id || 0),
+      spectate: !!spectate,
+    });
     this.sendRoomSnapshot(conn, filtered);
   }
 
