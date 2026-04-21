@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, extname, resolve } from "node:path";
 import { createHash } from "node:crypto";
+import { deflateSync } from "node:zlib";
 import { decodeGameCodeQuery, encryptPayload } from "./nitto-cipher.js";
 import { handleGameAction } from "./game-actions.js";
 import { getSessionPlayerId } from "./session.js";
@@ -127,10 +128,18 @@ function ensureParentDir(filePath) {
   mkdirSync(dirname(filePath), { recursive: true });
 }
 
-const TOURNAMENT_KEY_JPEG = Buffer.from(
-  "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",
-  "base64"
-);
+const TOURNAMENT_KEY_DIGIT_BITMAPS = Object.freeze({
+  0: ["111","101","101","101","111"],
+  1: ["010","110","010","010","111"],
+  2: ["111","001","111","100","111"],
+  3: ["111","001","111","001","111"],
+  4: ["101","101","111","001","001"],
+  5: ["111","100","111","001","111"],
+  6: ["111","100","111","101","111"],
+  7: ["111","001","001","001","001"],
+  8: ["111","101","111","101","111"],
+  9: ["111","101","111","001","111"],
+});
 
 function createTournamentKeyCode(aid, rid, tournamentType = "") {
   const digest = createHash("sha1")
@@ -140,9 +149,96 @@ function createTournamentKeyCode(aid, rid, tournamentType = "") {
   return String((numeric % 9000) + 1000);
 }
 
-function renderTournamentKeyJpeg(code) {
-  void code;
-  return TOURNAMENT_KEY_JPEG;
+function writePngChunk(type, data) {
+  const chunkLength = Buffer.alloc(4);
+  chunkLength.writeUInt32BE(data.length, 0);
+  const chunkType = Buffer.from(type, "ascii");
+  const crcBuffer = Buffer.concat([chunkType, data]);
+  const crcValue = crc32(crcBuffer);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crcValue >>> 0, 0);
+  return Buffer.concat([chunkLength, chunkType, data, crc]);
+}
+
+function crc32(buffer) {
+  let crc = 0xffffffff;
+  for (let index = 0; index < buffer.length; index += 1) {
+    crc ^= buffer[index];
+    for (let bit = 0; bit < 8; bit += 1) {
+      const mask = -(crc & 1);
+      crc = (crc >>> 1) ^ (0xedb88320 & mask);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function renderTournamentKeyImage(code) {
+  const width = 48;
+  const height = 24;
+  const scale = 3;
+  const digitWidth = 3 * scale;
+  const digitHeight = 5 * scale;
+  const gap = scale;
+  const marginX = 4;
+  const marginY = 4;
+  const formattedCode = String(code || "0000").padStart(4, "0").slice(-4);
+  const pixels = Buffer.alloc((width * 4 + 1) * height, 0);
+
+  for (let y = 0; y < height; y += 1) {
+    const rowOffset = y * (width * 4 + 1);
+    pixels[rowOffset] = 0;
+    for (let x = 0; x < width; x += 1) {
+      const offset = rowOffset + 1 + x * 4;
+      const shade = y < height / 2 ? 235 : 220;
+      pixels[offset] = shade;
+      pixels[offset + 1] = shade;
+      pixels[offset + 2] = shade;
+      pixels[offset + 3] = 255;
+    }
+  }
+
+  for (let digitIndex = 0; digitIndex < formattedCode.length; digitIndex += 1) {
+    const glyph = TOURNAMENT_KEY_DIGIT_BITMAPS[formattedCode[digitIndex]] || TOURNAMENT_KEY_DIGIT_BITMAPS[0];
+    const startX = marginX + digitIndex * (digitWidth + gap);
+    for (let row = 0; row < glyph.length; row += 1) {
+      for (let col = 0; col < glyph[row].length; col += 1) {
+        if (glyph[row][col] !== "1") {
+          continue;
+        }
+        for (let sy = 0; sy < scale; sy += 1) {
+          for (let sx = 0; sx < scale; sx += 1) {
+            const x = startX + col * scale + sx;
+            const y = marginY + row * scale + sy;
+            if (x < 0 || x >= width || y < 0 || y >= height) {
+              continue;
+            }
+            const offset = y * (width * 4 + 1) + 1 + x * 4;
+            pixels[offset] = 25;
+            pixels[offset + 1] = 25;
+            pixels[offset + 2] = 25;
+            pixels[offset + 3] = 255;
+          }
+        }
+      }
+    }
+  }
+
+  const signature = Buffer.from([137,80,78,71,13,10,26,10]);
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 6;
+  ihdr[10] = 0;
+  ihdr[11] = 0;
+  ihdr[12] = 0;
+
+  return Buffer.concat([
+    signature,
+    writePngChunk("IHDR", ihdr),
+    writePngChunk("IDAT", deflateSync(pixels)),
+    writePngChunk("IEND", Buffer.alloc(0)),
+  ]);
 }
 
 function avatarPathForPlayerId(playerId) {
@@ -330,7 +426,7 @@ export function createHttpServer({ config, logger, supabase, services = {}, fixt
         const rid = String(requestUrl.searchParams.get("rid") || "0");
         const tournamentType = String(requestUrl.searchParams.get("t") || "");
         const code = createTournamentKeyCode(aid, rid, tournamentType);
-        const jpeg = renderTournamentKeyJpeg(code);
+        const image = renderTournamentKeyImage(code);
 
         logger.info("Serving tournament key image", {
           aid,
@@ -339,8 +435,8 @@ export function createHttpServer({ config, logger, supabase, services = {}, fixt
           code,
         });
 
-        sendBinary(res, 200, jpeg, {
-          "Content-Type": "image/jpeg",
+        sendBinary(res, 200, image, {
+          "Content-Type": "image/png",
           "Cache-Control": "no-store",
           "X-Nitto-Source": "generated:generateTournamentKey.aspx",
         });
