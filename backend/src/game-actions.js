@@ -3257,7 +3257,64 @@ function getCapturedTimingCurveProfile(spec) {
  * Community-server captures show this is a compact torque-style curve, not the
  * quarter-mile position-delta array used for computer opponents.
  */
+const TEMP_USE_LEGACY_CAPTURED_TIMING_FOR_TESTING = true;
+
+function applyTimingDeltas(values, deltas) {
+  let currentValue = values[values.length - 1];
+  for (const delta of deltas) {
+    currentValue += delta;
+    values.push(currentValue);
+  }
+}
+
+function generateLegacyTimingArray() {
+  const values = Array(9).fill(273);
+
+  values.push(375);
+
+  applyTimingDeltas(values, [
+    12, 11, 12, 11, 11,
+    12, 11, 12, 11, 12,
+    11, 12, 11, 12, 11,
+    12, 11, 12, 11, 12,
+  ]);
+
+  applyTimingDeltas(values, [
+    9,
+    3, 2, 3, 2, 2,
+    3, 2, 3, 2, 3,
+    2, 3, 2, 2, 3,
+    2, 3, 2, 3, 2,
+    2, 3, 2, 3, 2,
+    3, 2, 0,
+  ]);
+
+  applyTimingDeltas(values, [
+    -8, -7,
+    -8, -8, -8, -8, -8,
+    -8, -8, -8, -8, -8,
+    -8, -8, -7,
+    -8, -9, -8, -9, -8,
+    -9, -9, -8, -9, -8,
+    -9, -8, -9, -8, -9,
+    -8, -9, -8, -9, -8,
+    -9, -8, -9, -8, -9,
+  ]);
+
+  if (values.length !== 100) {
+    throw new Error(`Expected 100 timing values, got ${values.length}`);
+  }
+
+  return values;
+}
+
 function generateTimingArray(catalogCarId) {
+  // Temporary testing switch: use the exact legacy captured curve so we can
+  // verify client behavior, then flip this back off to restore generated timing.
+  if (TEMP_USE_LEGACY_CAPTURED_TIMING_FOR_TESTING) {
+    return generateLegacyTimingArray();
+  }
+
   const spec = getShowroomCarSpec(catalogCarId);
   if (!spec) {
     throw new Error(`Missing showroom spec for catalog car ${catalogCarId}`);
