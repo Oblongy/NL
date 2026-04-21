@@ -300,14 +300,14 @@ export class TcpServer {
         const payload = this.buildTournamentHeartbeatXml(conn);
         this.logTournamentTcpPayload(conn, "HTI", payload);
         this.sendMessage(conn, `"ac", "HTI", "d", "${payload}"`);
-      } else if (messageType === "HTGET32") {
+      } else if (messageType === "HTGET32" || messageType === "HQ32") {
         const payload = this.buildLiveTournamentTop32Xml(conn);
-        this.logTournamentTcpPayload(conn, "HTGET32", payload);
-        this.sendMessage(conn, `"ac", "HTGET32", "d", "${this.escapeForTcp(payload)}"`);
-      } else if (messageType === "HTGETTREE") {
+        this.logTournamentTcpPayload(conn, messageType, payload);
+        this.sendMessage(conn, `"ac", "${messageType}", "d", "${this.escapeForTcp(payload)}"`);
+      } else if (messageType === "HTGETTREE" || messageType === "HTFT") {
         const payload = this.buildLiveTournamentTreeXml(conn);
-        this.logTournamentTcpPayload(conn, "HTGETTREE", payload);
-        this.sendMessage(conn, `"ac", "HTGETTREE", "d", "${this.escapeForTcp(payload)}"`);
+        this.logTournamentTcpPayload(conn, messageType, payload);
+        this.sendMessage(conn, `"ac", "${messageType}", "d", "${this.escapeForTcp(payload)}"`);
       } else if (messageType === "HTJOIN") {
         this.handleLiveTournamentJoin(conn, { spectate: false, parts });
       } else if (messageType === "HTSPECTATE") {
@@ -487,6 +487,11 @@ export class TcpServer {
       // --- LRC: Room refresh / content check ---
       } else if (messageType === "LRC") {
         this.handleLobbyRoomRefresh(conn);
+      } else if (messageType === "LRCU") {
+        const roomId = Number(conn.roomId || 0);
+        const roomPlayers = this.rooms.get(roomId) || [];
+        this.sendRoomUsers(conn, roomPlayers);
+        this.logger.info("TCP LRCU received", { connId: conn.id, roomId: roomId || null, roomSize: roomPlayers.length });
 
       // --- LR: Leave room ---
       } else if (messageType === "LR" && parts.length === 1) {
