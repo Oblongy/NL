@@ -26,6 +26,7 @@ import {
   handleGetCarPartsBin as handleGetCarPartsBinImpl,
   handleGetPartsBin as handleGetPartsBinImpl,
   handleInstallPart as handleInstallPartImpl,
+  handleUninstallPart as handleUninstallPartImpl,
 } from "./game-actions/parts.js";
 import {
   escapeXml,
@@ -5673,6 +5674,7 @@ const handlers = {
   sellenginepart: handleSellEnginePart,
   sellengine: handleSellEngine,
   installpart: handleInstallPartImpl,
+  uninstallpart: handleUninstallPartImpl,
   installenginepart: handleInstallEnginePart,
   uninstallenginepart: handleUninstallEnginePart,
   swapengine: handleSwapEngine,

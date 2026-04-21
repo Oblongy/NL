@@ -1,4 +1,5 @@
 import { PARTS_CATALOG_XML } from "../parts-catalog.js";
+import { getDefaultPartsXmlForCar } from "../car-defaults.js";
 import { normalizeOwnedPartsXmlValue } from "../parts-xml.js";
 import { escapeXml, failureBody, wrapSuccessData } from "../game-xml.js";
 import { resolveCallerSession } from "../game-actions-helpers.js";
@@ -121,6 +122,26 @@ export function findInstalledPartBySlotId(partsXml, slotId) {
   }
   PART_XML_ENTRY_REGEX.lastIndex = 0;
   return null;
+}
+
+function findInstalledPartEntryByAi(partsXml, installId) {
+  const source = String(partsXml || "");
+  let match;
+  while ((match = PART_XML_ENTRY_REGEX.exec(source)) !== null) {
+    const attrs = parsePartXmlAttributes(match[0]);
+    if (String(attrs.ai || "") === String(installId || "")) {
+      PART_XML_ENTRY_REGEX.lastIndex = 0;
+      return { attrs, raw: match[0] };
+    }
+  }
+  PART_XML_ENTRY_REGEX.lastIndex = 0;
+  return null;
+}
+
+function removeInstalledPartByAi(partsXml, installId) {
+  const source = String(partsXml || "");
+  const escapedInstallId = String(installId || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return source.replace(new RegExp(`<p[^>]*\\bai=['"]${escapedInstallId}['"][^>]*/>`, "g"), "");
 }
 
 export function buildPartsInventoryXml(items) {
@@ -554,5 +575,81 @@ export async function handleInstallPart(context) {
   return {
     body: `"s", 1`,
     source: "supabase:installpart",
+  };
+}
+
+export async function handleUninstallPart(context) {
+  const { supabase, params, logger } = context;
+  if (!supabase) {
+    return { body: wrapSuccessData("<r s='0'/>"), source: "generated:uninstallpart:no-supabase" };
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:uninstallpart");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:uninstallpart:bad-session" };
+  }
+
+  const accountCarId = Number(params.get("acid") || 0);
+  const installIds = String(params.get("acpids") || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const requestedPartIds = String(params.get("pids") || "")
+    .split(",")
+    .map((value) => Number(value.trim() || 0));
+
+  if (!accountCarId || installIds.length === 0) {
+    return { body: wrapSuccessData("<r s='0'/>"), source: "supabase:uninstallpart:missing-params" };
+  }
+
+  const car = await getCarById(supabase, accountCarId);
+  if (!car || Number(car.player_id) !== Number(caller.playerId)) {
+    return { body: wrapSuccessData("<r s='-5'/>"), source: "supabase:uninstallpart:no-car" };
+  }
+
+  let nextPartsXml = String(car.parts_xml || "");
+  let removedCount = 0;
+
+  for (let index = 0; index < installIds.length; index += 1) {
+    const installId = installIds[index];
+    const expectedPartId = Number(requestedPartIds[index] || 0);
+    const installedEntry = findInstalledPartEntryByAi(nextPartsXml, installId);
+    if (!installedEntry) {
+      continue;
+    }
+
+    const partId = Number(installedEntry.attrs?.i || 0);
+    if (expectedPartId > 0 && partId > 0 && partId !== expectedPartId) {
+      continue;
+    }
+
+    const slotId = String(installedEntry.attrs?.pi || installedEntry.attrs?.ci || "");
+    const defaultInstalledPart = slotId ? findInstalledPartBySlotId(getDefaultPartsXmlForCar(car.catalog_car_id), slotId) : null;
+    if (defaultInstalledPart && Number(defaultInstalledPart.i || 0) === partId) {
+      return { body: wrapSuccessData("<r s='-3'/>"), source: "supabase:uninstallpart:stock-part" };
+    }
+
+    nextPartsXml = removeInstalledPartByAi(nextPartsXml, installId);
+    if (partId > 0) {
+      await addPartInventoryItem(supabase, caller.playerId, partId, 1);
+    }
+    removedCount += 1;
+  }
+
+  if (removedCount <= 0) {
+    return { body: wrapSuccessData("<r s='0'/>"), source: "supabase:uninstallpart:no-op" };
+  }
+
+  await saveCarPartsXml(supabase, accountCarId, nextPartsXml);
+  logger?.info("Uninstalled car part(s) from car", {
+    playerId: caller.playerId,
+    accountCarId,
+    removedCount,
+    installIds,
+  });
+
+  return {
+    body: wrapSuccessData("<r s='1'/>"),
+    source: "supabase:uninstallpart",
   };
 }
