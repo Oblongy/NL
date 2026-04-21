@@ -47,6 +47,7 @@ import { createLoginSession, getSessionPlayerId, validateOrCreateSession } from 
 import { consumeRecentDecalUpload } from "./upload-state.js";
 import {
   getBoostTypeForCar,
+  getCarEngineIdentity,
   getEffectiveEngineString,
   getEngineTypeIdForCatalogCar,
   getEngineTypeIdForCar,
@@ -81,6 +82,10 @@ import {
   getCarById,
   deleteCar,
   clearCarTestDriveState,
+  listPartsInventoryForPlayer,
+  getPartInventoryItemById,
+  addPartInventoryItem,
+  consumePartInventoryItem,
 } from "./user-service.js";
 import { getDefaultPartsXmlForCar, getDefaultWheelFitmentForCar, getDefaultWheelXmlForCar } from "./car-defaults.js";
 import { getShowroomCarSpec, hasShowroomCarSpec } from "./showroom-car-specs.js";
@@ -190,6 +195,443 @@ function buildRepairPartsXml(car) {
   }
 
   return `<parts p='1' v='1'>${repairNodes.join("")}</parts>`;
+}
+
+function isEngineOwnedCatalogPart(catalogPart) {
+  const type = String(catalogPart?.t || "");
+  return type === "e" || type === "m";
+}
+
+function collectInstalledEngineEntries(partsXml) {
+  return collectInstalledPartEntries(partsXml).filter((entry) => {
+    const partId = Number(entry?.attrs?.i || 0);
+    const catalogPart = partId ? getPartsCatalogById().get(partId) : null;
+    return isEngineOwnedCatalogPart(catalogPart);
+  });
+}
+
+function buildInstalledEnginePartsXml(car) {
+  const partsXml = collectInstalledEngineEntries(car?.parts_xml || "")
+    .map((entry) => {
+      const attrs = entry.attrs || {};
+      const partId = Number(attrs.i || 0);
+      const catalogPart = partId ? getPartsCatalogById().get(partId) : null;
+      if (!catalogPart) {
+        return "";
+      }
+      return buildInstalledCatalogPartXml(catalogPart, attrs.ai || createInstalledPartId(), {
+        i: attrs.i,
+        pi: attrs.pi ?? attrs.ci ?? catalogPart.pi ?? "",
+        t: catalogPart.t,
+        n: attrs.n ?? catalogPart.n ?? "",
+        p: attrs.p ?? catalogPart.p ?? "0",
+        pp: attrs.pp ?? catalogPart.pp ?? "0",
+        g: attrs.g ?? catalogPart.g ?? "",
+        di: attrs.di ?? catalogPart.di ?? "",
+        pdi: attrs.pdi ?? attrs.di ?? catalogPart.pdi ?? catalogPart.di ?? "",
+        b: attrs.b ?? catalogPart.b ?? "",
+        bn: attrs.bn ?? catalogPart.bn ?? "",
+        mn: attrs.mn ?? catalogPart.mn ?? "",
+        l: attrs.l ?? catalogPart.l ?? "100",
+        in: "1",
+        mo: attrs.mo ?? catalogPart.mo ?? "0",
+        hp: attrs.hp ?? catalogPart.hp ?? "0",
+        tq: attrs.tq ?? catalogPart.tq ?? "0",
+        wt: attrs.wt ?? catalogPart.wt ?? "0",
+        cc: attrs.cc ?? catalogPart.cc ?? "",
+        ps: attrs.ps ?? catalogPart.ps ?? "",
+      });
+    })
+    .filter(Boolean)
+    .join("");
+  return `<n2>${partsXml}</n2>`;
+}
+
+function buildEngineSwapXml(car) {
+  const groups = new Map();
+  for (const entry of collectInstalledEngineEntries(car?.parts_xml || "")) {
+    const attrs = entry.attrs || {};
+    const partId = Number(attrs.i || 0);
+    const catalogPart = partId ? getPartsCatalogById().get(partId) : null;
+    if (!catalogPart) {
+      continue;
+    }
+    const slotId = String(attrs.pi || attrs.ci || catalogPart.pi || "");
+    const bucket = groups.get(slotId) || {
+      slotId,
+      name: catalogPart.mn || catalogPart.bn || catalogPart.n || `Slot ${slotId}`,
+      parts: [],
+    };
+    bucket.parts.push(
+      `<p ai='${escapeXml(String(attrs.ai || createInstalledPartId()))}' ` +
+      `i='${partId}' n='${escapeXml(catalogPart.n || attrs.n || "Part")}'/>`
+    );
+    groups.set(slotId, bucket);
+  }
+
+  const categoriesXml = [...groups.values()]
+    .map((group) => `<c i='${escapeXml(group.slotId)}' n='${escapeXml(group.name)}'>${group.parts.join("")}</c>`)
+    .join("");
+  return `<n2>${categoriesXml}</n2>`;
+}
+
+function replaceInstalledEngineEntries(partsXml, nextEngineEntries) {
+  const nonEngineEntries = collectInstalledPartEntries(partsXml)
+    .filter((entry) => {
+      const partId = Number(entry?.attrs?.i || 0);
+      const catalogPart = partId ? getPartsCatalogById().get(partId) : null;
+      return !isEngineOwnedCatalogPart(catalogPart);
+    })
+    .map((entry) => entry.raw)
+    .join("");
+  return `${nonEngineEntries}${nextEngineEntries.join("")}`;
+}
+
+async function resolveOwnedEngineCar(context, aeid) {
+  const { supabase } = context;
+  const caller = await resolveCallerSession(context, "supabase:engine-car");
+  if (!caller?.ok) {
+    return { caller, car: null };
+  }
+
+  const cars = await listCarsForPlayer(supabase, caller.playerId);
+  const target = cars.find((car) => Number(getCarEngineIdentity(car).ae) === Number(aeid || 0))
+    || cars.find((car) => Number(car.game_car_id) === Number(aeid || 0))
+    || null;
+  return { caller, car: target };
+}
+
+async function handleGetInstalledEnginePartByAccountCar(context) {
+  const { supabase, params } = context;
+  if (!supabase) {
+    return { body: `"s", 1, "d", "<n2></n2>"`, source: "generated:getinstalledenginepartbyaccountcar:no-supabase" };
+  }
+
+  const { caller, car } = await resolveOwnedEngineCar(context, params.get("aeid") || params.get("acid") || 0);
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:getinstalledenginepartbyaccountcar:bad-session" };
+  }
+
+  return {
+    body: `"s", 1, "d", "${buildInstalledEnginePartsXml(car)}"`,
+    source: car ? "supabase:getinstalledenginepartbyaccountcar" : "supabase:getinstalledenginepartbyaccountcar:no-car",
+  };
+}
+
+async function handleInstallEnginePart(context) {
+  const { supabase, params } = context;
+  if (!supabase) {
+    return { body: wrapSuccessData(`<r s='-1' b='0'/>`), source: "generated:installenginepart:no-supabase" };
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:installenginepart");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:installenginepart:bad-session" };
+  }
+
+  const inventoryId = Number(params.get("aepid") || 0);
+  const partId = Number(params.get("epid") || 0);
+  const carId = Number(params.get("acid") || 0);
+  const [inventoryItem, car] = await Promise.all([
+    getPartInventoryItemById(supabase, inventoryId, caller.playerId),
+    getCarById(supabase, carId),
+  ]);
+
+  if (!inventoryItem || Number(inventoryItem.part_catalog_id || 0) !== partId) {
+    return { body: wrapSuccessData(`<r s='-1' b='0'/>`), source: "supabase:installenginepart:no-inventory-part" };
+  }
+  if (!car || Number(car.player_id) !== Number(caller.playerId)) {
+    return { body: wrapSuccessData(`<r s='-4' b='0'/>`), source: "supabase:installenginepart:no-car" };
+  }
+
+  const catalogPart = getPartsCatalogById().get(partId);
+  if (!catalogPart || !isEngineOwnedCatalogPart(catalogPart)) {
+    return { body: wrapSuccessData(`<r s='-1' b='0'/>`), source: "supabase:installenginepart:no-catalog-part" };
+  }
+
+  const slotId = String(catalogPart.pi || "");
+  const existingPart = findInstalledPartBySlotId(car.parts_xml || "", slotId);
+  if (Number(existingPart?.i || 0) === partId) {
+    return { body: wrapSuccessData(`<r s='0' b='0'/>`), source: "supabase:installenginepart:already-installed" };
+  }
+
+  if (existingPart?.i) {
+    await addPartInventoryItem(supabase, caller.playerId, Number(existingPart.i), 1);
+  }
+
+  const installedPartXml = buildInstalledCatalogPartXml(catalogPart, createInstalledPartId(), { in: "1" });
+  const nextPartsXml = upsertInstalledPartXml(car.parts_xml || "", slotId, installedPartXml);
+  await saveCarPartsXml(supabase, carId, nextPartsXml);
+  await consumePartInventoryItem(supabase, inventoryId, caller.playerId);
+
+  return {
+    body: wrapSuccessData(`<r s='1' b='0'/>`),
+    source: "supabase:installenginepart",
+  };
+}
+
+async function handleUninstallEnginePart(context) {
+  const { supabase, params } = context;
+  if (!supabase) {
+    return { body: wrapSuccessData(`<r s='0'/>`), source: "generated:uninstallenginepart:no-supabase" };
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:uninstallenginepart");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:uninstallenginepart:bad-session" };
+  }
+
+  const uninstallIds = String(params.get("aepids") || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const engineId = Number(params.get("aeid") || 0);
+  const { car } = await resolveOwnedEngineCar(context, engineId);
+  if (!car || Number(car.player_id) !== Number(caller.playerId)) {
+    return { body: wrapSuccessData(`<r s='0'/>`), source: "supabase:uninstallenginepart:no-car" };
+  }
+
+  let nextPartsXml = String(car.parts_xml || "");
+  let removed = 0;
+  for (const installId of uninstallIds) {
+    const entry = findInstalledPartByAi(nextPartsXml, installId);
+    const partId = Number(entry?.attrs?.i || 0);
+    const catalogPart = partId ? getPartsCatalogById().get(partId) : null;
+    if (!entry || !isEngineOwnedCatalogPart(catalogPart)) {
+      continue;
+    }
+    await addPartInventoryItem(supabase, caller.playerId, partId, 1);
+    nextPartsXml = removeInstalledPartByAi(nextPartsXml, installId);
+    removed += 1;
+  }
+  if (removed > 0) {
+    await saveCarPartsXml(supabase, car.game_car_id, nextPartsXml);
+    return { body: wrapSuccessData(`<r s='1'/>`), source: "supabase:uninstallenginepart" };
+  }
+  return { body: wrapSuccessData(`<r s='0'/>`), source: "supabase:uninstallenginepart:no-op" };
+}
+
+async function handleSellEnginePart(context) {
+  const { supabase, params } = context;
+  if (!supabase) {
+    return { body: `"s", -1, "b", 0`, source: "generated:sellenginepart:no-supabase" };
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:sellenginepart");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:sellenginepart:bad-session" };
+  }
+
+  const inventoryId = Number(params.get("aepid") || 0);
+  const inventoryItem = await getPartInventoryItemById(supabase, inventoryId, caller.playerId);
+  let partId = Number(inventoryItem?.part_catalog_id || 0);
+  let consumeInventory = Boolean(inventoryItem);
+  let installedCar = null;
+
+  if (!partId && inventoryId > 0) {
+    const cars = await listCarsForPlayer(supabase, caller.playerId);
+    for (const car of cars) {
+      const entry = findInstalledPartByAi(car.parts_xml || "", inventoryId);
+      if (entry) {
+        partId = Number(entry.attrs?.i || 0);
+        consumeInventory = false;
+        installedCar = car;
+        break;
+      }
+    }
+  }
+
+  const catalogPart = partId ? getPartsCatalogById().get(partId) : null;
+  if (!catalogPart || !isEngineOwnedCatalogPart(catalogPart)) {
+    return { body: `"s", -1, "b", 0`, source: "supabase:sellenginepart:not-found" };
+  }
+
+  const player = await getPlayerById(supabase, caller.playerId);
+  const sellValue = Math.max(1, Math.round(Number(catalogPart.p || 0) * 0.5));
+  const newBalance = Number(player?.money || 0) + sellValue;
+  await updatePlayerMoney(supabase, caller.playerId, newBalance);
+  if (consumeInventory) {
+    await consumePartInventoryItem(supabase, inventoryId, caller.playerId);
+  } else if (installedCar) {
+    await saveCarPartsXml(
+      supabase,
+      installedCar.game_car_id,
+      removeInstalledPartByAi(installedCar.parts_xml || "", inventoryId),
+    );
+  }
+
+  return {
+    body: `"s", 1, "b", ${newBalance}`,
+    source: "supabase:sellenginepart",
+  };
+}
+
+async function handleSellEngine(context) {
+  const { supabase, params } = context;
+  if (!supabase) {
+    return { body: `"s", -1, "b", 0`, source: "generated:sellengine:no-supabase" };
+  }
+
+  const { caller, car } = await resolveOwnedEngineCar(context, params.get("aeid") || 0);
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:sellengine:bad-session" };
+  }
+  if (!car) {
+    return { body: `"s", -1, "b", 0`, source: "supabase:sellengine:not-found" };
+  }
+
+  const engineMarker = collectInstalledEngineEntries(car.parts_xml || "").find((entry) => {
+    const partId = Number(entry?.attrs?.i || 0);
+    const catalogPart = partId ? getPartsCatalogById().get(partId) : null;
+    return String(catalogPart?.t || "") === "m";
+  });
+
+  if (!engineMarker) {
+    return { body: `"s", 0, "b", 0`, source: "supabase:sellengine:no-engine-marker" };
+  }
+
+  const partId = Number(engineMarker.attrs?.i || 0);
+  const catalogPart = getPartsCatalogById().get(partId);
+  const sellValue = Math.max(1, Math.round(Number(catalogPart?.p || 0) * 0.5));
+  const player = await getPlayerById(supabase, caller.playerId);
+  const newBalance = Number(player?.money || 0) + sellValue;
+  await updatePlayerMoney(supabase, caller.playerId, newBalance);
+  await saveCarPartsXml(supabase, car.game_car_id, removeInstalledPartByAi(car.parts_xml || "", engineMarker.attrs?.ai || ""));
+
+  return {
+    body: `"s", 1, "b", ${newBalance}`,
+    source: "supabase:sellengine",
+  };
+}
+
+async function handleBuyEngine(context) {
+  const { supabase, params } = context;
+  if (!supabase) {
+    return { body: failureBody(), source: "generated:buyengine:no-supabase" };
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:buyengine");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:buyengine:bad-session" };
+  }
+
+  const carId = Number(params.get("acid") || 0);
+  const engineCatalogId = Number(params.get("eid") || 0);
+  const car = await getCarById(supabase, carId);
+  const player = await getPlayerById(supabase, caller.playerId);
+  const catalogPart = getPartsCatalogById().get(engineCatalogId);
+  if (!car || Number(car.player_id) !== Number(caller.playerId) || !catalogPart || String(catalogPart.t || "") !== "m") {
+    return { body: failureBody(), source: "supabase:buyengine:invalid-request" };
+  }
+
+  const price = Number(catalogPart.p || 0);
+  const newBalance = Number(player?.money || 0) - price;
+  if (newBalance < 0) {
+    return { body: `"s", 0, "d1", "<r s='-3' b='${Number(player?.money || 0)}' ai='0'/>", "d", "<r s='0' b='0'/>"`, source: "supabase:buyengine:insufficient-funds" };
+  }
+  await updatePlayerMoney(supabase, caller.playerId, newBalance);
+  const installId = createInstalledPartId();
+  const slotId = String(catalogPart.pi || "133");
+  const installedPartXml = buildInstalledCatalogPartXml(catalogPart, installId, { in: "1" });
+  await saveCarPartsXml(supabase, carId, upsertInstalledPartXml(car.parts_xml || "", slotId, installedPartXml));
+  return {
+    body: `"s", 1, "d1", "<r s='2' b='${newBalance}' ai='${installId}'/>", "d", "<r s='1' b='0'></r>"`,
+    source: "supabase:buyengine",
+  };
+}
+
+async function handleSwapEngine(context) {
+  const { supabase, params } = context;
+  if (!supabase) {
+    return { body: wrapSuccessData(`<r s='0' b='0'/>`), source: "generated:swapengine:no-supabase" };
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:swapengine");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:swapengine:bad-session" };
+  }
+
+  const targetCarId = Number(params.get("acid") || 0);
+  const donorEngineId = Number(params.get("aeid") || 0);
+  const [targetCar] = await Promise.all([getCarById(supabase, targetCarId)]);
+  const donorCars = await listCarsForPlayer(supabase, caller.playerId);
+  const donorCar = donorCars.find((car) => Number(getCarEngineIdentity(car).ae) === donorEngineId)
+    || donorCars.find((car) => Number(car.game_car_id) === donorEngineId)
+    || null;
+
+  if (!targetCar || Number(targetCar.player_id) !== Number(caller.playerId)) {
+    return { body: wrapSuccessData(`<r s='-1' b='0'/>`), source: "supabase:swapengine:no-target-car" };
+  }
+  if (!donorCar) {
+    return { body: wrapSuccessData(`<r s='0' b='0'/>`), source: "supabase:swapengine:no-donor-engine" };
+  }
+
+  const donorEngineEntries = collectInstalledEngineEntries(donorCar.parts_xml || "").map((entry) => entry.raw);
+  const targetEngineEntries = collectInstalledEngineEntries(targetCar.parts_xml || "").map((entry) => entry.raw);
+  await saveCarPartsXml(supabase, targetCar.game_car_id, replaceInstalledEngineEntries(targetCar.parts_xml || "", donorEngineEntries));
+  if (Number(donorCar.game_car_id) !== Number(targetCar.game_car_id)) {
+    await saveCarPartsXml(supabase, donorCar.game_car_id, replaceInstalledEngineEntries(donorCar.parts_xml || "", targetEngineEntries));
+  }
+
+  return {
+    body: wrapSuccessData(`<r s='1' b='0'/>`),
+    source: "supabase:swapengine",
+  };
+}
+
+async function handleEngineGetAllParts(context) {
+  const { supabase, params } = context;
+  if (!supabase) {
+    return { body: wrapSuccessData("<p></p>"), source: "generated:egep:no-supabase" };
+  }
+
+  const { caller, car } = await resolveOwnedEngineCar(context, params.get("aeid") || 0);
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:egep:bad-session" };
+  }
+
+  const enginePartsXml = PARTS_CATALOG_XML.replace(/<p>([\s\S]*)<\/p>/, (_match, inner) => {
+    const engineParts = [...inner.matchAll(/<p\b([^>]*)\/>/g)]
+      .map((partMatch) => `<p${partMatch[1]}/>`)
+      .filter((rawPart) => {
+        const attrs = parsePartXmlAttributes(rawPart);
+        const catalogPart = getPartsCatalogById().get(Number(attrs.i || 0));
+        return isEngineOwnedCatalogPart(catalogPart);
+      })
+      .join("");
+    return `<p>${engineParts}</p>`;
+  });
+
+  return {
+    body: wrapSuccessData(enginePartsXml),
+    source: car ? "supabase:egep" : "supabase:egep:no-car",
+  };
+}
+
+async function handleEngineSwapStart(context) {
+  const { supabase, params } = context;
+  if (!supabase) {
+    return { body: `"s", 0, "d", "<n2></n2>"`, source: "generated:esst:no-supabase" };
+  }
+
+  const { caller, car } = await resolveOwnedEngineCar(context, params.get("aeid") || 0);
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:esst:bad-session" };
+  }
+
+  return {
+    body: `"s", ${car ? 1 : 0}, "d", "${car ? buildEngineSwapXml(car) : "<n2></n2>"}"`,
+    source: car ? "supabase:esst" : "supabase:esst:no-car",
+  };
+}
+
+async function handleEngineSwapFinish(context) {
+  const result = await handleSwapEngine(context);
+  const success = String(result?.source || "").includes("supabase:swapengine") && !String(result?.source || "").includes("no-");
+  return {
+    body: `"s", ${success ? 1 : 0}`,
+    source: success ? "supabase:esfi" : "supabase:esfi:failed",
+  };
 }
 
 function getPartsCatalogById() {
@@ -5122,6 +5564,7 @@ const handlers = {
   },
   buypart: handleBuyPart,
   buyenginepart: handleBuyEnginePart,
+  buyengine: handleBuyEngine,
   // --- Showroom / Dealership ---
   buycar: handleBuyCar,
   buyshowroomcar: handleBuyCar,
@@ -5161,11 +5604,15 @@ const handlers = {
   getcarpartsbin: handleGetCarPartsBinImpl,
   getpartsbin: handleGetPartsBinImpl,
   sellcarpart: handleSellCarPart,
-  sellenginepart: async () => ({ body: `"s", 1`, source: "stub:sellenginepart" }),
-  sellengine: async () => ({ body: `"s", 1`, source: "stub:sellengine" }),
+  sellenginepart: handleSellEnginePart,
+  sellengine: handleSellEngine,
   installpart: handleInstallPartImpl,
-  installenginepart: async () => ({ body: wrapSuccessData(`<r s='1' b='0'/>`), source: "stub:installenginepart" }),
-  swapengine: async () => ({ body: wrapSuccessData(`<r s='1' b='0'/>`), source: "stub:swapengine" }),
+  installenginepart: handleInstallEnginePart,
+  uninstallenginepart: handleUninstallEnginePart,
+  swapengine: handleSwapEngine,
+  egep: handleEngineGetAllParts,
+  esst: handleEngineSwapStart,
+  esfi: handleEngineSwapFinish,
   // Account / profile
   updatebg: handleUpdateBg,
   addastopbuddy: async () => ({ body: `"s", 1`, source: "stub:addastopbuddy" }),
@@ -5183,7 +5630,7 @@ const handlers = {
   activatemember: async () => ({ body: `"s", 1`, source: "stub:activatemember" }),
   getinfo: handleGetInfo,
   getlocations: handleGetLocations,
-  getinstalledenginepartbyaccountcar: async () => ({ body: `"s", 1, "d", "<parts/>"`, source: "stub:getinstalledenginepartbyaccountcar" }),
+  getinstalledenginepartbyaccountcar: handleGetInstalledEnginePartByAccountCar,
   racersearchnopage: async (context) => {
     // Same as racersearch but without pagination
     return handleGetRacerSearch(context);
