@@ -183,6 +183,9 @@ export function buildPlayerPatch(input = {}) {
   const patch = {};
   if ("money" in input) patch.money = toNumber(input.money, 0);
   if ("points" in input) patch.points = toNumber(input.points, 0);
+  if ("backgroundId" in input || "background_id" in input) {
+    patch.background_id = toNumber(input.backgroundId ?? input.background_id, 1);
+  }
   if ("hasDyno" in input || "has_dyno" in input) {
     patch.has_dyno = toNumber(input.hasDyno ?? input.has_dyno, 0);
   }

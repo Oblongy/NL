@@ -114,6 +114,14 @@ const TEAM_APP_STATUS = Object.freeze({
   ACCEPTED: "Accepted",
   DECLINED: "Declined",
 });
+const STATIC_LOCATIONS_ACTION_XML =
+  "<n id='locations'>" +
+  "<loc lid='100' ln='Toreno' f='0' pf='0' r='0' ps='3' sc='0'/>" +
+  "<loc lid='200' ln='Newburge' f='10000' pf='100' r='500' ps='5' sc='500'/>" +
+  "<loc lid='300' ln='Creek Side' f='50000' pf='500' r='2000' ps='8' sc='2000'/>" +
+  "<loc lid='400' ln='Vista Heights' f='150000' pf='1500' r='5000' ps='12' sc='5000'/>" +
+  "<loc lid='500' ln='Diamond Point' f='500000' pf='5000' r='10000' ps='20' sc='10000'/>" +
+  "</n>";
 
 let partsCatalogById = null;
 let wheelsTiresCatalogById = null;
@@ -138,6 +146,50 @@ function normalizeUserGraphicFileExt(value, fallback = "png") {
     return normalized;
   }
   return fallback;
+}
+
+function extractInfoXmlFromLoginBody(body) {
+  const match = String(body || "").match(/"d", "([\s\S]*)", "aid", /);
+  return match?.[1] || "<ini></ini>";
+}
+
+function removeInstalledPartByAi(partsXml, installId) {
+  const source = String(partsXml || "");
+  const escapedInstallId = String(installId || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return source.replace(new RegExp(`<p[^>]*\\bai=['"]${escapedInstallId}['"][^>]*/>`, "g"), "");
+}
+
+function findInstalledPartByAi(partsXml, installId) {
+  const entries = collectInstalledPartEntries(partsXml);
+  return entries.find((entry) => String(entry?.attrs?.ai || "") === String(installId || "")) || null;
+}
+
+function buildRepairPartsXml(car) {
+  const entries = collectInstalledPartEntries(car?.parts_xml || "");
+  const repairNodes = [];
+
+  for (const entry of entries) {
+    const attrs = entry.attrs || {};
+    const partId = Number(attrs.i || 0);
+    const catalogPart = partId ? getPartsCatalogById().get(partId) : null;
+    if (!catalogPart) {
+      continue;
+    }
+
+    const slotId = Number(attrs.pi || attrs.ci || 0);
+    const isConsumable = slotId === 102 || slotId === 165 || slotId === 168 || slotId === 169;
+    const damageValue = isConsumable ? 65 : 35;
+    const basePrice = Math.max(50, Math.round(Number(catalogPart.p || 0) * (isConsumable ? 0.35 : 0.25)));
+    const pointPrice = Math.max(1, Math.round(Number(catalogPart.pp || 0) * (isConsumable ? 0.35 : 0.25)));
+
+    repairNodes.push(
+      `<p i='${escapeXml(String(attrs.ai || createInstalledPartId()))}' ` +
+      `ci='${slotId || partId}' n='${escapeXml(catalogPart.n || attrs.n || "Part")}' ` +
+      `d='${damageValue}' p='${basePrice}' pp='${pointPrice}'/>`
+    );
+  }
+
+  return `<parts p='1' v='1'>${repairNodes.join("")}</parts>`;
 }
 
 function getPartsCatalogById() {
@@ -4624,6 +4676,218 @@ async function handleGetBuddies(context) {
   };
 }
 
+async function handleGetLocations() {
+  return {
+    body: `"s", 1, "d", "${STATIC_LOCATIONS_ACTION_XML}"`,
+    source: "generated:getlocations",
+  };
+}
+
+async function handleGetInfo(context) {
+  const { supabase, params, logger } = context;
+  if (!supabase) {
+    return {
+      body: `"s", 1, "d", "<ini></ini>"`,
+      source: "generated:getinfo:no-supabase",
+    };
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:getinfo");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:getinfo:bad-session" };
+  }
+
+  const [player, cars] = await Promise.all([
+    getPlayerById(supabase, caller.playerId),
+    listCarsForPlayer(supabase, caller.playerId),
+  ]);
+
+  if (!player) {
+    return { body: failureBody(), source: "supabase:getinfo:no-player" };
+  }
+
+  const sessionKey = params.get("sk") || "";
+  const infoXml = extractInfoXmlFromLoginBody(buildLoginBody(player, cars || [], null, sessionKey, logger));
+  return {
+    body: `"s", 1, "d", "${infoXml}"`,
+    source: "supabase:getinfo",
+  };
+}
+
+async function handleGetHumanTournaments(context) {
+  const { services } = context;
+  const tcpServer = services?.tcpServer;
+  const liveEvent = typeof tcpServer?.getLiveTournamentEvent === "function"
+    ? tcpServer.getLiveTournamentEvent()
+    : null;
+
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const event = {
+    id: Number(liveEvent?.id || 9001),
+    scheduleId: Number(liveEvent?.scheduleId || 4),
+    startsAt: Number(liveEvent?.startsAt || nowSeconds),
+    qualifyingEndsAt: Number(liveEvent?.qualifyingEndsAt || nowSeconds + 1800),
+    purse: Number(liveEvent?.purse || 5000),
+    entryType: String(liveEvent?.entryType || "f"),
+    entryCost: Number(liveEvent?.entryCost || 0),
+    bracketDialIn: Number(liveEvent?.bracketDialIn || 0),
+    status: Number(liveEvent?.status || 2),
+    maxPlayers: Number(liveEvent?.maxPlayers || 32),
+  };
+
+  const entryRequirements = "Free to enter. Everyone welcome. Any car may be used to race.";
+  const description = "Live tournament qualifying is open. Race for a bracket spot or spectate the current event.";
+  const xml =
+    `<n2 ut='${nowSeconds}'>` +
+    `<e i='${event.id}' it='${event.scheduleId}' b='${event.bracketDialIn}' s='${event.status}' ` +
+    `d='${event.startsAt}' de='${event.qualifyingEndsAt}' ct='${event.entryType}' c='${event.entryCost}' ` +
+    `mp='${event.maxPlayers}' pp='${event.purse}'>` +
+    `<er><![CDATA[${entryRequirements}]]></er>` +
+    `<de><![CDATA[${description}]]></de>` +
+    `</e>` +
+    `</n2>`;
+
+  return {
+    body: wrapSuccessData(xml),
+    source: "generated:gethumantournaments",
+  };
+}
+
+async function handleUpdateBg(context) {
+  const { supabase, params } = context;
+  if (!supabase) {
+    return { body: `"s", 1`, source: "generated:updatebg:no-supabase" };
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:updatebg");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:updatebg:bad-session" };
+  }
+
+  const backgroundId = Number(params.get("bg") || 1);
+  await updatePlayerRecord(supabase, caller.playerId, { backgroundId });
+  return {
+    body: `"s", 1`,
+    source: "supabase:updatebg",
+  };
+}
+
+async function handleSellCarPart(context) {
+  const { supabase, params } = context;
+  if (!supabase) {
+    return { body: `"s", -1, "b", 0`, source: "generated:sellcarpart:no-supabase" };
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:sellcarpart");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:sellcarpart:bad-session" };
+  }
+
+  const accountPartId = String(params.get("acpid") || "");
+  if (!accountPartId) {
+    return { body: `"s", -1, "b", 0`, source: "supabase:sellcarpart:missing-id" };
+  }
+
+  const cars = await listCarsForPlayer(supabase, caller.playerId);
+  let targetCar = null;
+  let installedPart = null;
+  for (const car of cars) {
+    const match = findInstalledPartByAi(car.parts_xml || "", accountPartId);
+    if (match) {
+      targetCar = car;
+      installedPart = match;
+      break;
+    }
+  }
+
+  if (!targetCar || !installedPart) {
+    return { body: `"s", -1, "b", 0`, source: "supabase:sellcarpart:not-found" };
+  }
+
+  const partId = Number(installedPart.attrs?.i || 0);
+  const catalogPart = partId ? getPartsCatalogById().get(partId) : null;
+  const slotId = String(installedPart.attrs?.pi || installedPart.attrs?.ci || "");
+  if (!catalogPart) {
+    return { body: `"s", -1, "b", 0`, source: "supabase:sellcarpart:no-catalog-part" };
+  }
+
+  if (slotId && findInstalledPartBySlotId(getDefaultPartsXmlForCar(targetCar.catalog_car_id), slotId)) {
+    const player = await getPlayerById(supabase, caller.playerId);
+    return { body: `"s", -2, "b", ${Number(player?.money || 0)}`, source: "supabase:sellcarpart:stock-part" };
+  }
+
+  const sellValue = Math.max(1, Math.round(Number(catalogPart.p || 0) * 0.5));
+  const player = await getPlayerById(supabase, caller.playerId);
+  const newBalance = Number(player?.money || 0) + sellValue;
+  await updatePlayerMoney(supabase, caller.playerId, newBalance);
+  await saveCarPartsXml(supabase, targetCar.game_car_id, removeInstalledPartByAi(targetCar.parts_xml || "", accountPartId));
+
+  return {
+    body: `"s", 1, "b", ${newBalance}`,
+    source: "supabase:sellcarpart",
+  };
+}
+
+async function handleGetRepairParts(context) {
+  const { supabase, params } = context;
+  if (!supabase) {
+    return { body: `"s", 1, "d", "<parts/>"`, source: "generated:getrepairparts:no-supabase" };
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:getrepairparts");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:getrepairparts:bad-session" };
+  }
+
+  const accountCarId = Number(params.get("acid") || 0);
+  const car = await getCarById(supabase, accountCarId);
+  if (!car || Number(car.player_id) !== Number(caller.playerId)) {
+    return { body: `"s", 0, "d", "<parts/>"`, source: "supabase:getrepairparts:no-car" };
+  }
+
+  return {
+    body: `"s", 1, "d", "${buildRepairPartsXml(car)}"`,
+    source: "supabase:getrepairparts",
+  };
+}
+
+async function handleRepairParts(context) {
+  const { supabase, params } = context;
+  if (!supabase) {
+    return { body: `"s", 0`, source: "generated:repairparts:no-supabase" };
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:repairparts");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:repairparts:bad-session" };
+  }
+
+  const accountCarId = Number(params.get("acid") || 0);
+  const repairIds = String(params.get("aepids") || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const car = await getCarById(supabase, accountCarId);
+  if (!car || Number(car.player_id) !== Number(caller.playerId)) {
+    return { body: `"s", 0`, source: "supabase:repairparts:no-car" };
+  }
+
+  const repairXml = buildRepairPartsXml(car);
+  const repairEntries = collectInstalledPartEntries(repairXml)
+    .filter((entry) => repairIds.includes(String(entry?.attrs?.i || "")));
+  const totalCost = repairEntries.reduce((sum, entry) => sum + Number(entry?.attrs?.p || 0), 0);
+  const player = await getPlayerById(supabase, caller.playerId);
+  if (totalCost > Number(player?.money || 0)) {
+    return { body: `"s", -1`, source: "supabase:repairparts:insufficient-funds" };
+  }
+
+  await updatePlayerMoney(supabase, caller.playerId, Number(player?.money || 0) - totalCost);
+  return {
+    body: `"s", 1`,
+    source: "supabase:repairparts",
+  };
+}
+
 async function handleCompletePollQuestion(context) {
   const { logger, params, services } = context;
   const caller = await resolveCallerSession(context, "supabase:completepollquestion");
@@ -4891,23 +5155,19 @@ const handlers = {
   setnondeletes: async () => ({ body: `"s", 1`, source: "stub:setnondeletes" }),
   setdeletes: async () => ({ body: `"s", 1`, source: "stub:setdeletes" }),
   // Repair
-  getrepairparts: async (context) => {
-    const { params } = context;
-    const acid = params.get("acid") || "0";
-    return { body: `"s", 1, "d", "<parts/>"`, source: "stub:getrepairparts" };
-  },
-  repairparts: async () => ({ body: `"s", 2`, source: "stub:repairparts" }),
+  getrepairparts: handleGetRepairParts,
+  repairparts: handleRepairParts,
   // Garage / parts bin
   getcarpartsbin: handleGetCarPartsBinImpl,
   getpartsbin: handleGetPartsBinImpl,
-  sellcarpart: async () => ({ body: `"s", 1`, source: "stub:sellcarpart" }),
+  sellcarpart: handleSellCarPart,
   sellenginepart: async () => ({ body: `"s", 1`, source: "stub:sellenginepart" }),
   sellengine: async () => ({ body: `"s", 1`, source: "stub:sellengine" }),
   installpart: handleInstallPartImpl,
   installenginepart: async () => ({ body: wrapSuccessData(`<r s='1' b='0'/>`), source: "stub:installenginepart" }),
   swapengine: async () => ({ body: wrapSuccessData(`<r s='1' b='0'/>`), source: "stub:swapengine" }),
   // Account / profile
-  updatebg: async () => ({ body: `"s", 1`, source: "stub:updatebg" }),
+  updatebg: handleUpdateBg,
   addastopbuddy: async () => ({ body: `"s", 1`, source: "stub:addastopbuddy" }),
   removeastopbuddy: async () => ({ body: `"s", 1`, source: "stub:removeastopbuddy" }),
   changepassword: async () => ({ body: `"s", 1`, source: "stub:changepassword" }),
@@ -4921,11 +5181,8 @@ const handlers = {
   forgotpw: async () => ({ body: `"s", 1`, source: "stub:forgotpw" }),
   activatepoints: async () => ({ body: `"s", 1`, source: "stub:activatepoints" }),
   activatemember: async () => ({ body: `"s", 1`, source: "stub:activatemember" }),
-  getinfo: async () => ({ body: `"s", 1`, source: "stub:getinfo" }),
-  getlocations: async (context) => {
-    // Already in login payload but client may request it separately
-    return { body: `"s", 1`, source: "stub:getlocations" };
-  },
+  getinfo: handleGetInfo,
+  getlocations: handleGetLocations,
   getinstalledenginepartbyaccountcar: async () => ({ body: `"s", 1, "d", "<parts/>"`, source: "stub:getinstalledenginepartbyaccountcar" }),
   racersearchnopage: async (context) => {
     // Same as racersearch but without pagination
@@ -4983,6 +5240,7 @@ const handlers = {
   getbuddies: handleGetBuddies,
   getbuddylist: handleGetBuddies,
   buddylist: handleGetBuddies,
+  gethumantournaments: handleGetHumanTournaments,
   listracechatusers: handleListRaceChatUsers,
   leaveracechat: async () => ({ body: `"s", 1`, source: "generated:leaveracechat" }),
   // --- Uploads ---
