@@ -648,9 +648,17 @@ export class TcpServer {
       } else if (messageType === "RIVRT") {
         this.handleRivalsReactionTime(conn, parts);
 
+      // --- RIVRDY: Rivals ready ack ---
+      } else if (messageType === "RIVRDY") {
+        this.handleRivalsReady(conn);
+
       // --- M: Race meta / lane state ---
       } else if (messageType === "M") {
         this.handleRaceMeta(conn, parts);
+
+      // --- RKA: Race keepalive ---
+      } else if (messageType === "RKA") {
+        this.handleRaceKeepAlive(conn);
 
       // --- GK / JK: KOTH queue query / join ---
       } else if (messageType === "GK") {
@@ -872,6 +880,74 @@ export class TcpServer {
     return race.players.length === 2 && race.players.every((participant) => this.getRaceParticipantConnectionId(participant) && participant.opened);
   }
 
+  hasAllRaceMeta(race) {
+    return Boolean(race?.metaByPlayer instanceof Map) && race.metaByPlayer.size >= race.players.length;
+  }
+
+  hasAllRivalsReadyAcks(race) {
+    return Boolean(race?.rivalsReadyAcks instanceof Map) && race.rivalsReadyAcks.size >= race.players.length;
+  }
+
+  setRacePhase(race, phase, reason = "") {
+    if (!race) return;
+    const previous = race.phase || "LOADED";
+    race.phase = phase;
+    if (previous !== phase) {
+      this.logger.info("TCP race phase changed", {
+        raceId: race.id,
+        previousPhase: previous,
+        phase,
+        reason,
+      });
+    }
+  }
+
+  buildRaceMetaRelayMessage(metaParts) {
+    const payload = (metaParts || [])
+      .map((part) => {
+        const token = String(part ?? "").trim();
+        if (!token) return '""';
+        if (/^-?\d+(\.\d+)?$/.test(token)) return token;
+        return `"${this.escapeForTcp(token)}"`;
+      })
+      .join(", ");
+
+    return payload ? `"ac", "MO", ${payload}` : '"ac", "MO"';
+  }
+
+  maybeBroadcastRivalsReady(race) {
+    if (!race) return;
+    if (!race.players.every((entry) => entry.opened)) return;
+    if (!this.hasAllRaceMeta(race)) return;
+    if (race.rivalsReadyBroadcasted) return;
+
+    race.rivalsReadyBroadcasted = true;
+    this.setRacePhase(race, "TREE_ARMED", "both-opened-and-staged");
+    for (const participant of race.players) {
+      const participantConn = this.getRaceParticipantConnection(participant);
+      if (participantConn) {
+        this.sendMessage(participantConn, '"ac", "RIVRDY", "s", 1');
+      }
+    }
+    this.logger.info("TCP race rivals-ready broadcast sent", { raceId: race.id });
+  }
+
+  maybeStartRaceSequence(race, trigger = "") {
+    if (!race || race.sequenceStarted) return;
+    if (!race.players.every((entry) => entry.opened)) return;
+    if (!this.hasAllRaceMeta(race)) return;
+    if (!this.hasAllRivalsReadyAcks(race)) return;
+
+    race.sequenceStarted = true;
+    this.setRacePhase(race, "RACING", trigger || "all-ready-acks");
+    this.logger.info("TCP race sequence started", {
+      raceId: race.id,
+      trigger: trigger || "all-ready-acks",
+      stagedCount: race.stagedCount || 0,
+      rivalsReadyAcks: Array.from(race.rivalsReadyAcks.keys()),
+    });
+  }
+
   extractChatText(messageType, parts) {
     if (messageType === "CRC") {
       return parts.slice(1).find((part) => part.length > 1 && !/^\d+$/.test(part)) || "";
@@ -956,7 +1032,16 @@ export class TcpServer {
       return;
     }
 
-    if (!this.isRaceReadyForTelemetry(race) || !race.sequenceStarted) {
+    if (!this.isRaceReadyForTelemetry(race)) {
+      return;
+    }
+
+    // Suppress pre-staged telemetry from the live opponent-IO path.
+    if (!this.hasAllRaceMeta(race)) {
+      return;
+    }
+
+    if (!race.sequenceStarted) {
       return;
     }
 
@@ -1096,10 +1181,74 @@ export class TcpServer {
       return;
     }
 
+    const sender = this.findRaceParticipant(race, conn, { bindRaceConn: true });
+    if (!sender) {
+      this.logger.info("TCP M ignored from unknown race participant", {
+        connId: conn.id,
+        raceId: race.id,
+      });
+      return;
+    }
+
     if (!race.metaByPlayer) {
       race.metaByPlayer = new Map();
     }
-    race.metaByPlayer.set(Number(conn.playerId), parts.slice(1));
+    const metaParts = parts.slice(1);
+    race.metaByPlayer.set(Number(conn.playerId), metaParts);
+    race.stagedCount = race.metaByPlayer.size;
+
+    for (const participant of race.players) {
+      if (Number(participant.playerId) === Number(sender.playerId)) continue;
+      const participantConn = this.getRaceParticipantConnection(participant);
+      if (participantConn) {
+        this.sendMessage(participantConn, this.buildRaceMetaRelayMessage(metaParts));
+      }
+    }
+
+    if (this.hasAllRaceMeta(race)) {
+      this.setRacePhase(race, "STAGED", "meta-from-both");
+    }
+    this.maybeBroadcastRivalsReady(race);
+    this.maybeStartRaceSequence(race, "meta-update");
+  }
+
+  handleRivalsReady(conn) {
+    const race = this.findRaceForConnection(conn);
+    if (!race || !conn.playerId) {
+      this.logger.info("TCP RIVRDY received without race", { connId: conn.id });
+      return;
+    }
+
+    const sender = this.findRaceParticipant(race, conn, { bindRaceConn: true });
+    if (!sender) {
+      this.logger.info("TCP RIVRDY ignored from unknown race participant", {
+        connId: conn.id,
+        raceId: race.id,
+      });
+      return;
+    }
+
+    if (!race.rivalsReadyAcks) {
+      race.rivalsReadyAcks = new Map();
+    }
+    race.rivalsReadyAcks.set(Number(sender.playerId), true);
+    this.logger.info("TCP RIVRDY ack received", {
+      connId: conn.id,
+      raceId: race.id,
+      playerId: sender.playerId,
+      ackCount: race.rivalsReadyAcks.size,
+    });
+
+    this.maybeStartRaceSequence(race, "rivrdy-acks");
+  }
+
+  handleRaceKeepAlive(conn) {
+    const race = this.findRaceForConnection(conn);
+    if (!race) {
+      this.logger.info("TCP RKA received without race", { connId: conn.id });
+      return;
+    }
+    race.lastActivity = Date.now();
   }
 
   handleKingOfHillRoomCreate(conn, parts) {
@@ -1881,6 +2030,11 @@ export class TcpServer {
       announced: false,
       trackId: 32,
       createdAt: Date.now(),
+      phase: "LOADED",
+      stagedCount: 0,
+      sequenceStarted: false,
+      metaByPlayer: new Map(),
+      rivalsReadyAcks: new Map(),
     };
 
     this.races.set(raceId, race);
@@ -2032,6 +2186,11 @@ export class TcpServer {
       announced: true,
       trackId: pending.trackId || 32,
       createdAt: Date.now(),
+      phase: "LOADED",
+      stagedCount: 0,
+      sequenceStarted: false,
+      metaByPlayer: new Map(),
+      rivalsReadyAcks: new Map(),
     };
 
     this.races.set(race.id, race);
@@ -2087,20 +2246,9 @@ export class TcpServer {
     // Ack the tree-open event only after the client explicitly sends RO.
     this.sendMessage(conn, '"ac", "RO", "t", 32');
 
-    // Once both players have explicitly opened their race channel, start the
-    // sequence and allow live telemetry to flow.
-    if (race.players.every((entry) => entry.opened) && !race.sequenceStarted) {
-      race.sequenceStarted = true;
-      if (!race.rivalsReadyBroadcasted) {
-        race.rivalsReadyBroadcasted = true;
-        for (const participant of race.players) {
-          const participantConn = this.getRaceParticipantConnection(participant);
-          if (participantConn) {
-            this.sendMessage(participantConn, '"ac", "RIVRDY", "s", 1');
-          }
-        }
-      }
-      this.logger.info("TCP race sequence started - both race channels open", { raceId: race.id });
+    if (race.players.every((entry) => entry.opened)) {
+      this.maybeBroadcastRivalsReady(race);
+      this.maybeStartRaceSequence(race, "race-open");
     }
   }
 
