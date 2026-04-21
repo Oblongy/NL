@@ -10,7 +10,6 @@ import {
   buildClearedTestDrivePatch,
   buildOwnedCarInsert,
   buildOwnedCarPatch,
-  buildPlayerPatch,
   parseOwnedCarRecord,
 } from "../db-models.js";
 import {
@@ -22,7 +21,7 @@ import {
   sortByRequestedOrder,
   toNumericIds,
 } from "./shared.js";
-import { updatePlayerDefaultCar } from "./players.js";
+import { updatePlayerDefaultCar, updatePlayerRecord } from "./players.js";
 
 export const normalizeOwnedCarRecord = parseOwnedCarRecord;
 
@@ -131,10 +130,7 @@ export async function createStarterCar(
   });
 
   const car = await insertGameCarCompat(supabase, insert);
-  await supabase
-    .from("game_players")
-    .update(buildPlayerPatch({ defaultCarGameId: car.game_car_id }))
-    .eq("id", Number(playerId));
+  await updatePlayerRecord(supabase, playerId, { defaultCarGameId: car.game_car_id });
   return car;
 }
 
