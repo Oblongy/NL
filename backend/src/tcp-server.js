@@ -341,9 +341,13 @@ export class TcpServer {
         this.handleRaceTelemetry(conn, messageType, parts);
         // no ack - per protocol spec
 
-      // --- RD: Race done / result data ---
-      } else if (messageType === "RD") {
-        this.logger.info("TCP RD received", { connId: conn.id, parts: parts.length });
+      // --- RD / RIVDONE: Race done / result data ---
+      } else if (messageType === "RD" || messageType === "RIVDONE") {
+        this.logger.info("TCP race completion received", {
+          connId: conn.id,
+          messageType,
+          parts: parts.length,
+        });
         
         // Apply engine wear even if race is missing (per protocol spec)
         const race = conn.raceId ? this.races.get(conn.raceId) : null;
@@ -523,8 +527,8 @@ export class TcpServer {
       } else if (messageType === "TEAMCREATE") {
         await this.handleLegacyTeamCreate(conn, parts);
 
-      // --- RRQ: Live race request / matchmaking handshake ---
-      } else if (messageType === "RRQ") {
+      // --- RRQ / RREQ: Live race request / matchmaking handshake ---
+      } else if (messageType === "RRQ" || messageType === "RREQ") {
         this.handleRaceRequest(conn, parts);
 
       // --- RRSP: Rivals challenge response (accept/decline) ---
@@ -747,16 +751,16 @@ export class TcpServer {
       } else if (messageType === "RRS") {
         this.handleRaceReady(conn, parts);
 
-      // --- RO: Race open ---
-      } else if (messageType === "RO") {
+      // --- RO / RIVOK: Race open ---
+      } else if (messageType === "RO" || messageType === "RIVOK") {
         this.handleRaceOpen(conn);
 
       // --- RIVRT: Rivals reaction time ---
       } else if (messageType === "RIVRT") {
         this.handleRivalsReactionTime(conn, parts);
 
-      // --- RIVRDY: Rivals ready ack ---
-      } else if (messageType === "RIVRDY") {
+      // --- RIVRDY / RIVREADY: Rivals ready ack ---
+      } else if (messageType === "RIVRDY" || messageType === "RIVREADY") {
         this.handleRivalsReady(conn);
 
       // --- M: Race meta / lane state ---
