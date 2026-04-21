@@ -406,7 +406,7 @@ export class TcpServer {
 
         // 10.0.03 only acks the join here. The room snapshot follows after `GR`.
         this.sendMessage(conn, '"ac", "JR", "s", 1');
-        this.sendRoomSnapshot(conn, filtered, { duplicateUsers: true });
+        this.sendRoomSnapshot(conn, filtered);
 
         // Notify all OTHER players in room that someone joined (send updated LRCU)
         for (const member of filtered) {
@@ -435,7 +435,7 @@ export class TcpServer {
         const roomId = Number(conn.roomId || 0);
         const roomPlayers = this.rooms.get(roomId) || [];
         if (roomId > 0 && roomPlayers.some((player) => player.connId === conn.id)) {
-          this.sendRoomSnapshot(conn, roomPlayers, { duplicateUsers: true });
+          this.sendRoomSnapshot(conn, roomPlayers);
         }
 
       // --- TC: Team / title channel selection ---
@@ -453,6 +453,10 @@ export class TcpServer {
       // --- RRQ: Live race request / matchmaking handshake ---
       } else if (messageType === "RRQ") {
         this.handleRaceRequest(conn, parts);
+
+      // --- RRSP: Rivals challenge response (accept/decline) ---
+      } else if (messageType === "RRSP") {
+        this.handleRaceResponse(conn, parts);
 
       // --- LO: Logout ---
       } else if (messageType === "LO") {
@@ -2087,11 +2091,23 @@ export class TcpServer {
     );
   }
 
-  buildRraXml({ challengerPlayerId, challengerCarId, challengedPlayerId, challengedCarId, trackId, sc1 = 0, sc2 = 0 }) {
+  buildRraXml({
+    challengerPlayerId,
+    challengerCarId,
+    challengedPlayerId,
+    challengedCarId,
+    trackId,
+    sc1 = 0,
+    sc2 = 0,
+    challengerBracketTime = -1,
+    challengedBracketTime = -1,
+    betType = 0,
+  }) {
     return (
       `<r r1id='${Number(challengerPlayerId)}' r2id='${Number(challengedPlayerId)}' ` +
       `r1cid='${Number(challengerCarId)}' r2cid='${Number(challengedCarId)}' ` +
-      `b1='-1' b2='-1' bt='0' sc1='${Number(sc1)}' sc2='${Number(sc2)}' t='${Number(trackId)}'/>`
+      `b1='${challengerBracketTime}' b2='${challengedBracketTime}' bt='${betType}' ` +
+      `sc1='${Number(sc1)}' sc2='${Number(sc2)}' t='${Number(trackId)}'/>`
     );
   }
 
@@ -2237,6 +2253,9 @@ export class TcpServer {
                 challengedPlayerId: existingRace.players[1].playerId,
                 challengedCarId: existingRace.players[1].carId,
                 trackId: existingRace.trackId || 32,
+                challengerBracketTime: existingRace.players[0].bracketTime ?? -1,
+                challengedBracketTime: existingRace.players[1].bracketTime ?? -1,
+                betType: existingRace.betType ?? 0,
               })
             )}"`
           );
@@ -2273,86 +2292,7 @@ export class TcpServer {
       return;
     }
 
-    this.pendingRaceChallenges.delete(pending.id);
-
-    const challengerConn = this.connections.get(pending.challenger.connId);
-    const challengedConn = this.connections.get(pending.challenged.connId);
-    if (!challengerConn || !challengedConn) {
-      this.logger.warn("Race session aborted due to missing connection", {
-        raceGuid: pending.id,
-        challengerConnId: pending.challenger.connId,
-        challengedConnId: pending.challenged.connId,
-      });
-      return;
-    }
-
-    const race = {
-      id: pending.id,
-      roomId: pending.roomId,
-      players: [
-        {
-          connId: pending.challenger.connId,
-          playerId: pending.challenger.playerId,
-          carId: pending.challenger.carId,
-          lane: 1,
-          bet: 0,
-          ready: true,
-          opened: false,
-          isStaged: false,
-          stagedSince: 0,
-        },
-        {
-          connId: pending.challenged.connId,
-          playerId: pending.challenged.playerId,
-          carId: pending.challenged.carId,
-          lane: 2,
-          bet: 0,
-          ready: true,
-          opened: false,
-          isStaged: false,
-          stagedSince: 0,
-        },
-      ],
-      announced: true,
-      trackId: pending.trackId || 32,
-      createdAt: Date.now(),
-      phase: "LOADED",
-      stagedCount: 0,
-      allStagedSince: 0,
-      sequenceStarted: false,
-      metaByPlayer: new Map(),
-      rivalsReadyAcks: new Map(),
-    };
-
-    this.races.set(race.id, race);
-    challengerConn.raceId = race.id;
-    challengedConn.raceId = race.id;
-
-    const rnXml = this.buildRnXml({
-      challengerPlayerId: pending.challenger.playerId,
-      challengerCarId: pending.challenger.carId,
-      challengedPlayerId: pending.challenged.playerId,
-      challengedCarId: pending.challenged.carId,
-    });
-    const rraXml = this.buildRraXml({
-      challengerPlayerId: pending.challenger.playerId,
-      challengerCarId: pending.challenger.carId,
-      challengedPlayerId: pending.challenged.playerId,
-      challengedCarId: pending.challenged.carId,
-      trackId: pending.trackId,
-    });
-
-    for (const participantConn of [challengerConn, challengedConn]) {
-      this.sendMessage(participantConn, `"ac", "RN", "d", "${this.escapeForTcp(rnXml)}"`);
-      this.sendMessage(participantConn, `"ac", "RRA", "d", "${this.escapeForTcp(rraXml)}"`);
-      // RO and IO frames are sent on the SRC (race channel) connection, not here.
-    }
-
-    this.logger.info("TCP race started from RRQ/RRS", {
-      raceGuid: race.id,
-      challengerPlayerId: pending.challenger.playerId,
-      challengedPlayerId: pending.challenged.playerId,
-    });
+    this.startPendingRace(pending);
   }
 
   handleRaceOpen(conn) {
@@ -2381,6 +2321,166 @@ export class TcpServer {
       this.maybeBroadcastRivalsReady(race);
       this.maybeStartRaceSequence(race, "race-open");
     }
+  }
+
+  handleRaceResponse(conn, parts) {
+    const accepted = Number(parts[1] || 0) === 1;
+    const challengedBracketTime = Number(parts[2] ?? -1);
+    const guid = parts.find((part) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(part)) || "";
+    const pending = guid ? this.pendingRaceChallenges.get(guid) : null;
+    if (!pending) {
+      this.sendMessage(conn, `"ac", "RRSP", "s", -3, "i", "${guid}"`);
+      this.logger.info("TCP RRSP received without pending challenge", { connId: conn.id, parts });
+      return;
+    }
+
+    const responderPlayerId = Number(conn.playerId || 0);
+    if (responderPlayerId !== pending.challenged.playerId) {
+      this.sendMessage(conn, `"ac", "RRSP", "s", -7, "i", "${pending.id}"`);
+      this.logger.warn("TCP RRSP ignored from non-challenged player", {
+        connId: conn.id,
+        responderPlayerId,
+        raceGuid: pending.id,
+        challengedPlayerId: pending.challenged.playerId,
+      });
+      return;
+    }
+
+    if (!accepted) {
+      this.pendingRaceChallenges.delete(pending.id);
+      this.sendMessage(conn, `"ac", "RRSP", "s", 1, "i", "${pending.id}"`);
+      const challengerConn = this.connections.get(pending.challenger.connId);
+      if (challengerConn) {
+        this.sendMessage(challengerConn, `"ac", "RRSP", "s", 1, "i", "${pending.id}"`);
+      }
+      this.logger.info("TCP RRSP declined challenge", {
+        connId: conn.id,
+        responderPlayerId,
+        raceGuid: pending.id,
+      });
+      return;
+    }
+
+    if (pending.bracketTime > -1 && challengedBracketTime <= 0) {
+      this.sendMessage(conn, `"ac", "RRSP", "s", -11, "i", "${pending.id}"`);
+      this.logger.info("TCP RRSP rejected invalid bracket dial-in", {
+        connId: conn.id,
+        responderPlayerId,
+        raceGuid: pending.id,
+        challengedBracketTime,
+      });
+      return;
+    }
+
+    pending.ready.challenged = true;
+    pending.challenged.bracketTime = pending.bracketTime > -1 ? challengedBracketTime : -1;
+    this.sendMessage(conn, `"ac", "RRSP", "s", 1, "i", "${pending.id}"`);
+    this.logger.info("TCP RRSP accepted challenge", {
+      connId: conn.id,
+      responderPlayerId,
+      raceGuid: pending.id,
+      challengerBracketTime: pending.bracketTime,
+      challengedBracketTime: pending.challenged.bracketTime,
+    });
+
+    if (!pending.ready.challenger || !pending.ready.challenged) {
+      return;
+    }
+
+    this.startPendingRace(pending);
+  }
+
+  startPendingRace(pending) {
+    this.pendingRaceChallenges.delete(pending.id);
+
+    const challengerConn = this.connections.get(pending.challenger.connId);
+    const challengedConn = this.connections.get(pending.challenged.connId);
+    if (!challengerConn || !challengedConn) {
+      this.logger.warn("Race session aborted due to missing connection", {
+        raceGuid: pending.id,
+        challengerConnId: pending.challenger.connId,
+        challengedConnId: pending.challenged.connId,
+      });
+      return;
+    }
+
+    const challengerBracketTime = Number(pending.bracketTime ?? -1);
+    const challengedBracketTime = Number(pending.challenged.bracketTime ?? -1);
+    const race = {
+      id: pending.id,
+      roomId: pending.roomId,
+      players: [
+        {
+          connId: pending.challenger.connId,
+          playerId: pending.challenger.playerId,
+          carId: pending.challenger.carId,
+          lane: 1,
+          bet: 0,
+          ready: true,
+          opened: false,
+          isStaged: false,
+          stagedSince: 0,
+          bracketTime: challengerBracketTime,
+        },
+        {
+          connId: pending.challenged.connId,
+          playerId: pending.challenged.playerId,
+          carId: pending.challenged.carId,
+          lane: 2,
+          bet: 0,
+          ready: true,
+          opened: false,
+          isStaged: false,
+          stagedSince: 0,
+          bracketTime: challengedBracketTime,
+        },
+      ],
+      announced: true,
+      trackId: pending.trackId || 32,
+      betType: 0,
+      createdAt: Date.now(),
+      phase: "LOADED",
+      stagedCount: 0,
+      allStagedSince: 0,
+      sequenceStarted: false,
+      metaByPlayer: new Map(),
+      rivalsReadyAcks: new Map(),
+    };
+
+    this.races.set(race.id, race);
+    challengerConn.raceId = race.id;
+    challengedConn.raceId = race.id;
+
+    const rnXml = this.buildRnXml({
+      challengerPlayerId: pending.challenger.playerId,
+      challengerCarId: pending.challenger.carId,
+      challengedPlayerId: pending.challenged.playerId,
+      challengedCarId: pending.challenged.carId,
+    });
+    const rraXml = this.buildRraXml({
+      challengerPlayerId: pending.challenger.playerId,
+      challengerCarId: pending.challenger.carId,
+      challengedPlayerId: pending.challenged.playerId,
+      challengedCarId: pending.challenged.carId,
+      trackId: pending.trackId,
+      challengerBracketTime,
+      challengedBracketTime,
+      betType: 0,
+    });
+
+    for (const participantConn of [challengerConn, challengedConn]) {
+      this.sendMessage(participantConn, `"ac", "RN", "d", "${this.escapeForTcp(rnXml)}"`);
+      this.sendMessage(participantConn, `"ac", "RRA", "d", "${this.escapeForTcp(rraXml)}"`);
+      // RO and IO frames are sent on the SRC (race channel) connection, not here.
+    }
+
+    this.logger.info("TCP race started from pending challenge", {
+      raceGuid: race.id,
+      challengerPlayerId: pending.challenger.playerId,
+      challengedPlayerId: pending.challenged.playerId,
+      challengerBracketTime,
+      challengedBracketTime,
+    });
   }
 
   handleRaceResult(conn, parts) {
