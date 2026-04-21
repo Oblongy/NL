@@ -3592,8 +3592,29 @@ async function handlePractice(context) {
   const accountCarId = params.get("acid") || "";
   let car = null;
 
-  if (supabase && accountCarId) {
+  if (!accountCarId) {
+    return {
+      body: failureBody(),
+      source: "generated:practice:missing-car",
+    };
+  }
+
+  if (supabase) {
+    const caller = await resolveCallerSession(context, "supabase:practice");
+    if (!caller?.ok) {
+      return {
+        body: caller?.body || failureBody(),
+        source: caller?.source || "supabase:practice:bad-session",
+      };
+    }
+
     car = await getCarById(supabase, accountCarId);
+    if (!car || Number(car.player_id) !== Number(caller.playerId)) {
+      return {
+        body: failureBody(),
+        source: "supabase:practice:no-car",
+      };
+    }
   }
 
   if (!car) {
@@ -3634,6 +3655,36 @@ async function handlePractice(context) {
   });
 
   return { body, source: "generated:practice" };
+}
+
+async function handlePracticeLifecycleAck(context, actionName) {
+  const { supabase, params } = context;
+
+  if (supabase) {
+    const caller = await resolveCallerSession(context, `supabase:${actionName}`);
+    if (!caller?.ok) {
+      return {
+        body: caller?.body || failureBody(),
+        source: caller?.source || `supabase:${actionName}:bad-session`,
+      };
+    }
+
+    const accountCarId = params.get("acid") || params.get("cid") || "";
+    if (accountCarId) {
+      const car = await getCarById(supabase, accountCarId);
+      if (!car || Number(car.player_id) !== Number(caller.playerId)) {
+        return {
+          body: failureBody(),
+          source: `supabase:${actionName}:no-car`,
+        };
+      }
+    }
+  }
+
+  return {
+    body: `"s", 1`,
+    source: `generated:${actionName}`,
+  };
 }
 
 const COMPUTER_TOURNAMENTS = [
@@ -4040,10 +4091,10 @@ const handlers = {
   uploadrequest: handleUploadRequest,
   // --- Race ---
   practice: handlePractice,
-  endpractice: async () => ({ body: `"s", 1`, source: "stub:endpractice" }),
-  leavepractice: async () => ({ body: `"s", 1`, source: "stub:leavepractice" }),
-  exitpractice: async () => ({ body: `"s", 1`, source: "stub:exitpractice" }),
-  practiceend: async () => ({ body: `"s", 1`, source: "stub:practiceend" }),
+  endpractice: async (context) => handlePracticeLifecycleAck(context, "endpractice"),
+  leavepractice: async (context) => handlePracticeLifecycleAck(context, "leavepractice"),
+  exitpractice: async (context) => handlePracticeLifecycleAck(context, "exitpractice"),
+  practiceend: async (context) => handlePracticeLifecycleAck(context, "practiceend"),
   // --- Computer Tournaments (10.0.03 source of truth) ---
   ctgr: async (context) => {
     const { params, logger } = context;
