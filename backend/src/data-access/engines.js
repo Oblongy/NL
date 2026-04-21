@@ -155,50 +155,59 @@ export async function ensureOwnedEnginesForCars(supabase, cars = []) {
     return [];
   }
 
-  const playerId = Number(cars[0]?.player_id || 0);
-  if (!playerId) {
-    return [];
-  }
-
-  const existingRows = await listOwnedEnginesInternal(supabase, playerId);
-  if (existingRows === null) {
-    return [];
-  }
-
-  const byInstalledCarId = new Map(
-    existingRows
-      .filter((row) => Number(row.installed_on_car_id || 0) > 0)
-      .map((row) => [Number(row.installed_on_car_id), row]),
-  );
-  const ensuredRows = [...existingRows];
-
+  const carsByPlayerId = new Map();
   for (const car of cars) {
-    const carId = Number(car.game_car_id || 0);
-    if (!carId || byInstalledCarId.has(carId)) {
+    const playerId = Number(car?.player_id || 0);
+    if (!playerId) {
+      continue;
+    }
+    const playerCars = carsByPlayerId.get(playerId) || [];
+    playerCars.push(car);
+    carsByPlayerId.set(playerId, playerCars);
+  }
+
+  const ensuredRows = [];
+  for (const [playerId, playerCars] of carsByPlayerId.entries()) {
+    const existingRows = await listOwnedEnginesInternal(supabase, playerId);
+    if (existingRows === null) {
       continue;
     }
 
-    const migrated = extractEngineStateFromCar(car);
-    const created = await createOwnedEngine(supabase, {
-      playerId,
-      installedOnCarId: carId,
-      catalogEnginePartId: migrated.catalogEnginePartId,
-      engineTypeId: migrated.engineTypeId,
-      partsXml: migrated.enginePartsXml,
-    });
+    const byInstalledCarId = new Map(
+      existingRows
+        .filter((row) => Number(row.installed_on_car_id || 0) > 0)
+        .map((row) => [Number(row.installed_on_car_id), row]),
+    );
+    ensuredRows.push(...existingRows);
 
-    if (created) {
-      byInstalledCarId.set(carId, created);
-      ensuredRows.push(created);
-      if (migrated.enginePartsXml && migrated.strippedCarPartsXml !== String(car.parts_xml || "")) {
-        await singleResult(
-          supabase
-            .from("game_cars")
-            .update(buildOwnedCarPatch({ partsXml: migrated.strippedCarPartsXml }))
-            .eq("game_car_id", Number(carId))
-            .select("*"),
-          (value) => value,
-        );
+    for (const car of playerCars) {
+      const carId = Number(car.game_car_id || 0);
+      if (!carId || byInstalledCarId.has(carId)) {
+        continue;
+      }
+
+      const migrated = extractEngineStateFromCar(car);
+      const created = await createOwnedEngine(supabase, {
+        playerId,
+        installedOnCarId: carId,
+        catalogEnginePartId: migrated.catalogEnginePartId,
+        engineTypeId: migrated.engineTypeId,
+        partsXml: migrated.enginePartsXml,
+      });
+
+      if (created) {
+        byInstalledCarId.set(carId, created);
+        ensuredRows.push(created);
+        if (migrated.enginePartsXml && migrated.strippedCarPartsXml !== String(car.parts_xml || "")) {
+          await singleResult(
+            supabase
+              .from("game_cars")
+              .update(buildOwnedCarPatch({ partsXml: migrated.strippedCarPartsXml }))
+              .eq("game_car_id", Number(carId))
+              .select("*"),
+            (value) => value,
+          );
+        }
       }
     }
   }
