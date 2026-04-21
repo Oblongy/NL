@@ -44,6 +44,7 @@ import { buildCarRaceSpec, getRedLine } from "./engine-physics.js";
 import { hashGamePassword, normalizeUsername, verifyGamePassword } from "./player-identity.js";
 import { getPublicIdForPlayer } from "./public-id.js";
 import { createLoginSession, getSessionPlayerId, validateOrCreateSession } from "./session.js";
+import { consumeRecentDecalUpload } from "./upload-state.js";
 import {
   getPlayerById,
   getTeamMembershipByPlayerId,
@@ -2287,7 +2288,7 @@ async function handleBuyDyno(context) {
 }
 
 async function handleBuyPart(context) {
-  const { supabase, params, logger } = context;
+  const { supabase, params, logger, remoteAddress } = context;
   const accountCarId = params.get("acid") || "";
   const partId = Number(params.get("pid") || 0);
   const decalId = params.get("did") || "";
@@ -2375,16 +2376,55 @@ async function handleBuyPart(context) {
       const slotId = partSlotMap[partId] || String(catalogPart?.pi || "161");
 
       try {
-        const { existsSync, mkdirSync, renameSync } = await import("node:fs");
+        const { existsSync, mkdirSync, readdirSync, renameSync, statSync } = await import("node:fs");
         const { resolve } = await import("node:path");
         const decalDir = resolve(process.cwd(), "../cache/car/userDecals");
         mkdirSync(decalDir, { recursive: true });
-        const sourcePath = resolve(decalDir, `${decalId}.jpg`);
+        const exactSourcePath = resolve(decalDir, `${decalId}.jpg`);
         const targetPath = resolve(decalDir, `${slotId}_${decalId}.swf`);
-        if (existsSync(sourcePath)) {
+        let sourcePath = existsSync(exactSourcePath) ? exactSourcePath : "";
+
+        if (!sourcePath) {
+          const recentUpload = consumeRecentDecalUpload({ remoteAddress, slotId });
+          if (recentUpload?.targetPath && existsSync(recentUpload.targetPath)) {
+            sourcePath = recentUpload.targetPath;
+          }
+        }
+
+        if (!sourcePath) {
+          const now = Date.now();
+          const fallbackUpload = readdirSync(decalDir)
+            .filter((file) => file.endsWith(".jpg"))
+            .map((file) => {
+              const filePath = resolve(decalDir, file);
+              return {
+                filePath,
+                ageMs: now - statSync(filePath).mtimeMs,
+              };
+            })
+            .filter((file) => file.ageMs <= 2 * 60 * 1000)
+            .sort((a, b) => a.ageMs - b.ageMs)[0];
+
+          sourcePath = fallbackUpload?.filePath || "";
+          if (sourcePath) {
+            logger?.warn("Using recent upload fallback for custom graphic", {
+              decalId,
+              slotId,
+              sourcePath,
+              remoteAddress,
+            });
+          }
+        }
+
+        if (sourcePath) {
           renameSync(sourcePath, targetPath);
         } else {
-          logger?.warn("Custom graphic source upload missing", { decalId, slotId, sourcePath });
+          logger?.warn("Custom graphic source upload missing", {
+            decalId,
+            slotId,
+            exactSourcePath,
+            remoteAddress,
+          });
         }
       } catch (err) {
         logger?.error("Failed to rename decal", { error: err.message });

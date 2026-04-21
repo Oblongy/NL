@@ -8,6 +8,7 @@ import { getSessionPlayerId } from "./session.js";
 import { getCarById, getPlayerById, listCarsForPlayer } from "./user-service.js";
 import { PARTS_CATALOG_XML } from "./parts-catalog.js";
 import { httpRequestsTotal } from "./metrics.js";
+import { rememberRecentDecalUpload } from "./upload-state.js";
 
 const LOCAL_STATIC_ROUTES = new Map([
   [
@@ -373,6 +374,13 @@ export function createHttpServer({ config, logger, supabase, services = {}, fixt
             try {
               ensureParentDir(targetPath);
               writeFileSync(targetPath, fileData);
+              if (!pendingUpload || pendingUpload.type === "userDecals") {
+                rememberRecentDecalUpload({
+                  remoteAddress,
+                  fieldName,
+                  targetPath,
+                });
+              }
               logger.info("Saved upload file", {
                 fieldName,
                 bytes: fileData.length,
@@ -490,6 +498,7 @@ export function createHttpServer({ config, logger, supabase, services = {}, fixt
         params: decoded.params,
         rawQuery,
         decodedQuery: decoded.decoded,
+        remoteAddress,
         supabase,
         logger,
         services,
