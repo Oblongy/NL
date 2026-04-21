@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { buildSessionInsert, buildSessionPatch, parseSessionRecord } from "./db-models.js";
 
 /** Sessions older than this are considered expired, even if not yet purged. */
 const SESSION_TTL_DAYS = 7;
@@ -7,12 +8,12 @@ function sessionTtlCutoff() {
   return new Date(Date.now() - SESSION_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
 }
 
-async function maybeSingle(query) {
+async function maybeSingle(query, parser = (value) => value) {
   const { data, error } = await query.maybeSingle();
   if (error) {
     throw error;
   }
-  return data;
+  return data ? parser(data) : null;
 }
 
 export async function getSessionPlayerId({ supabase, sessionKey }) {
@@ -26,6 +27,7 @@ export async function getSessionPlayerId({ supabase, sessionKey }) {
       .select("player_id")
       .eq("session_key", sessionKey)
       .gte("last_seen_at", sessionTtlCutoff()),
+    parseSessionRecord,
   );
 
   return Number(existing?.player_id || 0);
@@ -37,10 +39,8 @@ export async function createLoginSession({ supabase, playerId }) {
   }
 
   const sessionKey = randomUUID();
-  const { error } = await supabase.from("game_sessions").insert({
-    session_key: sessionKey,
-    player_id: Number(playerId),
-  });
+  const insert = buildSessionInsert({ sessionKey, playerId });
+  const { error } = await supabase.from("game_sessions").insert(insert);
 
   if (error) {
     throw error;
@@ -75,6 +75,7 @@ export async function validateOrCreateSession({ supabase, playerId, sessionKey }
       .select("session_key, player_id")
       .eq("session_key", sessionKey)
       .gte("last_seen_at", sessionTtlCutoff()),
+    parseSessionRecord,
   );
 
   // If session exists but belongs to different player, reject
@@ -90,7 +91,7 @@ export async function validateOrCreateSession({ supabase, playerId, sessionKey }
   // Update last seen timestamp for existing valid session
   const { error } = await supabase
     .from("game_sessions")
-    .update({ last_seen_at: new Date().toISOString() })
+    .update(buildSessionPatch({ lastSeenAt: new Date().toISOString() }))
     .eq("session_key", sessionKey);
 
   if (error) {

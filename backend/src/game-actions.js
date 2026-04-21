@@ -33,16 +33,28 @@ import { getPublicIdForPlayer } from "./public-id.js";
 import { createLoginSession, getSessionPlayerId, validateOrCreateSession } from "./session.js";
 import {
   getPlayerById,
+  getTeamMembershipByPlayerId,
   getPlayerByUsername,
   createPlayer,
   createStarterCar,
   createOwnedCar,
+  createTeam as createTeamRecord,
   ensurePlayerHasGarageCar,
+  findTeamByName,
   listCarsForPlayer,
+  listPlayersForTeams as listPlayersForTeamsFromService,
   listCarsByIds,
   listPlayersByIds,
   listTeamMembersForTeams,
   listTeamsByIds,
+  deleteTeam as deleteTeamRecord,
+  saveCarPartsXml,
+  saveCarWheelXml,
+  searchPlayersByUsername,
+  setPlayerTeamMembership as setPlayerTeamMembershipRecord,
+  syncGameTeamMemberRow as syncGameTeamMemberRowRecord,
+  updateTeamRecord as updateTeamRecordInService,
+  updatePlayerRecord,
   updatePlayerDefaultCar,
   updatePlayerMoney,
   updatePlayerLocation,
@@ -348,61 +360,13 @@ function getActionValueCandidates(params) {
 }
 
 async function getPlayerTeamMembership(supabase, playerId) {
-  if (!supabase || !playerId) {
-    return null;
+  const membership = await getTeamMembershipByPlayerId(supabase, playerId);
+  if (membership?.team_id) {
+    return membership;
   }
 
-  try {
-    const { data, error } = await supabase
-      .from("game_team_members")
-      .select("team_id, role")
-      .eq("player_id", Number(playerId))
-      .limit(1)
-      .maybeSingle();
-
-    if (error) {
-      const message = String(error?.message || error || "");
-      if (!/role/i.test(message) || !/does not exist|unknown column|column/i.test(message)) {
-        throw error;
-      }
-
-      const compat = await supabase
-        .from("game_team_members")
-        .select("team_id")
-        .eq("player_id", Number(playerId))
-        .limit(1)
-        .maybeSingle();
-
-      if (compat.error) {
-        throw compat.error;
-      }
-
-      return compat.data ? { team_id: compat.data.team_id, role: null } : null;
-    }
-
-    if (data?.team_id) {
-      return data;
-    }
-  } catch {
-    // Fall back to legacy player columns below.
-  }
-
-  try {
-    const playerResult = await supabase
-      .from("game_players")
-      .select("team_id")
-      .eq("id", Number(playerId))
-      .limit(1)
-      .maybeSingle();
-
-    if (playerResult.error) {
-      throw playerResult.error;
-    }
-
-    return playerResult.data?.team_id ? { team_id: playerResult.data.team_id, role: null } : null;
-  } catch {
-    return null;
-  }
+  const player = await getPlayerById(supabase, playerId);
+  return player?.team_id ? { team_id: player.team_id, role: null } : null;
 }
 
 function getDefaultTeamMeta() {
@@ -505,25 +469,7 @@ function sortTeamPlayers(players, teamMeta) {
 }
 
 async function listPlayersForTeams(supabase, teamIds = []) {
-  if (!supabase || teamIds.length === 0) {
-    return [];
-  }
-
-  const ids = [...new Set(teamIds.map((value) => Number(value)).filter((value) => value > 0))];
-  if (ids.length === 0) {
-    return [];
-  }
-
-  const { data, error } = await supabase
-    .from("game_players")
-    .select("*")
-    .in("team_id", ids);
-
-  if (error) {
-    throw error;
-  }
-
-  return data || [];
+  return listPlayersForTeamsFromService(supabase, teamIds);
 }
 
 function groupPlayersByTeamId(players) {
@@ -755,84 +701,16 @@ function parseActionString(params, ...keys) {
   return candidate != null ? String(candidate) : "";
 }
 
-function isMissingGameTeamMembersRelationError(error) {
-  const message = String(error?.message || error || "");
-  return (
-    (/relation|table/i.test(message) && /does not exist/i.test(message) && /game_team_members/i.test(message))
-    || (/game_team_members/i.test(message) && /does not exist/i.test(message))
-  );
-}
-
 /**
  * Keeps `game_team_members` aligned with `game_players.team_id`.
  * Team Rivals and `member_count` triggers depend on this table; updating only `game_players` breaks those paths.
  */
 async function syncGameTeamMemberRow(supabase, playerId, teamId, options = {}) {
-  if (!supabase || !playerId) {
-    return;
-  }
-
-  const numericPlayerId = Number(playerId);
-  const { error: deleteError } = await supabase
-    .from("game_team_members")
-    .delete()
-    .eq("player_id", numericPlayerId);
-
-  if (deleteError) {
-    if (isMissingGameTeamMembersRelationError(deleteError)) {
-      return;
-    }
-    throw deleteError;
-  }
-
-  const numericTeamId = Number(teamId || 0);
-  if (numericTeamId <= 0) {
-    return;
-  }
-
-  const rawRole = String(options.dbMemberRole || "member").toLowerCase();
-  const role = rawRole === "owner" || rawRole === "admin" ? rawRole : "member";
-  const baseRow = { team_id: numericTeamId, player_id: numericPlayerId };
-
-  let { error: insertError } = await supabase
-    .from("game_team_members")
-    .insert({ ...baseRow, role });
-
-  if (insertError && /role|does not exist|unknown column|column/i.test(String(insertError.message || ""))) {
-    ({ error: insertError } = await supabase.from("game_team_members").insert(baseRow));
-  }
-
-  if (insertError) {
-    if (isMissingGameTeamMembersRelationError(insertError)) {
-      return;
-    }
-    throw insertError;
-  }
+  await syncGameTeamMemberRowRecord(supabase, playerId, teamId, options);
 }
 
 async function updatePlayerTeamMembership(supabase, playerId, team, membershipOptions = {}) {
-  if (!supabase || !playerId) {
-    return false;
-  }
-
-  const patch = team
-    ? { team_id: Number(team.id), team_name: String(team.name || "") }
-    : { team_id: null, team_name: "" };
-
-  const { error } = await supabase
-    .from("game_players")
-    .update(patch)
-    .eq("id", Number(playerId));
-
-  if (error) {
-    throw error;
-  }
-
-  await syncGameTeamMemberRow(supabase, playerId, team ? Number(team.id) : 0, {
-    dbMemberRole: membershipOptions.dbMemberRole,
-  });
-
-  return true;
+  return setPlayerTeamMembershipRecord(supabase, playerId, team, membershipOptions);
 }
 
 function refreshTcpTeamMembership(services, { playerId, teamId = 0, teamRole = "" } = {}) {
@@ -876,18 +754,7 @@ function refreshTcpTeamMembership(services, { playerId, teamId = 0, teamRole = "
 }
 
 async function updateTeamRecord(supabase, teamId, patch) {
-  const { data, error } = await supabase
-    .from("game_teams")
-    .update(patch)
-    .eq("id", Number(teamId))
-    .select("*")
-    .single();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
+  return updateTeamRecordInService(supabase, teamId, patch);
 }
 
 function buildTeamApplicationsXml(applications = []) {
@@ -939,60 +806,22 @@ async function handleTeamCreate(context) {
     return { body: `"s", 0`, source: "supabase:teamcreate:invalid-name" };
   }
 
-  const existingTeamResult = await supabase
-    .from("game_teams")
-    .select("id")
-    .ilike("name", teamName)
-    .limit(1)
-    .maybeSingle();
-
-  if (existingTeamResult.error) {
-    throw existingTeamResult.error;
-  }
-
-  if (existingTeamResult.data?.id) {
+  const existingTeam = await findTeamByName(supabase, teamName);
+  if (existingTeam?.id) {
     return { body: `"s", -2`, source: "supabase:teamcreate:name-taken" };
   }
 
-  let insertResult = await supabase
-    .from("game_teams")
-    .insert({ name: teamName, score: 0, team_fund: 0 })
-    .select("*")
-    .single();
+  const createdTeam = await createTeamRecord(supabase, {
+    name: teamName,
+    score: 0,
+    teamFund: 0,
+    ownerPlayerId: caller.playerId,
+  });
 
-  if (insertResult.error) {
-    const message = String(insertResult.error?.message || "");
-    if (/team_fund|column/i.test(message) && /does not exist|unknown column/i.test(message)) {
-      insertResult = await supabase
-        .from("game_teams")
-        .insert({ name: teamName, score: 0 })
-        .select("*")
-        .single();
-    }
-  }
-
-  if (insertResult.error) {
-    throw insertResult.error;
-  }
-
-  const ownerPatch = { owner_player_id: Number(caller.playerId) };
-  const { error: ownerError } = await supabase
-    .from("game_teams")
-    .update(ownerPatch)
-    .eq("id", Number(insertResult.data.id));
-  if (ownerError) {
-    const ownerMsg = String(ownerError.message || "");
-    const missingOwnerColumn = /owner_player_id/i.test(ownerMsg)
-      && /does not exist|unknown column/i.test(ownerMsg);
-    if (!missingOwnerColumn) {
-      throw ownerError;
-    }
-  }
-
-  await updatePlayerTeamMembership(supabase, caller.playerId, insertResult.data, {
+  await updatePlayerTeamMembership(supabase, caller.playerId, createdTeam, {
     dbMemberRole: "owner",
   });
-  saveTeamMeta(services, insertResult.data.id, {
+  saveTeamMeta(services, createdTeam.id, {
     leaderComments: "",
     rolesByPlayerId: { [String(caller.playerId)]: TEAM_ROLE.LEADER },
     dealerMaxBetByPlayerId: {},
@@ -1001,12 +830,12 @@ async function handleTeamCreate(context) {
   });
   refreshTcpTeamMembership(services, {
     playerId: caller.playerId,
-    teamId: insertResult.data.id,
+    teamId: createdTeam.id,
     teamRole: TEAM_ROLE.LEADER,
   });
 
   return {
-    body: `"s", 1, "tid", ${Number(insertResult.data.id)}`,
+    body: `"s", 1, "tid", ${Number(createdTeam.id)}`,
     source: "supabase:teamcreate",
   };
 }
@@ -1248,13 +1077,7 @@ async function handleTeamQuit(context) {
   const remainingPlayers = teamContext.players.filter((player) => Number(player.id) !== Number(caller.playerId));
 
   if (remainingPlayers.length === 0) {
-    const deleteResult = await supabase
-      .from("game_teams")
-      .delete()
-      .eq("id", Number(teamContext.team.id));
-    if (deleteResult.error) {
-      throw deleteResult.error;
-    }
+    await deleteTeamRecord(supabase, teamContext.team.id);
     if (services?.teamState) {
       services.teamState.teams.delete(String(teamContext.team.id));
     }
@@ -2365,19 +2188,7 @@ async function handleGetOneCarEngine(context) {
     };
   }
 
-  // Read the car's installed parts — only b (boost), e (NOS), es (sound) change per build
-  let boostType = "0";
-  let nosSize = 0;
-
-  if (car?.parts_xml) {
-    const xml = car.parts_xml;
-    // Check both ci= (normalized) and pi= (raw stored) for turbo/supercharger
-    if (/<p[^>]*\b(?:ci|pi)=["']87["'][^>]*\/>/.test(xml)) boostType = "T";
-    else if (/<p[^>]*\b(?:ci|pi)=["']81["'][^>]*\/>/.test(xml)) boostType = "S";
-    const hasBottles = /<p[^>]*\b(?:ci|pi)=["']203["'][^>]*\/>/.test(xml);
-    const hasJets    = /<p[^>]*\b(?:ci|pi)=["']204["'][^>]*\/>/.test(xml);
-    if (hasBottles && hasJets) nosSize = 100;
-  }
+  const { boostType, nosSize, compressionLevel } = getCarBuildFlags(car);
 
   const engineSound = boostType === "T" ? 2 : boostType === "S" ? 3 : 1;
 
@@ -2388,17 +2199,15 @@ async function handleGetOneCarEngine(context) {
       source: "generated:getonecarengine:unsupported-car",
     };
   }
-  const n2 = buildN2Fields(catalogCarId);
   const timing = generateTimingArray(catalogCarId);
-
-  const engineXml =
-    `<n2 es='${engineSound}' sl='${n2.sl}' sg='0' rc='0' tmp='0' r='${n2.r}' v='0' ` +
-    `a='${n2.a}' n='${n2.n}' o='${n2.o}' s='0.854' b='${boostType}' p='1.8' c='0' e='${nosSize}' d='N' ` +
-    `f='${n2.f}' g='${n2.g}' h='${n2.h}' i='${n2.i}' j='${n2.j}' k='0' l='${n2.l}' ` +
-    `q='0' m='0' t='0' u='10' w='0' x='${n2.x}' y='${n2.y}' z='${n2.z}' ` +
-    `aa='${n2.aa}' ab='${accountCarId}' ac='0' ad='0' ae='100' af='100' ag='100' ah='100' ai='100' ` +
-    `aj='0' ak='0' al='0' am='0' an='0' ao='100' ap='0' aq='0' ar='1' as='0' ` +
-    `at='100' au='100' av='0' aw='100' ax='0'/>`;
+  const engineXml = buildDriveableEngineXml({
+    catalogCarId,
+    accountCarId,
+    boostType,
+    nosSize,
+    compressionLevel,
+    engineSound,
+  });
 
   return {
     body: `"s", 1, "d", "${engineXml}", "t", [${timing.join(', ')}]`,
@@ -2531,11 +2340,11 @@ async function handleBuyPart(context) {
 
       const installedPartXml = `<p ai='${installId}' i='${partId}' pi='${slotId}' t='c' n='Custom Graphic' in='1' cc='0' pdi='${decalId}' di='${decalId}' ps=''/>`;
       const partsXml = upsertInstalledPartXml(car.parts_xml || "", slotId, installedPartXml);
-      const { error: updateError1 } = await supabase.from("game_cars").update({ parts_xml: partsXml }).eq("game_car_id", accountCarId);
-      if (updateError1) {
-        logger?.error("Failed to save custom graphic", { error: updateError1, accountCarId, partId });
-      } else {
+      try {
+        await saveCarPartsXml(supabase, accountCarId, partsXml);
         logger?.info("Saved custom graphic to car", { accountCarId, partId, slotId, partsXmlLength: partsXml.length });
+      } catch (error) {
+        logger?.error("Failed to save custom graphic", { error, accountCarId, partId });
       }
     } else if (catalogPart && partSlotId) {
       if (isWheelPart) {
@@ -2543,11 +2352,11 @@ async function handleBuyPart(context) {
         const designId = catalogPart.di || catalogPart.pdi || "1";
         const wheelSize = catalogPart.ps || "17";
         const newWheelXml = `<ws><w wid='${designId}' id='${partId}' ws='${wheelSize}'/></ws>`;
-        const { error: wheelUpdateError } = await supabase.from("game_cars").update({ wheel_xml: newWheelXml }).eq("game_car_id", accountCarId);
-        if (wheelUpdateError) {
-          logger?.error("Failed to save wheel", { error: wheelUpdateError, accountCarId, partId });
-        } else {
+        try {
+          await saveCarWheelXml(supabase, accountCarId, newWheelXml);
           logger?.info("Saved wheel to car", { accountCarId, partId, designId, wheelSize, installId });
+        } catch (error) {
+          logger?.error("Failed to save wheel", { error, accountCarId, partId });
         }
         // Also update parts_xml so the client sees ci='14' installed
         const installedPartXml = buildInstalledCatalogPartXml(catalogPart, installId, {
@@ -2555,18 +2364,18 @@ async function handleBuyPart(context) {
           ps: wheelSize,
         });
         const partsXml = upsertInstalledPartXml(car.parts_xml || "", "14", installedPartXml);
-        await supabase.from("game_cars").update({ parts_xml: partsXml }).eq("game_car_id", accountCarId);
+        await saveCarPartsXml(supabase, accountCarId, partsXml);
       } else {
         const installedPartXml = buildInstalledCatalogPartXml(catalogPart, installId, {
           t: catalogPart.t || partType || "",
           ps: partPs,
         });
         const partsXml = upsertInstalledPartXml(car.parts_xml || "", partSlotId, installedPartXml);
-        const { error: updateError2 } = await supabase.from("game_cars").update({ parts_xml: partsXml }).eq("game_car_id", accountCarId);
-        if (updateError2) {
-          logger?.error("Failed to save part", { error: updateError2, accountCarId, partId, partSlotId });
-        } else {
+        try {
+          await saveCarPartsXml(supabase, accountCarId, partsXml);
           logger?.info("Saved part to car", { accountCarId, partId, partSlotId, partName, installId, partsXmlLength: partsXml.length });
+        } catch (error) {
+          logger?.error("Failed to save part", { error, accountCarId, partId, partSlotId });
         }
       }
     }
@@ -2627,11 +2436,11 @@ async function handleBuyEnginePart(context) {
   const slotId = String(catalogPart.pi || "");
   const installedPartXml = buildInstalledCatalogPartXml(catalogPart, installId);
   const partsXml = upsertInstalledPartXml(car.parts_xml || "", slotId, installedPartXml);
-  const { error: updateError } = await supabase.from("game_cars").update({ parts_xml: partsXml }).eq("game_car_id", accountCarId);
-  if (updateError) {
-    logger?.error("Failed to save engine part", { error: updateError, accountCarId, partId, slotId });
-  } else {
+  try {
+    await saveCarPartsXml(supabase, accountCarId, partsXml);
     logger?.info("Saved engine part to car", { accountCarId, partId, slotId, installId, partsXmlLength: partsXml.length });
+  } catch (error) {
+    logger?.error("Failed to save engine part", { error, accountCarId, partId, slotId });
   }
 
   return {
@@ -2784,15 +2593,10 @@ async function handleGetWinsAndLosses(context) {
       };
     }
 
-    const { data, error } = await supabase
-      .from("game_players")
-      .select("wins, losses")
-      .eq("id", caller.playerId)
-      .maybeSingle();
-
-    if (!error && data) {
+    const player = await getPlayerById(supabase, caller.playerId);
+    if (player) {
       return {
-        body: wrapSuccessData(`<wl w='${data.wins ?? 0}' l='${data.losses ?? 0}'/>`),
+        body: wrapSuccessData(`<wl w='${player.wins ?? 0}' l='${player.losses ?? 0}'/>`),
         source: "supabase:getwinsandlosses",
       };
     }
@@ -2839,63 +2643,7 @@ async function handleGetCarPrice(context) {
 }
 
 async function handleGetEmailList(context) {
-  const { supabase, params } = context;
-
-  if (!supabase) {
-    return null;
-  }
-
-  const caller = await resolveCallerSession(context, "supabase:getemaillist");
-  if (!caller?.ok) {
-    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:getemaillist:bad-session" };
-  }
-
-  const folder = params.get("f") || "inbox";
-  const page = Number(params.get("p") || 0);
-  const pageSize = 20;
-
-  try {
-    // Get emails from database
-    const { data: emails, error } = await supabase
-      .from("game_mail")
-      .select(`
-        id,
-        sender_player_id,
-        subject,
-        body,
-        is_read,
-        created_at,
-        attachment_money,
-        attachment_points
-      `)
-      .eq("recipient_player_id", caller.playerId)
-      .eq("folder", folder)
-      .eq("is_deleted", false)
-      .order("created_at", { ascending: false })
-      .range(page * pageSize, (page + 1) * pageSize - 1);
-
-    if (error) throw error;
-
-    // Build email XML
-    const emailsXml = (emails || []).map(email => {
-      const readStatus = email.is_read ? "1" : "0";
-      const hasAttachment = (email.attachment_money > 0 || email.attachment_points > 0) ? "1" : "0";
-      return (
-        `<m i='${email.id}' si='${email.sender_player_id || 0}' ` +
-        `s='${escapeXml(email.subject)}' r='${readStatus}' a='${hasAttachment}' ` +
-        `d='${Math.floor(new Date(email.created_at).getTime() / 1000)}'/>`
-      );
-    }).join("");
-
-    // Response format: "s", 1, "d", "<emails>...</emails>", "t", <total>, "p", <page>
-    return {
-      body: `"s", 1, "d", "${`<emails>${emailsXml}</emails>`}", "t", ${emails?.length || 0}, "p", ${page}`,
-      source: "supabase:getemaillist",
-    };
-  } catch (error) {
-    context.logger?.error("Get email list error", { error: error.message });
-    return { body: failureBody(), source: "supabase:getemaillist:error" };
-  }
+  return handleGetEmailListImpl(context);
 }
 
 async function handleGetBlackCardProgress(context) {
@@ -3034,13 +2782,7 @@ async function handleBuyTestDriveCar(context) {
       return { body: `"s", -4`, source: "buytestdrivecar:insufficient-points" };
     }
 
-    const { error } = await supabase
-      .from("game_players")
-      .update({ points: newPointsBalance })
-      .eq("id", Number(caller.playerId));
-    if (error) {
-      throw error;
-    }
+    await updatePlayerRecord(supabase, caller.playerId, { points: newPointsBalance });
 
     clearActiveTestDriveCar(caller.playerId);
     await clearCarTestDriveState(supabase, activeTestDrive.gameCarId);
@@ -3097,13 +2839,7 @@ async function handleRemoveTestDriveCar(context) {
   if (remainingCars.length > 0) {
     await updatePlayerDefaultCar(supabase, caller.playerId, remainingCars[0].game_car_id);
   } else {
-    const { error } = await supabase
-      .from("game_players")
-      .update({ default_car_game_id: null })
-      .eq("id", Number(caller.playerId));
-    if (error) {
-      throw error;
-    }
+    await updatePlayerRecord(supabase, caller.playerId, { defaultCarGameId: null });
   }
 
   return {
@@ -3511,6 +3247,75 @@ function buildN2Fields(catalogCarId) {
   return { x, y, z, r, aa, sl, a, n, o, f, g, h, i, j, l };
 }
 
+function getShowroomSpecTorque(spec, catalogCarId) {
+  const tq = Number(spec?.tq || 0);
+  if (Number.isFinite(tq) && tq > 0) {
+    return tq;
+  }
+
+  const hp = getShowroomSpecHorsepower(spec, catalogCarId);
+  return Math.max(100, Math.round(hp * 0.92));
+}
+
+function getCarBuildFlags(car) {
+  const xml = String(car?.parts_xml || "");
+  let boostType = "0";
+  let nosSize = 0;
+  let compressionLevel = 0;
+
+  if (xml) {
+    if (/<p[^>]*\b(?:ci|pi)=["']87["'][^>]*\/>/.test(xml)) boostType = "T";
+    else if (/<p[^>]*\b(?:ci|pi)=["']81["'][^>]*\/>/.test(xml)) boostType = "S";
+    const hasBottles = /<p[^>]*\b(?:ci|pi)=["']203["'][^>]*\/>/.test(xml);
+    const hasJets = /<p[^>]*\b(?:ci|pi)=["']204["'][^>]*\/>/.test(xml);
+    if (hasBottles && hasJets) nosSize = 100;
+
+    const pistonMatch = xml.match(/<p[^>]*\b(?:ci|pi)=["']190["'][^>]*\b(?:di|pdi)=["'](\d+)["'][^>]*\/>/i);
+    compressionLevel = pistonMatch ? Number(pistonMatch[1]) : 0;
+  }
+
+  if (boostType === "0" && car?.catalog_car_id) {
+    const defaultParts = getDefaultPartsXmlForCar(car.catalog_car_id);
+    if (defaultParts) {
+      if (/<p[^>]*\bpi=["']87["'][^>]*\/>/.test(defaultParts)) boostType = "T";
+      else if (/<p[^>]*\bpi=["']81["'][^>]*\/>/.test(defaultParts)) boostType = "S";
+    }
+  }
+
+  return { boostType, nosSize, compressionLevel };
+}
+
+function buildDriveableEngineXml({ catalogCarId, accountCarId, boostType, nosSize, compressionLevel, engineSound }) {
+  const spec = getShowroomCarSpec(catalogCarId);
+  if (!spec) {
+    throw new Error(`Missing showroom spec for catalog car ${catalogCarId}`);
+  }
+
+  const n2 = buildN2Fields(catalogCarId);
+  const horsepower = getShowroomSpecHorsepower(spec, catalogCarId);
+  const torque = getShowroomSpecTorque(spec, catalogCarId);
+
+  // Practice/getonecarengine became unreliable once these legacy client-side
+  // launch fields were replaced with zeros. Keep the richer n2 shape the Flash
+  // client previously drove correctly from.
+  const gear1 = "3.587";
+  const gear2 = "2.022";
+  const gear3 = "1.384";
+  const gear4 = "1";
+  const gear5 = "0.861";
+  const finalDrive = "4.058";
+
+  return (
+    `<n2 es='${engineSound}' sl='${n2.sl}' sg='0' rc='0' tmp='0' r='${n2.r}' v='2.2398523985239853' ` +
+    `a='${n2.a}' n='${n2.n}' o='${n2.o}' s='1.208' b='${boostType}' p='0.15' c='${compressionLevel}' e='${nosSize}' d='T' ` +
+    `f='${gear1}' g='${gear2}' h='${gear3}' i='${gear4}' j='${gear5}' k='0' l='${finalDrive}' ` +
+    `q='${horsepower}' m='${torque}' t='100' u='28' w='0.144' x='41.2' y='${torque}' z='${horsepower}' ` +
+    `aa='${n2.aa}' ab='${accountCarId}' ac='9' ad='0' ae='100' af='100' ag='100' ah='100' ai='100' ` +
+    `aj='0' ak='0' al='0' am='0' an='0' ao='100' ap='0' aq='0' ar='1' as='0' ` +
+    `at='100' au='100' av='0' aw='100' ax='0'><r g1='${gear1}' g2='${gear2}' g3='${gear3}' g4='${gear4}' g5='${gear5}' g6='0'/></n2>`
+  );
+}
+
 function buildShowroomXml(locationId, starterOnly = false) {
   const targetLocationId = Number(locationId) || 100;
 
@@ -3711,21 +3516,8 @@ async function handlePractice(context) {
   const accountCarId = params.get("acid") || "";
   let car = null;
 
-  // Read installed parts — only b (boost), e (NOS), es (sound) change per build
-  let boostType = "0";
-  let nosSize = 0;
-
   if (supabase && accountCarId) {
     car = await getCarById(supabase, accountCarId);
-    if (car?.parts_xml) {
-      const xml = car.parts_xml;
-      // Check both ci= (normalized) and pi= (raw stored)
-      if (/<p[^>]*\b(?:ci|pi)=["']87["'][^>]*\/>/.test(xml)) boostType = "T";
-      else if (/<p[^>]*\b(?:ci|pi)=["']81["'][^>]*\/>/.test(xml)) boostType = "S";
-      const hasBottles = /<p[^>]*\b(?:ci|pi)=["']203["'][^>]*\/>/.test(xml);
-      const hasJets    = /<p[^>]*\b(?:ci|pi)=["']204["'][^>]*\/>/.test(xml);
-      if (hasBottles && hasJets) nosSize = 100;
-    }
   }
 
   if (!car) {
@@ -3735,6 +3527,7 @@ async function handlePractice(context) {
     };
   }
 
+  const { boostType, nosSize, compressionLevel } = getCarBuildFlags(car);
   const engineSound = boostType === "T" ? 2 : boostType === "S" ? 3 : 1;
 
   const catalogCarId = String(car?.catalog_car_id || "");
@@ -3744,18 +3537,15 @@ async function handlePractice(context) {
       source: "generated:practice:unsupported-car",
     };
   }
-  const n2 = buildN2Fields(catalogCarId);
   const timing = generateTimingArray(catalogCarId);
-
-  const carStats =
-    `<n2 es='${engineSound}' sl='${n2.sl}' sg='0' rc='0' tmp='0' r='${n2.r}' v='0' ` +
-    `a='${n2.a}' n='${n2.n}' o='${n2.o}' s='0.854' b='${boostType}' p='1.8' c='0' e='${nosSize}' d='N' ` +
-    `f='${n2.f}' g='${n2.g}' h='${n2.h}' i='${n2.i}' j='${n2.j}' k='0' l='${n2.l}' ` +
-    `q='0' m='0' t='0' u='10' w='0' x='${n2.x}' y='${n2.y}' z='${n2.z}' ` +
-    `aa='${n2.aa}' ab='${accountCarId}' ac='0' ad='0' ` +
-    `ae='100' af='100' ag='100' ah='100' ai='100' ` +
-    `aj='0' ak='0' al='0' am='0' an='0' ao='100' ap='0' aq='0' ar='1' as='0' ` +
-    `at='100' au='100' av='0' aw='100' ax='0'/>`;
+  const carStats = buildDriveableEngineXml({
+    catalogCarId,
+    accountCarId,
+    boostType,
+    nosSize,
+    compressionLevel,
+    engineSound,
+  });
 
   const body = `"s", 1, "d", "${carStats}", "t", [${timing.join(', ')}]`;
 
@@ -3908,13 +3698,10 @@ async function handleGetRacerSearch(context) {
     return { body: wrapSuccessData(`<u></u>`), source: "racersearch:empty" };
   }
 
-  const { data: players, error } = await supabase
-    .from("game_players")
-    .select("id, username, client_role")
-    .ilike("username", `%${username}%`)
-    .limit(20);
-
-  if (error) {
+  let players = [];
+  try {
+    players = await searchPlayersByUsername(supabase, username, 20);
+  } catch (error) {
     logger.error("Racer search error", { error: error.message });
     return { body: wrapSuccessData(`<u></u>`), source: "supabase:racersearch:error" };
   }

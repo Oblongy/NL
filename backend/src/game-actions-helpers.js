@@ -12,13 +12,8 @@ import { getPublicIdForPlayer } from "./public-id.js";
  * Resolve internal player ID from public ID
  */
 export async function resolveInternalPlayerIdByPublicId(supabase, publicId) {
-  if (!supabase || !publicId) return null;
-  const { data } = await supabase
-    .from("game_players")
-    .select("id")
-    .eq("public_id", publicId)
-    .maybeSingle();
-  return data?.id || null;
+  const player = await getPlayerById(supabase, publicId);
+  return player?.id || null;
 }
 
 /**

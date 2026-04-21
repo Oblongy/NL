@@ -1,7 +1,18 @@
 import { escapeXml, failureBody, renderTeams, wrapSuccessData } from "../game-xml.js";
 import { resolveCallerSession } from "../game-actions-helpers.js";
 import { FULL_CAR_CATALOG } from "../car-catalog.js";
-import { listPlayersByIds, listTeamMembersForTeams, listTeamsByIds } from "../user-service.js";
+import {
+  listLeaderboardCars as listLeaderboardCarsFromService,
+  listLeaderboardPlayers as listLeaderboardPlayersFromService,
+  listLeaderboardTeams as listLeaderboardTeamsFromService,
+  listMailForRecipient,
+  listPlayersByIds,
+  listRaceHistorySince as listRaceHistorySinceFromService,
+  listRaceLogsSince as listRaceLogsSinceFromService,
+  listTeamMembersForTeams,
+  listTeamsByIds,
+  listTransactionsSince as listTransactionsSinceFromService,
+} from "../user-service.js";
 import { getMarqueeXml } from "../announcement-service.js";
 import { getPublicIdForPlayer } from "../public-id.js";
 import { renderVisibleBadgesXml } from "../profile-badges.js";
@@ -214,122 +225,28 @@ function normalizePeriodContext(params) {
   };
 }
 
-function isMissingTableError(error, tableName) {
-  const message = String(error?.message || error || "");
-  return new RegExp(`\\b${tableName}\\b`, "i").test(message)
-    && /(does not exist|relation|schema cache|could not find the table|unknown table)/i.test(message);
-}
-
-async function safeSelectRows(queryFactory, missingTableNames = []) {
-  try {
-    const { data, error } = await queryFactory();
-    if (error) {
-      throw error;
-    }
-    return data || [];
-  } catch (error) {
-    if (missingTableNames.some((tableName) => isMissingTableError(error, tableName))) {
-      return null;
-    }
-    throw error;
-  }
-}
-
 async function listLeaderboardPlayers(supabase) {
-  if (!supabase) {
-    return [];
-  }
-
-  const { data, error } = await supabase
-    .from("game_players")
-    .select("id, username, score, money, location_id, title_id, team_name, vip, track_rank, badges_json, client_role, default_car_game_id");
-
-  if (error) {
-    throw error;
-  }
-
-  return data || [];
+  return listLeaderboardPlayersFromService(supabase);
 }
 
 async function listLeaderboardCars(supabase) {
-  if (!supabase) {
-    return [];
-  }
-
-  const { data, error } = await supabase
-    .from("game_cars")
-    .select("game_car_id, player_id, catalog_car_id, selected, parts_xml");
-
-  if (error) {
-    throw error;
-  }
-
-  return data || [];
+  return listLeaderboardCarsFromService(supabase);
 }
 
 async function listLeaderboardTeams(supabase) {
-  if (!supabase) {
-    return [];
-  }
-
-  const { data, error } = await supabase
-    .from("game_teams")
-    .select("*");
-
-  if (error) {
-    throw error;
-  }
-
-  return data || [];
+  return listLeaderboardTeamsFromService(supabase);
 }
 
 async function listTransactionsSince(supabase, sinceIso) {
-  if (!supabase || !sinceIso) {
-    return null;
-  }
-
-  return safeSelectRows(
-    () => supabase
-      .from("game_transactions")
-      .select("player_id, money_change, points_change, created_at")
-      .gte("created_at", sinceIso),
-    ["game_transactions"],
-  );
+  return listTransactionsSinceFromService(supabase, sinceIso);
 }
 
 async function listRaceHistorySince(supabase, sinceIso) {
-  if (!supabase || !sinceIso) {
-    return null;
-  }
-
-  return safeSelectRows(
-    () => supabase
-      .from("game_race_history")
-      .select("player_id, race_type, won, time_ms, car_id, raced_at")
-      .gte("raced_at", sinceIso),
-    ["game_race_history"],
-  );
+  return listRaceHistorySinceFromService(supabase, sinceIso);
 }
 
 async function listRaceLogsSince(supabase, sinceIso) {
-  if (!supabase) {
-    return null;
-  }
-
-  return safeSelectRows(
-    () => {
-      let query = supabase
-        .from("game_race_logs")
-        .select("player_1_id, player_2_id, winner_id, player_1_time, player_2_time, created_at");
-
-      if (sinceIso) {
-        query = query.gte("created_at", sinceIso);
-      }
-
-      return query;
-    },
-    ["game_race_logs"],
-  );
+  return listRaceLogsSinceFromService(supabase, sinceIso);
 }
 
 function accumulateMetricByPlayer(rows, valueKey) {
@@ -811,27 +728,12 @@ export async function handleGetEmailList(context) {
   const pageSize = 20;
 
   try {
-    const { data: emails, error } = await supabase
-      .from("game_mail")
-      .select(`
-        id,
-        sender_player_id,
-        subject,
-        body,
-        is_read,
-        created_at,
-        attachment_money,
-        attachment_points
-      `)
-      .eq("recipient_player_id", caller.playerId)
-      .eq("folder", folder)
-      .eq("is_deleted", false)
-      .order("created_at", { ascending: false })
-      .range(page * pageSize, (page + 1) * pageSize - 1);
-
-    if (error) {
-      throw error;
-    }
+    const emails = await listMailForRecipient(supabase, {
+      recipientPlayerId: caller.playerId,
+      folder,
+      page,
+      pageSize,
+    });
 
     const emailsXml = (emails || []).map((email) => {
       const readStatus = email.is_read ? "1" : "0";

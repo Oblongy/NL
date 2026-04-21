@@ -2,6 +2,7 @@ import { failureBody, wrapSuccessData, renderOwnedGarageCarsWrapper, escapeXml }
 import { resolveCallerSession } from "../game-actions-helpers.js";
 import {
   getPlayerById,
+  updatePlayerRecord,
   updatePlayerMoney,
   updatePlayerDefaultCar,
   getCarById,
@@ -267,12 +268,9 @@ export async function handleBuyDyno(context) {
     return { body: `"s", -2`, source: "supabase:buydyno:insufficient-funds" };
   }
 
-  const { error } = await supabase
-    .from("game_players")
-    .update({ money: newBalance, has_dyno: 1 })
-    .eq("id", caller.playerId);
-
-  if (error) {
+  try {
+    await updatePlayerRecord(supabase, caller.playerId, { money: newBalance, hasDyno: 1 });
+  } catch (error) {
     console.error("Failed to update dyno ownership:", error);
     return { body: failureBody(), source: "supabase:buydyno:update-failed" };
   }

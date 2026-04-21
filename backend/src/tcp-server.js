@@ -7,6 +7,12 @@ import { getClientRoleForPlayer } from "./player-role.js";
 import { ensureDefaultRaceRooms, getDefaultRaceRoom } from "./race-room-catalog.js";
 import { getSessionPlayerId } from "./session.js";
 import {
+  applyPlayerRaceResult,
+  getPlayerById,
+  getTeamMembershipByPlayerId,
+  listPlayersByIds,
+} from "./user-service.js";
+import {
   tcpConnectionsTotal,
   tcpActiveConnections,
   tcpMessagesReceived,
@@ -526,12 +532,8 @@ export class TcpServer {
               conn.sessionKey = srcSessionKey;
               // Set reverse lookup for O(1) player->connection mapping
               this.connIdByPlayerId.set(playerId, conn.id);
-              
-              const { data: player } = await this.supabase
-                .from("game_players")
-                .select("username, default_car_game_id")
-                .eq("id", playerId)
-                .maybeSingle();
+
+              const player = await getPlayerById(this.supabase, playerId);
               conn.username = player?.username || "Player";
               conn.carId = Number(player?.default_car_game_id || 0);
             }
@@ -1468,58 +1470,10 @@ export class TcpServer {
     }
 
     const numericPlayerId = Number(playerId);
-    let playerResult = await this.supabase
-      .from("game_players")
-      .select("username, default_car_game_id, team_id, role")
-      .eq("id", numericPlayerId)
-      .maybeSingle();
-
-    if (playerResult.error) {
-      const msg = String(playerResult.error?.message || "");
-      if (/role/i.test(msg) && /does not exist|unknown column|column/i.test(msg)) {
-        // schema doesn't have role column — retry without it
-        playerResult = await this.supabase
-          .from("game_players")
-          .select("username, default_car_game_id, team_id")
-          .eq("id", numericPlayerId)
-          .maybeSingle();
-        if (playerResult.error) {
-          throw playerResult.error;
-        }
-      } else {
-        throw playerResult.error;
-      }
-    }
-
-    const player = playerResult.data;
-    let teamMember = null;
-
-    const teamWithRoleResult = await this.supabase
-      .from("game_team_members")
-      .select("team_id, role")
-      .eq("player_id", numericPlayerId)
-      .maybeSingle();
-
-    if (teamWithRoleResult.error) {
-      const message = String(teamWithRoleResult.error?.message || "");
-      if (/role/i.test(message) && /does not exist|unknown column|column/i.test(message)) {
-        const compatTeamResult = await this.supabase
-          .from("game_team_members")
-          .select("team_id")
-          .eq("player_id", numericPlayerId)
-          .maybeSingle();
-        if (compatTeamResult.error) {
-          throw compatTeamResult.error;
-        }
-        teamMember = compatTeamResult.data
-          ? { team_id: compatTeamResult.data.team_id, role: "" }
-          : null;
-      } else {
-        throw teamWithRoleResult.error;
-      }
-    } else {
-      teamMember = teamWithRoleResult.data;
-    }
+    const [player, teamMember] = await Promise.all([
+      getPlayerById(this.supabase, numericPlayerId),
+      getTeamMembershipByPlayerId(this.supabase, numericPlayerId),
+    ]);
 
     conn.playerId = numericPlayerId;
     conn.sessionKey = sessionKey;
@@ -1707,12 +1661,13 @@ export class TcpServer {
     let scA = 0, scB = 0;
     if (this.supabase) {
       try {
-        const [resA, resB] = await Promise.all([
-          this.supabase.from("game_players").select("score").eq("id", requestA.requesterPlayerId).maybeSingle(),
-          this.supabase.from("game_players").select("score").eq("id", requestB.requesterPlayerId).maybeSingle(),
+        const players = await listPlayersByIds(this.supabase, [
+          requestA.requesterPlayerId,
+          requestB.requesterPlayerId,
         ]);
-        scA = Number(resA.data?.score ?? 0);
-        scB = Number(resB.data?.score ?? 0);
+        const playersById = new Map(players.map((player) => [Number(player.id), player]));
+        scA = Number(playersById.get(Number(requestA.requesterPlayerId))?.score ?? 0);
+        scB = Number(playersById.get(Number(requestB.requesterPlayerId))?.score ?? 0);
       } catch (err) {
         this.logger.warn("Failed to fetch SC for race session", { error: err.message });
       }
@@ -1985,25 +1940,16 @@ export class TcpServer {
       for (const participant of race.players) {
         const isWinner = Number(participant.playerId) === winnerPlayerId;
         const scGain = isWinner ? SC_WIN : SC_LOSS;
-        const currentSc = Number(participant.sc ?? 0);
-
-        // Fetch current wins/losses then increment
-        this.supabase
-          .from("game_players")
-          .select("wins, losses")
-          .eq("id", participant.playerId)
-          .maybeSingle()
-          .then(({ data, error }) => {
-            if (error || !data) return;
-            return this.supabase.from("game_players").update({
-              score: currentSc + scGain,
-              wins: (data.wins ?? 0) + (isWinner ? 1 : 0),
-              losses: (data.losses ?? 0) + (isWinner ? 0 : 1),
-            }).eq("id", participant.playerId);
-          })
-          .then((res) => {
-            if (res?.error) this.logger.warn("Failed to update SC/wins/losses", { playerId: participant.playerId, error: res.error.message });
+        applyPlayerRaceResult(this.supabase, participant.playerId, {
+          scoreDelta: scGain,
+          won: isWinner,
+          lost: !isWinner,
+        }).catch((error) => {
+          this.logger.warn("Failed to update SC/wins/losses", {
+            playerId: participant.playerId,
+            error: error.message,
           });
+        });
       }
 
       this.logger.info("TCP RR SC awarded", {

@@ -10,6 +10,7 @@ import {
   getPartInventoryItemById,
   addPartInventoryItem,
   consumePartInventoryItem,
+  saveCarPartsXml,
 } from "../user-service.js";
 
 /**
@@ -218,11 +219,11 @@ export async function handleBuyPart(context) {
 
       const installedPartXml = `<p ai='${installId}' i='${partId}' ci='${slotId}' pt='c' n='Custom Graphic' in='1' cc='0' pdi='${decalId}' di='${decalId}' ps=''/>`;
       const partsXml = upsertInstalledPartXml(car.parts_xml || "", slotId, installedPartXml);
-      const { error: updateError1 } = await supabase.from("game_cars").update({ parts_xml: partsXml }).eq("game_car_id", accountCarId);
-      if (updateError1) {
-        logger?.error("Failed to save custom graphic", { error: updateError1, accountCarId, partId });
-      } else {
+      try {
+        await saveCarPartsXml(supabase, accountCarId, partsXml);
         logger?.info("Saved custom graphic to car", { accountCarId, partId, slotId, partsXmlLength: partsXml.length });
+      } catch (error) {
+        logger?.error("Failed to save custom graphic", { error, accountCarId, partId });
       }
     } else if (catalogPart && partSlotId) {
       const installedPartXml = buildOwnedInstalledCatalogPartXml(catalogPart, installId, {
@@ -230,11 +231,11 @@ export async function handleBuyPart(context) {
         ps: partPs,
       });
       const partsXml = upsertInstalledPartXml(car.parts_xml || "", partSlotId, installedPartXml);
-      const { error: updateError2 } = await supabase.from("game_cars").update({ parts_xml: partsXml }).eq("game_car_id", accountCarId);
-      if (updateError2) {
-        logger?.error("Failed to save part", { error: updateError2, accountCarId, partId, partSlotId });
-      } else {
+      try {
+        await saveCarPartsXml(supabase, accountCarId, partsXml);
         logger?.info("Saved part to car", { accountCarId, partId, partSlotId, partName, installId, partsXmlLength: partsXml.length });
+      } catch (error) {
+        logger?.error("Failed to save part", { error, accountCarId, partId, partSlotId });
       }
     }
   }
@@ -294,11 +295,11 @@ export async function handleBuyEnginePart(context) {
   const slotId = String(catalogPart.pi || "");
   const installedPartXml = buildOwnedInstalledCatalogPartXml(catalogPart, installId);
   const partsXml = upsertInstalledPartXml(car.parts_xml || "", slotId, installedPartXml);
-  const { error: updateError } = await supabase.from("game_cars").update({ parts_xml: partsXml }).eq("game_car_id", accountCarId);
-  if (updateError) {
-    logger?.error("Failed to save engine part", { error: updateError, accountCarId, partId, slotId });
-  } else {
+  try {
+    await saveCarPartsXml(supabase, accountCarId, partsXml);
     logger?.info("Saved engine part to car", { accountCarId, partId, slotId, installId, partsXmlLength: partsXml.length });
+  } catch (error) {
+    logger?.error("Failed to save engine part", { error, accountCarId, partId, slotId });
   }
 
   return {
@@ -401,12 +402,9 @@ export async function handleInstallPart(context) {
     in: "1",
   });
   const partsXml = upsertInstalledPartXml(car.parts_xml || "", slotId, installedPartXml);
-  const { error: updateError } = await supabase
-    .from("game_cars")
-    .update({ parts_xml: partsXml })
-    .eq("game_car_id", accountCarId);
-
-  if (updateError) {
+  try {
+    await saveCarPartsXml(supabase, accountCarId, partsXml);
+  } catch {
     return { body: failureBody(), source: "supabase:installpart:update-failed" };
   }
 
