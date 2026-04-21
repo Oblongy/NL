@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:net";
+import { handleGameAction } from "./game-actions.js";
 import { decodePayload, encryptPayload } from "./nitto-cipher.js";
 import { advanceEngineConditionForCars } from "./engine-state.js";
 import { getPublicIdForPlayer } from "./public-id.js";
@@ -420,6 +421,10 @@ export class TcpServer {
           channelName: parts[1] || "",
         });
         this.sendMessage(conn, '"ac", "TC", "s", 1');
+
+      // --- TEAMCREATE: Legacy Director team create command ---
+      } else if (messageType === "TEAMCREATE") {
+        await this.handleLegacyTeamCreate(conn, parts);
 
       // --- RRQ: Live race request / matchmaking handshake ---
       } else if (messageType === "RRQ") {
@@ -2016,6 +2021,77 @@ export class TcpServer {
 
   buildRacePairKey(playerAId, playerBId) {
     return [playerAId, playerBId].sort((left, right) => left - right).join(":");
+  }
+
+  decodeLegacyTcpValue(value) {
+    const rawValue = String(value || "");
+    if (!rawValue) {
+      return "";
+    }
+
+    try {
+      return decodeURIComponent(rawValue);
+    } catch {
+      try {
+        return unescape(rawValue);
+      } catch {
+        return rawValue;
+      }
+    }
+  }
+
+  buildLegacyActionServices() {
+    return {
+      ...(this.proxy?.services || {}),
+      raceRoomRegistry: this.raceRoomRegistry,
+      tcpServer: this,
+    };
+  }
+
+  async handleLegacyTeamCreate(conn, parts) {
+    const sessionKey = String(conn.sessionKey || "");
+    const decodedTeamName = this.decodeLegacyTcpValue(parts[1] || "");
+    const params = new URLSearchParams();
+    params.set("action", "teamcreate");
+    params.set("n", decodedTeamName);
+    if (sessionKey) {
+      params.set("sk", sessionKey);
+    }
+
+    this.logger.info("TCP TEAMCREATE received", {
+      connId: conn.id,
+      playerId: conn.playerId || 0,
+      hasSessionKey: Boolean(sessionKey),
+      teamName: decodedTeamName,
+    });
+
+    try {
+      const result = await handleGameAction({
+        action: "teamcreate",
+        params,
+        rawQuery: `legacy:TEAMCREATE:${decodedTeamName}`,
+        decodedQuery: `action=teamcreate&n=${decodedTeamName}`,
+        supabase: this.supabase,
+        logger: this.logger,
+        services: this.buildLegacyActionServices(),
+      });
+
+      const responseBody = result?.body || '"s", 0';
+      this.sendMessage(conn, `"ac", "TEAMCREATE", ${responseBody}`);
+      this.logger.info("TCP TEAMCREATE handled", {
+        connId: conn.id,
+        playerId: conn.playerId || 0,
+        source: result?.source || "tcp:TEAMCREATE:unknown",
+        responseBody,
+      });
+    } catch (error) {
+      this.logger.error("TCP TEAMCREATE error", {
+        connId: conn.id,
+        playerId: conn.playerId || 0,
+        error: error?.message || String(error),
+      });
+      this.sendMessage(conn, '"ac", "TEAMCREATE", "s", 0');
+    }
   }
 
   sendMessage(conn, message) {
