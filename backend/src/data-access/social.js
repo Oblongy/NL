@@ -2,6 +2,7 @@ import {
   parseMailRecord,
   parseRaceHistoryRecord,
   parseRaceLogRecord,
+  parseRemarkRecord,
   parseTransactionRecord,
 } from "../db-models.js";
 import {
@@ -224,4 +225,97 @@ export async function countUnreadMailForRecipient(supabase, { recipientPlayerId,
   }
 
   return Number(count || 0);
+}
+
+export async function listRemarksForTarget(
+  supabase,
+  { targetPlayerId, page = 0, pageSize = 50 } = {},
+) {
+  if (!supabase || !targetPlayerId) {
+    return [];
+  }
+
+  return manyResult(
+    supabase
+      .from("game_player_remarks")
+      .select(`
+        id,
+        target_player_id,
+        author_player_id,
+        body,
+        is_deleted,
+        created_at,
+        updated_at
+      `)
+      .eq("target_player_id", Number(targetPlayerId))
+      .eq("is_deleted", false)
+      .order("created_at", { ascending: false })
+      .range(Number(page) * Number(pageSize), (Number(page) + 1) * Number(pageSize) - 1),
+    parseRemarkRecord,
+  );
+}
+
+export async function getRemarkById(supabase, remarkId) {
+  if (!supabase || !remarkId) {
+    return null;
+  }
+
+  return maybeSingle(
+    supabase
+      .from("game_player_remarks")
+      .select(`
+        id,
+        target_player_id,
+        author_player_id,
+        body,
+        is_deleted,
+        created_at,
+        updated_at
+      `)
+      .eq("id", Number(remarkId))
+      .eq("is_deleted", false),
+    parseRemarkRecord,
+  );
+}
+
+export async function createRemarkRecord(
+  supabase,
+  { targetPlayerId, authorPlayerId = null, body = "" } = {},
+) {
+  if (!supabase || !targetPlayerId) {
+    return null;
+  }
+
+  return singleResult(
+    supabase
+      .from("game_player_remarks")
+      .insert({
+        target_player_id: Number(targetPlayerId),
+        author_player_id: authorPlayerId ? Number(authorPlayerId) : null,
+        body: String(body || ""),
+      })
+      .select("*"),
+    parseRemarkRecord,
+  );
+}
+
+export async function deleteRemarkRecord(supabase, remarkId) {
+  if (!supabase || !remarkId) {
+    return false;
+  }
+
+  const { data, error } = await supabase
+    .from("game_player_remarks")
+    .update({
+      is_deleted: true,
+    })
+    .eq("id", Number(remarkId))
+    .eq("is_deleted", false)
+    .select("id");
+
+  if (error) {
+    throw error;
+  }
+
+  return Array.isArray(data) && data.length > 0;
 }

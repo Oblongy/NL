@@ -4,12 +4,16 @@ import { FULL_CAR_CATALOG } from "../car-catalog.js";
 import {
   countUnreadMailForRecipient,
   createMailRecord,
+  createRemarkRecord,
   deleteMailForRecipient,
+  deleteRemarkRecord,
   getMailByIdForRecipient,
+  getRemarkById,
   listLeaderboardCars as listLeaderboardCarsFromService,
   listLeaderboardPlayers as listLeaderboardPlayersFromService,
   listLeaderboardTeams as listLeaderboardTeamsFromService,
   listMailForRecipient,
+  listRemarksForTarget,
   markMailReadForRecipient,
   listPlayersByIds,
   listRaceHistorySince as listRaceHistorySinceFromService,
@@ -720,19 +724,188 @@ export async function handleGetTotalNewMail(context) {
 }
 
 export async function handleGetRemarks(context) {
-  const { supabase } = context;
+  return handleGetRemarksForTarget(context, "supabase:getremarks");
+}
 
-  if (supabase) {
-    const caller = await resolveCallerSession(context, "supabase:getremarks");
-    if (!caller?.ok) {
-      return { body: caller?.body || failureBody(), source: caller?.source || "supabase:getremarks:bad-session" };
+function parseRemarkTargetPublicId(params, fallbackPublicId = 0) {
+  const candidates = ["tid", "aid", "uid", "id", "i", "pid", "playerid"];
+  for (const key of candidates) {
+    const value = Number(params.get(key) || 0);
+    if (Number.isFinite(value) && value > 0) {
+      return value;
     }
   }
+  return Number(fallbackPublicId || 0);
+}
 
-  return {
-    body: wrapSuccessData("<remarks/>"),
-    source: "getremarks:empty",
-  };
+function parseRemarkBody(params) {
+  const candidates = ["r", "remark", "remarks", "t", "txt", "text", "b", "body"];
+  for (const key of candidates) {
+    const value = String(params.get(key) || "").replace(/\r\n/g, "\n").trim();
+    if (value) {
+      return value;
+    }
+  }
+  return "";
+}
+
+function renderRemarksXml(remarks, authorsById = new Map(), targetPublicId = 0) {
+  if (!Array.isArray(remarks) || remarks.length === 0) {
+    return `<remarks uid='${targetPublicId}' c='0'/>`;
+  }
+
+  const nodes = remarks.map((remark) => {
+    const author = authorsById.get(Number(remark.author_player_id)) || null;
+    const authorPublicId = author ? getPublicIdForPlayer(author) : Number(remark.author_player_id || 0);
+    const authorUsername = String(author?.username || "");
+    const createdAt = remark?.created_at ? Math.floor(new Date(remark.created_at).getTime() / 1000) : 0;
+    const body = escapeXml(remark?.body || "");
+
+    return (
+      `<r i='${Number(remark.id || 0)}' arid='${Number(remark.id || 0)}' ai='${authorPublicId}' ` +
+      `uid='${authorPublicId}' u='${escapeXml(authorUsername)}' un='${escapeXml(authorUsername)}' ` +
+      `d='${createdAt}' t='${body}'><b>${body}</b></r>`
+    );
+  }).join("");
+
+  return `<remarks uid='${targetPublicId}' c='${remarks.length}'>${nodes}</remarks>`;
+}
+
+async function handleGetRemarksForTarget(context, sourceLabel) {
+  const { supabase, params } = context;
+  if (!supabase) {
+    return {
+      body: wrapSuccessData("<remarks/>"),
+      source: `${sourceLabel}:no-supabase`,
+    };
+  }
+
+  const caller = await resolveCallerSession(context, sourceLabel);
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || `${sourceLabel}:bad-session` };
+  }
+
+  const targetPublicId = parseRemarkTargetPublicId(params, caller.publicId);
+  const targetPlayer = Number(targetPublicId) === Number(caller.publicId)
+    ? caller.player
+    : await resolveTargetPlayerByPublicId(supabase, targetPublicId);
+
+  if (!targetPlayer) {
+    return {
+      body: wrapSuccessData("<remarks/>"),
+      source: `${sourceLabel}:target-not-found`,
+    };
+  }
+
+  const page = Number(params.get("p") || 0);
+  const pageSize = 50;
+
+  try {
+    const remarks = await listRemarksForTarget(supabase, {
+      targetPlayerId: targetPlayer.id,
+      page,
+      pageSize,
+    });
+    const authorIds = [...new Set(
+      (remarks || []).map((remark) => Number(remark.author_player_id || 0)).filter((value) => value > 0),
+    )];
+    const authors = authorIds.length > 0 ? await listPlayersByIds(supabase, authorIds) : [];
+    const authorsById = new Map(authors.map((player) => [Number(player.id), player]));
+
+    return {
+      body: wrapSuccessData(renderRemarksXml(remarks || [], authorsById, getPublicIdForPlayer(targetPlayer))),
+      source: sourceLabel,
+    };
+  } catch (error) {
+    context.logger?.error("Get remarks error", {
+      sourceLabel,
+      targetPublicId,
+      playerId: caller.playerId,
+      error: error?.message || String(error),
+    });
+    return { body: failureBody(), source: `${sourceLabel}:error` };
+  }
+}
+
+export async function handleGetUserRemarks(context) {
+  return handleGetRemarksForTarget(context, "supabase:getuserremarks");
+}
+
+export async function handleAddRemark(context) {
+  const { supabase, params } = context;
+  if (!supabase) {
+    return { body: `"s", 1`, source: "generated:addremark:no-supabase" };
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:addremark");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:addremark:bad-session" };
+  }
+
+  const targetPublicId = parseRemarkTargetPublicId(params, 0);
+  const bodyText = parseRemarkBody(params);
+  if (!targetPublicId || !bodyText) {
+    return { body: `"s", 1`, source: `supabase:addremark:${!targetPublicId ? "missing-target" : "empty-body"}` };
+  }
+
+  const targetPlayer = await resolveTargetPlayerByPublicId(supabase, targetPublicId);
+  if (!targetPlayer) {
+    return { body: `"s", 1`, source: "supabase:addremark:target-not-found" };
+  }
+
+  try {
+    await createRemarkRecord(supabase, {
+      targetPlayerId: targetPlayer.id,
+      authorPlayerId: caller.playerId,
+      body: bodyText,
+    });
+
+    return { body: `"s", 1`, source: "supabase:addremark" };
+  } catch (error) {
+    context.logger?.error("Add remark error", {
+      targetPublicId,
+      playerId: caller.playerId,
+      error: error?.message || String(error),
+    });
+    return { body: failureBody(), source: "supabase:addremark:error" };
+  }
+}
+
+export async function handleDeleteRemark(context) {
+  const { supabase, params } = context;
+  const remarkId = String(params.get("arid") || params.get("id") || "0");
+
+  if (!supabase) {
+    return { body: `"s", 1, "arid", "${remarkId}"`, source: "generated:deleteremark:no-supabase" };
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:deleteremark");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:deleteremark:bad-session" };
+  }
+
+  try {
+    const remark = await getRemarkById(supabase, Number(remarkId));
+    if (!remark) {
+      return { body: `"s", 1, "arid", "${remarkId}"`, source: "supabase:deleteremark:not-found" };
+    }
+
+    const callerOwnsRemark = Number(remark.author_player_id || 0) === Number(caller.playerId);
+    const callerOwnsProfile = Number(remark.target_player_id || 0) === Number(caller.playerId);
+    if (!callerOwnsRemark && !callerOwnsProfile) {
+      return { body: `"s", 1, "arid", "${remarkId}"`, source: "supabase:deleteremark:denied" };
+    }
+
+    await deleteRemarkRecord(supabase, Number(remarkId));
+    return { body: `"s", 1, "arid", "${remarkId}"`, source: "supabase:deleteremark" };
+  } catch (error) {
+    context.logger?.error("Delete remark error", {
+      remarkId,
+      playerId: caller.playerId,
+      error: error?.message || String(error),
+    });
+    return { body: failureBody(), source: "supabase:deleteremark:error" };
+  }
 }
 
 function renderEmailDetailXml(email, fallbackEmailId = 0) {
@@ -1418,6 +1591,9 @@ export const SOCIAL_ACTION_HANDLERS = Object.freeze({
   gettotalnewmail: handleGetTotalNewMail,
   getemaillist: handleGetEmailList,
   getremarks: handleGetRemarks,
+  getuserremarks: handleGetUserRemarks,
+  addremark: handleAddRemark,
+  deleteremark: handleDeleteRemark,
   getblackcardprogress: handleGetBlackCardProgress,
   teaminfo: handleTeamInfo,
   getteaminfo: handleTeamInfo,

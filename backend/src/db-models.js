@@ -511,6 +511,23 @@ export function parseMailRecord(record) {
   };
 }
 
+export function parseRemarkRecord(record) {
+  if (!record) {
+    return null;
+  }
+
+  return {
+    ...record,
+    id: toNumber(record.id, 0),
+    target_player_id: toNullableNumber(record.target_player_id),
+    author_player_id: toNullableNumber(record.author_player_id),
+    body: toStringValue(record.body),
+    is_deleted: toBoolean(record.is_deleted, false),
+    created_at: toTimestampString(record.created_at),
+    updated_at: toTimestampString(record.updated_at),
+  };
+}
+
 export function parseTransactionRecord(record) {
   if (!record) {
     return null;

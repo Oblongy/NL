@@ -6,12 +6,15 @@ import { buildWheelsTiresCatalogXml } from "./wheels-catalog.js";
 import { buildStaticCarsXml, FULL_CAR_CATALOG, getCatalogCarPrice } from "./car-catalog.js";
 import { randomUUID } from "node:crypto";
 import {
+  handleAddRemark as handleAddRemarkImpl,
+  handleDeleteRemark as handleDeleteRemarkImpl,
   handleDeleteEmail as handleDeleteEmailImpl,
   handleGetEmail as handleGetEmailImpl,
   handleGetLeaderboard as handleGetLeaderboardImpl,
   handleGetLeaderboardMenu as handleGetLeaderboardMenuImpl,
   handleMarkEmailRead as handleMarkEmailReadImpl,
   handleGetNews as handleGetNewsImpl,
+  handleGetUserRemarks as handleGetUserRemarksImpl,
   handleSendEmail as handleSendEmailImpl,
   handleGetSpotlightRacers as handleGetSpotlightRacersImpl,
   handleGetTotalNewMail as handleGetTotalNewMailImpl,
@@ -2556,21 +2559,7 @@ async function handleGetTotalNewMail(context) {
 }
 
 async function handleGetRemarks(context) {
-  const { supabase } = context;
-
-  if (supabase) {
-    const caller = await resolveCallerSession(context, "supabase:getremarks");
-    if (!caller?.ok) {
-      return { body: caller?.body || failureBody(), source: caller?.source || "supabase:getremarks:bad-session" };
-    }
-  }
-
-  // Response format: "s", 1, "d", "<remarks/>"
-  // Empty remarks list for now
-  return {
-    body: wrapSuccessData("<remarks/>"),
-    source: "getremarks:empty",
-  };
+  return handleGetRemarksImpl(context);
 }
 
 async function handleGetWinsAndLosses(context) {
@@ -2652,6 +2641,18 @@ async function handleDeleteEmail(context) {
 
 async function handleSendEmail(context) {
   return handleSendEmailImpl(context);
+}
+
+async function handleAddRemark(context) {
+  return handleAddRemarkImpl(context);
+}
+
+async function handleDeleteRemark(context) {
+  return handleDeleteRemarkImpl(context);
+}
+
+async function handleGetUserRemarks(context) {
+  return handleGetUserRemarksImpl(context);
 }
 
 async function handleGetBlackCardProgress(context) {
@@ -3943,13 +3944,9 @@ const handlers = {
   deleteemail: handleDeleteEmail,
   sendemail: handleSendEmail,
   // Remarks
-  addremark: async () => ({ body: `"s", 1`, source: "stub:addremark" }),
-  deleteremark: async (context) => {
-    const { params } = context;
-    const arid = params.get("arid") || "0";
-    return { body: `"s", 1, "arid", "${arid}"`, source: "stub:deleteremark" };
-  },
-  getuserremarks: async () => ({ body: wrapSuccessData(`<remarks/>`), source: "stub:getuserremarks" }),
+  addremark: handleAddRemark,
+  deleteremark: handleDeleteRemark,
+  getuserremarks: handleGetUserRemarks,
   setnondeletes: async () => ({ body: `"s", 1`, source: "stub:setnondeletes" }),
   setdeletes: async () => ({ body: `"s", 1`, source: "stub:setdeletes" }),
   // Repair

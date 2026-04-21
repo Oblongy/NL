@@ -187,6 +187,24 @@ CREATE INDEX IF NOT EXISTS idx_game_team_members_player ON game_team_members(pla
 CREATE INDEX IF NOT EXISTS idx_game_team_members_contribution ON game_team_members(team_id, contribution_score DESC);
 
 -- ============================================================================
+-- GAME PLAYER REMARKS TABLE
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS game_player_remarks (
+  id BIGSERIAL PRIMARY KEY,
+  target_player_id BIGINT NOT NULL REFERENCES game_players(id) ON DELETE CASCADE,
+  author_player_id BIGINT REFERENCES game_players(id) ON DELETE SET NULL,
+  body TEXT NOT NULL DEFAULT '',
+  is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_game_player_remarks_target
+  ON game_player_remarks(target_player_id, is_deleted, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_game_player_remarks_author
+  ON game_player_remarks(author_player_id, created_at DESC);
+
+-- ============================================================================
 -- HELPER FUNCTIONS
 -- ============================================================================
 
@@ -221,6 +239,12 @@ CREATE TRIGGER update_game_teams_updated_at
 DROP TRIGGER IF EXISTS update_game_team_members_updated_at ON game_team_members;
 CREATE TRIGGER update_game_team_members_updated_at
   BEFORE UPDATE ON game_team_members
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_game_player_remarks_updated_at ON game_player_remarks;
+CREATE TRIGGER update_game_player_remarks_updated_at
+  BEFORE UPDATE ON game_player_remarks
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
