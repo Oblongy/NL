@@ -1266,6 +1266,21 @@ export class TcpServer {
       return;
     }
 
+    if (!sender.opened && sender.raceConnId === conn.id) {
+      sender.opened = true;
+      this.logger.info("TCP race open inferred from telemetry", {
+        connId: conn.id,
+        raceId: race.id,
+        playerId: sender.playerId,
+        messageType,
+      });
+
+      // Some race flows begin streaming telemetry on the race channel without
+      // emitting a separate RO packet first. Acking RO here keeps those
+      // clients on the expected tree/open state without reopening at SRC time.
+      this.sendMessage(conn, '"ac", "RO", "t", 32');
+    }
+
     if (!this.isRaceReadyForTelemetry(race)) {
       return;
     }
