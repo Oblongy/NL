@@ -10,8 +10,10 @@ import { TeamState } from "./team-state.js";
 import { TcpNotify } from "./tcp-notify.js";
 import { TcpProxy } from "./tcp-proxy.js";
 import { TcpServer } from "./tcp-server.js";
+import { logShowroomSpecCoverage } from "./showroom-spec-audit.js";
 
 const supabase = await createGameSupabase(config, logger);
+logShowroomSpecCoverage(logger);
 const raceRoomRegistry = new RaceRoomRegistry();
 const raceManager = new RaceManager();
 const rivalsState = new RivalsState();

@@ -7,7 +7,8 @@
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
     "check": "node --check src/index.js",
-    "analyze:capture": "node tools/analyze_capture_bundle.js"
+    "analyze:capture": "node tools/analyze_capture_bundle.js",
+    "check:showroom-specs": "python tools/check_showroom_specs.py"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.101.1"
