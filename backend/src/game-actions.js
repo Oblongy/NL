@@ -6075,13 +6075,15 @@ const handlers = {
     }
     bindComputerTournamentSession(session);
 
+    const responseBody = `"s", 1, "d", ""`;
+
     logger.info("ctct called - saved computer tournament qualifying pass", {
       tournamentKey: session.sessionKey,
       bracketTime,
       activeCarId,
       playerId: session.playerId,
     });
-    logTournamentPayload(logger, "ctct", `"s", 1`, {
+    logTournamentPayload(logger, "ctct", responseBody, {
       tournamentKey: session.sessionKey,
       bracketTime,
       activeCarId,
@@ -6089,7 +6091,7 @@ const handlers = {
     });
 
     return {
-      body: `"s", 1`,
+      body: responseBody,
       source: "generated:ctct",
     };
   },
@@ -6115,26 +6117,31 @@ const handlers = {
     bindComputerTournamentSession(session);
     const opponent = buildComputerTournamentOpponentXml(session);
 
+    const responseBody = `"s", 1, "d", "${opponent.xml}", "b", ${opponent.purse}`;
+
     logger.info("ctrt called - returning computer tournament opponent", {
       tournamentKey: session.sessionKey,
       tournamentId: session.tournamentId,
       wins: session.wins,
       purse: opponent.purse,
+      bkDiff: opponent.bkDiff,
       requestedCarId,
       opponentCompetitorCarId: opponent.competitorCarId,
       opponentVirtualCarId: opponent.virtualCarId,
     });
-    logTournamentPayload(logger, "ctrt", opponent.xml, {
+    logTournamentPayload(logger, "ctrt", responseBody, {
       tournamentKey: session.sessionKey,
       tournamentId: session.tournamentId,
       wins: session.wins,
+      purse: opponent.purse,
+      bkDiff: opponent.bkDiff,
       requestedCarId,
       opponentCompetitorCarId: opponent.competitorCarId,
       opponentVirtualCarId: opponent.virtualCarId,
     });
 
     return {
-      body: `"s", 1, "d", "${opponent.xml}", "b", ${opponent.bkDiff}`,
+      body: responseBody,
       source: "generated:ctrt",
     };
   },
