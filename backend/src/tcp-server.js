@@ -1199,35 +1199,50 @@ export class TcpServer {
     return payload ? `"ac", "MO", ${payload}` : '"ac", "MO"';
   }
 
-  maybeBroadcastRivalsReady(race) {
+  maybeBroadcastRivalsReady(race, options = {}) {
     if (!race) return;
     if (!race.players.every((entry) => entry.opened)) return;
     if (race.rivalsReadyBroadcasted) return;
-    if (!race.players.every((entry) => entry.isStaged)) {
+    const { allowUnstagedFallback = false, trigger = "" } = options;
+    const allStaged = race.players.every((entry) => entry.isStaged);
+
+    if (!allStaged) {
       race.allStagedSince = 0;
-      return;
+      if (!allowUnstagedFallback) {
+        return;
+      }
     }
 
-    const now = Date.now();
-    if (!race.allStagedSince) {
-      race.allStagedSince = now;
-      this.setRacePhase(race, "STAGED", "both-staged-hold");
-      return;
-    }
+    if (allStaged) {
+      const now = Date.now();
+      if (!race.allStagedSince) {
+        race.allStagedSince = now;
+        this.setRacePhase(race, "STAGED", "both-staged-hold");
+        return;
+      }
 
-    if (now - race.allStagedSince < RACE_STAGE_SETTLE_MS) {
-      return;
+      if (now - race.allStagedSince < RACE_STAGE_SETTLE_MS) {
+        return;
+      }
     }
 
     race.rivalsReadyBroadcasted = true;
-    this.setRacePhase(race, "TREE_ARMED", "staged-hold-complete");
+    this.setRacePhase(
+      race,
+      "TREE_ARMED",
+      allStaged ? "staged-hold-complete" : (trigger || "both-race-channels-open"),
+    );
     for (const participant of race.players) {
       const participantConn = this.getRaceParticipantConnection(participant);
       if (participantConn) {
         this.sendMessage(participantConn, '"ac", "RIVRDY", "s", 1');
       }
     }
-    this.logger.info("TCP race rivals-ready broadcast sent", { raceId: race.id });
+    this.logger.info("TCP race rivals-ready broadcast sent", {
+      raceId: race.id,
+      allStaged,
+      trigger: trigger || null,
+    });
   }
 
   maybeStartRaceSequence(race, trigger = "") {
@@ -2800,7 +2815,10 @@ export class TcpServer {
     this.sendMessage(conn, '"ac", "RO", "t", 32');
 
     if (race.players.every((entry) => entry.opened)) {
-      this.maybeBroadcastRivalsReady(race);
+      this.maybeBroadcastRivalsReady(race, {
+        allowUnstagedFallback: true,
+        trigger: "race-open-fallback",
+      });
       this.maybeStartRaceSequence(race, "race-open");
     }
   }
