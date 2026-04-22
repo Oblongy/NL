@@ -964,6 +964,29 @@ export class TcpServer {
     return isIdleStageMarker || isLaunchWindow;
   }
 
+  isStationaryPrelaunchState(distance, velocity, acceleration) {
+    const numericDistance = Number(distance);
+    const numericVelocity = Number(velocity);
+    const numericAcceleration = Number(acceleration);
+    if (
+      !Number.isFinite(numericDistance) ||
+      !Number.isFinite(numericVelocity) ||
+      !Number.isFinite(numericAcceleration)
+    ) {
+      return false;
+    }
+
+    // Live rivals clients can sit in a quiet prelaunch band around -12 to -11 ft
+    // for hundreds of milliseconds before the tree arms. Treat that stationary
+    // window as staged so the hold timer can complete instead of flapping.
+    return (
+      numericDistance >= -13.5 &&
+      numericDistance <= -10.5 &&
+      Math.abs(numericVelocity) <= 0.05 &&
+      Math.abs(numericAcceleration) <= 0.05
+    );
+  }
+
   determineRaceWinnerFromResults(race) {
     if (!race?.finishResults || race.finishResults.size < race.players.length) {
       return 0;
@@ -1404,8 +1427,14 @@ export class TcpServer {
       });
     }
 
-    sender.lastDistance = Number(distance);
-    sender.isStaged = this.isStagedDistance(sender.lastDistance);
+    const numericDistance = Number(distance);
+    const numericVelocity = Number(velocity);
+    const numericAcceleration = Number(acceleration);
+
+    sender.lastDistance = numericDistance;
+    sender.isStaged =
+      this.isStagedDistance(sender.lastDistance) ||
+      (!race.sequenceStarted && this.isStationaryPrelaunchState(numericDistance, numericVelocity, numericAcceleration));
     if (!sender.isStaged) {
       sender.stagedSince = 0;
       race.allStagedSince = 0;
