@@ -1,0 +1,73 @@
+file:///C:/Users/Dilldo/Music/Library/1320L/backend/src/login-payload.js:1
+import { escapeXml, renderOwnedGarageCars, renderTemplateBackedGarageCars, wrapSuccessData } from "./game-xml.js";
+                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+SyntaxError: The requested module './game-xml.js' does not provide an export named 'renderTemplateBackedGarageCars'
+    at ModuleJob._instantiate (node:internal/modules/esm/module_job:228:21)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async ModuleJob.run (node:internal/modules/esm/module_job:337:5)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:665:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)
+
+Node.js v22.20.0
+file:///C:/Users/Dilldo/Music/Library/1320L/backend/src/game-actions.js:7
+  renderTemplateBackedGarageCarsWrapper,
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+SyntaxError: The requested module './game-xml.js' does not provide an export named 'renderTemplateBackedGarageCarsWrapper'
+    at ModuleJob._instantiate (node:internal/modules/esm/module_job:228:21)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async ModuleJob.run (node:internal/modules/esm/module_job:337:5)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:665:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)
+
+Node.js v22.20.0
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use 127.0.0.1:3724
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at node:net:2206:7
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '127.0.0.1',
+  port: 3724
+}
+
+Node.js v22.20.0
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use 127.0.0.1:3724
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at node:net:2206:7
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '127.0.0.1',
+  port: 3724
+}
+
+Node.js v22.20.0
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use 127.0.0.1:3724
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at node:net:2206:7
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '127.0.0.1',
+  port: 3724
+}
+
+Node.js v22.20.0

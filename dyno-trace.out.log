@@ -1,0 +1,40 @@
+
+> nitto-legends-backend@0.1.0 dev
+> node --watch src/index.js
+
+[2026-04-08T04:48:11.981Z] [info] TCP server listening {"host":"0.0.0.0","port":3724}
+[2026-04-08T04:48:11.985Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"tcpHost":"0.0.0.0","tcpPort":3724,"supabase":true}
+Restarting 'src/index.js'
+[2026-04-08T05:14:25.918Z] [info] TCP server listening {"host":"0.0.0.0","port":3724}
+[2026-04-08T05:14:25.922Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"tcpHost":"0.0.0.0","tcpPort":3724,"supabase":true}
+Restarting 'src/index.js'
+[2026-04-08T05:15:12.914Z] [info] TCP server listening {"host":"0.0.0.0","port":3724}
+[2026-04-08T05:15:12.919Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"tcpHost":"0.0.0.0","tcpPort":3724,"supabase":true}
+Restarting 'src/index.js'
+[2026-04-08T07:13:07.089Z] [info] TCP server listening {"host":"0.0.0.0","port":3724}
+[2026-04-08T07:13:07.093Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"tcpHost":"0.0.0.0","tcpPort":3724,"supabase":true}
+Restarting 'src/index.js'
+[2026-04-08T10:26:11.961Z] [info] TCP server listening {"host":"0.0.0.0","port":3724}
+[2026-04-08T10:26:11.965Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"tcpHost":"0.0.0.0","tcpPort":3724,"supabase":true}
+Restarting 'src/index.js'
+[2026-04-08T10:27:04.883Z] [info] TCP server listening {"host":"0.0.0.0","port":3724}
+[2026-04-08T10:27:04.887Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"tcpHost":"0.0.0.0","tcpPort":3724,"supabase":true}
+Restarting 'src/index.js'
+[2026-04-08T10:27:46.341Z] [info] TCP server listening {"host":"0.0.0.0","port":3724}
+[2026-04-08T10:27:46.344Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"tcpHost":"0.0.0.0","tcpPort":3724,"supabase":true}
+Restarting 'src/index.js'
+[2026-04-08T17:10:09.616Z] [info] TCP server listening {"host":"0.0.0.0","port":3724}
+[2026-04-08T17:10:09.619Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"tcpHost":"0.0.0.0","tcpPort":3724,"supabase":true}
+Restarting 'src/index.js'
+[2026-04-08T17:32:06.057Z] [info] TCP server listening {"host":"0.0.0.0","port":3724}
+[2026-04-08T17:32:06.063Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"tcpHost":"0.0.0.0","tcpPort":3724,"supabase":true}
+Restarting 'src/index.js'
+[2026-04-08T17:34:52.306Z] [info] TCP server listening {"host":"0.0.0.0","port":3724}
+[2026-04-08T17:34:52.311Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"tcpHost":"0.0.0.0","tcpPort":3724,"supabase":true}
+Restarting 'src/index.js'
+[2026-04-08T17:34:52.744Z] [info] TCP server listening {"host":"0.0.0.0","port":3724}
+[2026-04-08T17:34:52.748Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"tcpHost":"0.0.0.0","tcpPort":3724,"supabase":true}
+Restarting 'src/index.js'
+[2026-04-08T17:34:53.551Z] [info] TCP server listening {"host":"0.0.0.0","port":3724}
+[2026-04-08T17:34:53.555Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"tcpHost":"0.0.0.0","tcpPort":3724,"supabase":true}
+Failed running 'src/index.js'. Waiting for file changes before restarting...

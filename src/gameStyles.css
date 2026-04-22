@@ -1,0 +1,63 @@
+body {
+  font-family: AliasCond;
+  font-size: 8px;
+  color: #d9dde2;
+}
+
+p {
+  margin-bottom: 4px;
+}
+
+a {
+  font-family: AliasCond;
+  font-size: 8px;
+  color: #7fc7ff;
+  text-decoration: underline;
+}
+
+.eb {
+  font-family: ArialBold;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.e10b {
+  font-family: ArialBold;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.nim {
+  font-family: AliasCond;
+  font-size: 8px;
+  color: #000000;
+}
+
+.nim_self {
+  font-family: AliasCond;
+  font-size: 8px;
+  color: #3366cc;
+}
+
+/* Role-mapped chat/roster colors: admin=e1, mod=e2, user=e5, member=e6, senior mod=e8 */
+.e0 { font-family: AliasCond; font-size: 8px; font-weight: normal; color: #d9dde2; }
+.e1 { font-family: AliasCond; font-size: 8px; font-weight: normal; color: #ff0000; }
+.e2 { font-family: AliasCond; font-size: 8px; font-weight: normal; color: #66ccff; }
+.e3 { font-family: AliasCond; font-size: 8px; font-weight: normal; color: #d9dde2; }
+.e4 { font-family: AliasCond; font-size: 8px; font-weight: normal; color: #d9dde2; }
+.e5 { font-family: AliasCond; font-size: 8px; font-weight: normal; color: #000000; }
+.e6 { font-family: AliasCond; font-size: 8px; font-weight: normal; color: #00aa00; }
+.e7 { font-family: AliasCond; font-size: 8px; font-weight: normal; color: #f2c6ff; }
+.e8 { font-family: AliasCond; font-size: 8px; font-weight: normal; color: #0000ff; }
+.e9 { font-family: AliasCond; font-size: 8px; font-weight: normal; color: #d9dde2; }
+.e10 { font-family: AliasCond; font-size: 8px; font-weight: normal; color: #ffd166; }
+.e11 { font-family: AliasCond; font-size: 8px; font-weight: normal; color: #d9dde2; }
+.e12 { font-family: AliasCond; font-size: 8px; font-weight: normal; color: #d9dde2; }
+.e13 { font-family: AliasCond; font-size: 8px; font-weight: normal; color: #d9dde2; }
+.e14 { font-family: AliasCond; font-size: 8px; font-weight: normal; color: #d9dde2; }
+.e15 { font-family: AliasCond; font-size: 8px; font-weight: normal; color: #d9dde2; }
+.e16 { font-family: AliasCond; font-size: 8px; font-weight: normal; color: #d9dde2; }
+.e17 { font-family: AliasCond; font-size: 8px; font-weight: normal; color: #d9dde2; }
+.e18 { font-family: AliasCond; font-size: 8px; font-weight: normal; color: #d9dde2; }
+.e19 { font-family: AliasCond; font-size: 8px; font-weight: normal; color: #d9dde2; }
+.e20 { font-family: AliasCond; font-size: 8px; font-weight: normal; color: #d9dde2; }
