@@ -1,0 +1,2530 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>1320 Legends Tuning Studio</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #090909;
+        --panel: rgba(18, 18, 18, 0.92);
+        --panel-strong: rgba(25, 25, 25, 0.96);
+        --line: rgba(255, 255, 255, 0.1);
+        --line-strong: rgba(255, 196, 87, 0.35);
+        --text: #f7f2e8;
+        --muted: #b7ac99;
+        --accent: #f8b84e;
+        --accent-soft: rgba(248, 184, 78, 0.16);
+        --danger: #ff7d6c;
+        --cyan: #7bd8ff;
+        --cyan-soft: rgba(123, 216, 255, 0.16);
+        --lime: #a6ff8b;
+        --radius: 18px;
+        --shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(248, 184, 78, 0.55) rgba(255, 255, 255, 0.06);
+      }
+
+      *::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+      }
+
+      *::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.05);
+      }
+
+      *::-webkit-scrollbar-thumb {
+        background: linear-gradient(180deg, rgba(255, 209, 123, 0.82), rgba(242, 166, 50, 0.62));
+        border-radius: 999px;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Avenir Next", "Segoe UI", sans-serif;
+        background:
+          radial-gradient(circle at top, rgba(248, 184, 78, 0.14), transparent 30%),
+          linear-gradient(180deg, #14110e 0%, #0a0a0a 38%, #040404 100%);
+        color: var(--text);
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background:
+          linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+          linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+        background-size: 32px 32px;
+        mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.7), transparent 85%);
+      }
+
+      body::after {
+        content: "";
+        position: fixed;
+        inset: auto -12vw -18vh auto;
+        width: 48vw;
+        height: 48vw;
+        border-radius: 50%;
+        background:
+          radial-gradient(circle, rgba(123, 216, 255, 0.14), transparent 55%);
+        filter: blur(30px);
+        pointer-events: none;
+      }
+
+      .shell {
+        width: min(1680px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 24px 0 32px;
+      }
+
+      .masthead {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 14px;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .brand-mark {
+        width: 42px;
+        height: 42px;
+        border-radius: 14px;
+        background:
+          linear-gradient(135deg, rgba(248, 184, 78, 0.95), rgba(123, 216, 255, 0.78));
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+          0 12px 30px rgba(0, 0, 0, 0.35);
+        position: relative;
+      }
+
+      .brand-mark::before,
+      .brand-mark::after {
+        content: "";
+        position: absolute;
+        inset: 11px;
+        border: 2px solid rgba(15, 12, 7, 0.9);
+        border-radius: 999px;
+        transform: skewX(-20deg);
+      }
+
+      .brand-mark::after {
+        inset: 15px 8px;
+        border-top-color: transparent;
+        border-bottom-color: transparent;
+        border-left-width: 4px;
+        border-right-width: 4px;
+      }
+
+      .brand-copy strong {
+        display: block;
+        font-size: 14px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+
+      .brand-copy span {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .masthead-status {
+        display: inline-flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+
+      .status-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--muted);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .status-chip b {
+        color: var(--text);
+        font-size: 12px;
+      }
+
+      .hero {
+        padding: 24px 28px;
+        border: 1px solid var(--line-strong);
+        border-radius: calc(var(--radius) + 8px);
+        background:
+          linear-gradient(135deg, rgba(248, 184, 78, 0.16), rgba(255, 255, 255, 0.02)),
+          rgba(11, 11, 11, 0.94);
+        box-shadow: var(--shadow);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .hero::before {
+        content: "";
+        position: absolute;
+        inset: auto -12% -38% auto;
+        width: 520px;
+        height: 520px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(248, 184, 78, 0.18), transparent 62%);
+      }
+
+      .hero::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(115deg, transparent 0%, rgba(255, 255, 255, 0.03) 38%, transparent 60%);
+        transform: translateX(-45%);
+        animation: sweep 9s linear infinite;
+        pointer-events: none;
+      }
+
+      .eyebrow {
+        margin: 0 0 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        font-size: 12px;
+        color: var(--accent);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(32px, 5vw, 60px);
+        line-height: 0.95;
+        letter-spacing: -0.04em;
+        font-family: "Franklin Gothic Medium", "Arial Narrow", sans-serif;
+      }
+
+      .hero p {
+        max-width: 840px;
+        margin: 14px 0 0;
+        font-size: 15px;
+        line-height: 1.6;
+        color: var(--muted);
+      }
+
+      .hero-grid {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.9fr);
+        gap: 22px;
+        align-items: stretch;
+      }
+
+      .hero-copy {
+        display: grid;
+        gap: 16px;
+      }
+
+      .hero-subline {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .hero-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 10px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.05);
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .hero-pill b {
+        color: var(--text);
+      }
+
+      .hero-stats {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .hero-tile {
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 18px;
+        padding: 14px;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+      }
+
+      .hero-tile small {
+        display: block;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 11px;
+      }
+
+      .hero-tile b {
+        display: block;
+        margin-top: 8px;
+        font-size: 28px;
+        line-height: 1;
+        font-family: "Bahnschrift", "Franklin Gothic Medium", sans-serif;
+      }
+
+      .hero-graphic {
+        position: relative;
+        min-height: 280px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 24px;
+        background:
+          radial-gradient(circle at top right, rgba(123, 216, 255, 0.18), transparent 36%),
+          linear-gradient(180deg, rgba(14, 14, 14, 0.92), rgba(10, 10, 10, 0.98));
+        overflow: hidden;
+      }
+
+      .hero-graphic::before {
+        content: "";
+        position: absolute;
+        inset: 18px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 18px;
+      }
+
+      .hero-graphic svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      .hero-graphic-copy {
+        position: absolute;
+        left: 22px;
+        right: 22px;
+        bottom: 18px;
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: flex-end;
+      }
+
+      .hero-graphic-copy strong {
+        display: block;
+        font-size: 24px;
+        line-height: 1;
+      }
+
+      .hero-graphic-copy span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 340px minmax(0, 1fr) 460px;
+        gap: 18px;
+        margin-top: 18px;
+        align-items: start;
+      }
+
+      .panel {
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: var(--panel);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+        backdrop-filter: blur(16px);
+        position: relative;
+      }
+
+      .panel::before {
+        content: "";
+        position: absolute;
+        inset: 0 auto auto 0;
+        width: 100%;
+        height: 1px;
+        background: linear-gradient(90deg, rgba(248, 184, 78, 0.4), transparent 60%);
+        pointer-events: none;
+      }
+
+      .catalog-panel,
+      .outputs-panel {
+        position: sticky;
+        top: 18px;
+        align-self: start;
+      }
+
+      .panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 16px 18px;
+        border-bottom: 1px solid var(--line);
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+      }
+
+      .panel-head h2,
+      .panel-head h3 {
+        margin: 0;
+        font-size: 14px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .panel-body {
+        padding: 16px 18px 18px;
+      }
+
+      .catalog-panel .panel-body,
+      .outputs-panel .panel-body {
+        max-height: calc(100vh - 120px);
+        overflow: auto;
+      }
+
+      input,
+      select,
+      textarea,
+      button {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--text);
+        padding: 12px 13px;
+        font: inherit;
+      }
+
+      select {
+        appearance: none;
+        background-image:
+          linear-gradient(45deg, transparent 50%, var(--accent) 50%),
+          linear-gradient(135deg, var(--accent) 50%, transparent 50%);
+        background-position:
+          calc(100% - 18px) calc(50% - 2px),
+          calc(100% - 12px) calc(50% - 2px);
+        background-size: 6px 6px, 6px 6px;
+        background-repeat: no-repeat;
+        padding-right: 36px;
+      }
+
+      input:focus,
+      select:focus,
+      textarea:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(248, 184, 78, 0.16);
+      }
+
+      textarea {
+        min-height: 180px;
+        resize: vertical;
+        font-family: Consolas, "Courier New", monospace;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      button {
+        cursor: pointer;
+        background: linear-gradient(135deg, #ffd17b, #f2a632);
+        color: #18120a;
+        border-color: rgba(255, 209, 123, 0.5);
+        font-weight: 700;
+        letter-spacing: 0.04em;
+      }
+
+      button.secondary {
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--text);
+        border-color: var(--line);
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+        filter: saturate(0.7);
+      }
+
+      .panel-head button,
+      .xml-block header button,
+      .graph-block header button {
+        width: auto;
+        min-width: 88px;
+        padding: 10px 12px;
+      }
+
+      .stack {
+        display: grid;
+        gap: 12px;
+      }
+
+      .menu-note {
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      .car-list {
+        max-height: calc(100vh - 330px);
+        overflow: auto;
+        display: grid;
+        gap: 10px;
+      }
+
+      .car-card {
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background:
+          linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+        cursor: pointer;
+        transition: transform 140ms ease, border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+        text-align: left;
+      }
+
+      .car-card:hover {
+        transform: translateY(-1px);
+        border-color: var(--line-strong);
+        box-shadow: inset 0 0 0 1px rgba(248, 184, 78, 0.12);
+      }
+
+      .car-card.active {
+        border-color: var(--accent);
+        background: linear-gradient(135deg, rgba(248, 184, 78, 0.18), rgba(255, 255, 255, 0.04));
+      }
+
+      .car-card-top {
+        display: grid;
+        grid-template-columns: 112px minmax(0, 1fr);
+        gap: 12px;
+        align-items: start;
+      }
+
+      .car-thumb {
+        position: relative;
+        min-height: 82px;
+        padding: 10px;
+        border-radius: 14px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background:
+          radial-gradient(circle at top left, rgba(248, 184, 78, 0.2), transparent 42%),
+          radial-gradient(circle at bottom right, rgba(123, 216, 255, 0.22), transparent 40%),
+          linear-gradient(180deg, rgba(16, 16, 16, 0.98), rgba(28, 28, 28, 0.92));
+      }
+
+      .car-thumb::after {
+        content: "";
+        position: absolute;
+        left: 12px;
+        right: 12px;
+        bottom: 10px;
+        height: 14px;
+        border-radius: 999px;
+        background: radial-gradient(circle, rgba(248, 184, 78, 0.24), transparent 70%);
+        filter: blur(5px);
+      }
+
+      .car-thumb small {
+        position: relative;
+        z-index: 1;
+        display: inline-flex;
+        padding: 3px 6px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--muted);
+        font-size: 9px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .car-thumb svg {
+        position: relative;
+        z-index: 1;
+        width: 100%;
+        height: 50px;
+        margin-top: 8px;
+        display: block;
+      }
+
+      .car-card-copy {
+        min-width: 0;
+      }
+
+      .car-card .car-badge {
+        display: inline-flex;
+        margin-top: 10px;
+        padding: 5px 8px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-size: 10px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .car-card strong {
+        display: block;
+        font-size: 15px;
+      }
+
+      .car-meta,
+      .stat-grid small,
+      .slot-caption,
+      .xml-caption,
+      .warning-list,
+      .status {
+        color: var(--muted);
+      }
+
+      .car-meta {
+        margin-top: 8px;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .studio-actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .session-panel {
+        display: grid;
+        gap: 12px;
+        padding: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 18px;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+      }
+
+      .session-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .session-head h4,
+      .subpanel-head h4 {
+        margin: 0;
+        font-size: 14px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .session-head p {
+        margin: 4px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .session-input-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 152px;
+        gap: 10px;
+      }
+
+      .session-player {
+        padding: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .session-player strong {
+        display: block;
+        font-size: 16px;
+      }
+
+      .session-player span {
+        display: block;
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .garage-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .garage-car {
+        padding: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.03);
+        text-align: left;
+        color: var(--text);
+      }
+
+      .garage-car.active {
+        border-color: var(--accent);
+        box-shadow: inset 0 0 0 1px rgba(248, 184, 78, 0.14);
+        background: linear-gradient(135deg, rgba(248, 184, 78, 0.16), rgba(255, 255, 255, 0.03));
+      }
+
+      .garage-car strong {
+        display: block;
+        font-size: 14px;
+      }
+
+      .garage-car span {
+        display: block;
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .stat-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .section-kicker {
+        margin: 0;
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      .stage-panel {
+        display: grid;
+        gap: 14px;
+        padding: 18px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 22px;
+        background:
+          radial-gradient(circle at top left, rgba(248, 184, 78, 0.12), transparent 38%),
+          radial-gradient(circle at right center, rgba(123, 216, 255, 0.12), transparent 34%),
+          linear-gradient(180deg, rgba(10, 10, 10, 0.96), rgba(18, 18, 18, 0.92));
+      }
+
+      .stage-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+      }
+
+      .stage-title {
+        margin: 6px 0 0;
+        font-size: clamp(24px, 3vw, 40px);
+        line-height: 0.95;
+        letter-spacing: -0.04em;
+      }
+
+      .stage-meta {
+        margin: 8px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+
+      .stage-status {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 8px;
+        max-width: 320px;
+      }
+
+      .stage-scene {
+        position: relative;
+        min-height: 280px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 22px;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at top, rgba(248, 184, 78, 0.12), transparent 34%),
+          linear-gradient(180deg, rgba(14, 14, 14, 0.88), rgba(3, 3, 3, 0.98));
+      }
+
+      .stage-scene::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.04), transparent);
+        mask-image: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.9) 25%, rgba(0, 0, 0, 0.9) 80%, transparent);
+        animation: sweep 10s linear infinite;
+      }
+
+      .stage-scene::after {
+        content: "";
+        position: absolute;
+        left: 6%;
+        right: 6%;
+        bottom: 26px;
+        height: 56px;
+        border-radius: 999px;
+        background:
+          radial-gradient(circle, rgba(248, 184, 78, 0.18), transparent 62%);
+        filter: blur(14px);
+      }
+
+      .stage-svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      .stage-meters {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .meter-card {
+        padding: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.04);
+      }
+
+      .meter-card small {
+        display: block;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 11px;
+      }
+
+      .meter-card b {
+        display: block;
+        margin: 6px 0 10px;
+        font-size: 20px;
+      }
+
+      .meter-track {
+        width: 100%;
+        height: 8px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        overflow: hidden;
+      }
+
+      .meter-fill {
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, var(--accent), var(--cyan));
+      }
+
+      .performance-grid {
+        display: grid;
+        gap: 10px;
+      }
+
+      .performance-row {
+        display: grid;
+        grid-template-columns: 96px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 12px;
+        font-size: 12px;
+      }
+
+      .performance-row label {
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+      }
+
+      .performance-bar {
+        height: 10px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        overflow: hidden;
+      }
+
+      .performance-bar span {
+        display: block;
+        height: 100%;
+        border-radius: inherit;
+      }
+
+      .stat {
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .stat b {
+        display: block;
+        font-size: 18px;
+        margin-top: 4px;
+      }
+
+      .stat em {
+        display: block;
+        margin-top: 6px;
+        font-style: normal;
+        font-size: 11px;
+        color: var(--accent);
+      }
+
+      .build-pills {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .build-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 10px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.04);
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .build-pill b {
+        color: var(--text);
+      }
+
+      .control-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .control-grid.gears {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .field {
+        display: grid;
+        gap: 6px;
+      }
+
+      .field label {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+      }
+
+      .slot-groups {
+        display: grid;
+        gap: 18px;
+        max-height: calc(100vh - 260px);
+        overflow: auto;
+        padding-right: 4px;
+      }
+
+      .slot-group {
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(14, 14, 14, 0.96));
+      }
+
+      .slot-group-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .slot-group-head h3 {
+        margin: 0;
+        font-size: 18px;
+      }
+
+      .slot-grid {
+        display: grid;
+        gap: 12px;
+        padding: 14px 16px 16px;
+      }
+
+      .slot-card {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 12px;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+      }
+
+      .slot-card.active {
+        border-color: rgba(248, 184, 78, 0.38);
+        box-shadow: inset 0 0 0 1px rgba(248, 184, 78, 0.08);
+      }
+
+      .slot-card header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 8px;
+      }
+
+      .slot-card h4 {
+        margin: 0;
+        font-size: 15px;
+      }
+
+      .slot-caption {
+        font-size: 11px;
+      }
+
+      .slot-picked-meta {
+        margin: 6px 0 0;
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      .slot-picker {
+        position: relative;
+        margin-top: 8px;
+      }
+
+      .slot-picker-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        width: 100%;
+        text-align: left;
+        padding: 12px 14px;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.05);
+        color: var(--text);
+      }
+
+      .slot-picker-toggle span:last-child {
+        color: var(--accent);
+        font-size: 12px;
+      }
+
+      .slot-picker-menu {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: calc(100% + 8px);
+        z-index: 6;
+        display: grid;
+        gap: 6px;
+        max-height: 320px;
+        overflow: auto;
+        padding: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 16px;
+        background: rgba(18, 18, 18, 0.98);
+        box-shadow: 0 28px 60px rgba(0, 0, 0, 0.42);
+      }
+
+      .slot-option {
+        padding: 11px 12px;
+        border-radius: 12px;
+        border: 1px solid transparent;
+        background: rgba(255, 255, 255, 0.03);
+        text-align: left;
+        color: var(--text);
+      }
+
+      .slot-option:hover,
+      .slot-option.active {
+        border-color: rgba(248, 184, 78, 0.34);
+        background: linear-gradient(135deg, rgba(248, 184, 78, 0.16), rgba(255, 255, 255, 0.04));
+      }
+
+      .slot-option strong {
+        display: block;
+        font-size: 13px;
+      }
+
+      .slot-option span {
+        display: block;
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.45;
+      }
+
+      .part-editor {
+        display: grid;
+        gap: 10px;
+        margin-top: 12px;
+        padding: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 14px;
+        background: rgba(0, 0, 0, 0.18);
+      }
+
+      .part-editor textarea {
+        min-height: 96px;
+      }
+
+      .subpanel-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .subpanel-head span {
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .editor-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .editor-grid .field small {
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .editor-actions {
+        display: flex;
+        gap: 10px;
+      }
+
+      .editor-actions button {
+        width: auto;
+        min-width: 132px;
+      }
+
+      .editor-note {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .warning-list {
+        margin: 0;
+        padding-left: 18px;
+        font-size: 13px;
+        line-height: 1.6;
+      }
+
+      .warning-list strong {
+        color: var(--danger);
+      }
+
+      .graph-block {
+        display: grid;
+        gap: 12px;
+        margin-bottom: 8px;
+      }
+
+      .graph-stage {
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background:
+          linear-gradient(180deg, rgba(248, 184, 78, 0.08), rgba(255, 255, 255, 0.02)),
+          rgba(255, 255, 255, 0.025);
+        padding: 12px;
+      }
+
+      .graph-summary {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .graph-chip {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 10px;
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .graph-chip small {
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 10px;
+      }
+
+      .graph-chip b {
+        display: block;
+        margin-top: 4px;
+        font-size: 20px;
+      }
+
+      .graph-svg {
+        width: 100%;
+        height: auto;
+        display: block;
+        margin-top: 10px;
+      }
+
+      .graph-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 10px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .legend-line {
+        width: 16px;
+        height: 3px;
+        border-radius: 999px;
+      }
+
+      .legend-line.hp {
+        background: #f8b84e;
+      }
+
+      .legend-line.tq {
+        background: #8ad4ff;
+      }
+
+      .xml-block {
+        display: grid;
+        gap: 10px;
+        margin-top: 16px;
+      }
+
+      .xml-block header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .xml-block h4 {
+        margin: 0;
+        font-size: 14px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .xml-caption,
+      .status {
+        font-size: 12px;
+      }
+
+      .timing-preview {
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.03);
+        font-family: Consolas, "Courier New", monospace;
+        font-size: 12px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      @keyframes sweep {
+        0% {
+          transform: translateX(-50%);
+        }
+        100% {
+          transform: translateX(120%);
+        }
+      }
+
+      @media (max-width: 1380px) {
+        .hero-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .grid {
+          grid-template-columns: 320px minmax(0, 1fr);
+        }
+
+        .outputs-panel {
+          grid-column: 1 / -1;
+        }
+      }
+
+      @media (max-width: 980px) {
+        .shell {
+          width: min(100vw - 20px, 1680px);
+        }
+
+        .masthead,
+        .stage-top,
+        .hero-graphic-copy {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        .car-list {
+          max-height: 420px;
+        }
+
+        .stage-meters,
+        .hero-stats,
+        .control-grid,
+        .control-grid.gears,
+        .stat-grid,
+        .graph-summary,
+        .studio-actions,
+        .editor-grid,
+        .session-input-row {
+          grid-template-columns: 1fr;
+        }
+
+        .car-card-top {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <section class="masthead">
+        <div class="brand">
+          <div class="brand-mark"></div>
+          <div class="brand-copy">
+            <strong>1320 Legends</strong>
+            <span>Studio-grade tuning and XML export</span>
+          </div>
+        </div>
+        <div class="masthead-status">
+          <span class="status-chip"><b id="mastheadCars">0</b> Cars</span>
+          <span class="status-chip"><b id="mastheadSlots">0</b> Slots</span>
+          <span class="status-chip"><b id="mastheadBuild">Stock</b> Build</span>
+        </div>
+      </section>
+
+      <section class="hero">
+        <div class="hero-grid">
+          <div class="hero-copy">
+            <div>
+              <p class="eyebrow">1320 Legends / XML Builder</p>
+              <h1>Tuning Studio</h1>
+              <p>
+                Build each car like a real garage session: select parts, shape the dyno, tune gears,
+                then export the exact XML your backend expects.
+              </p>
+            </div>
+            <div class="hero-subline" id="heroPills"></div>
+            <div class="hero-stats" id="heroStats"></div>
+          </div>
+          <div class="hero-graphic">
+            <svg id="heroGraphicSvg" viewBox="0 0 560 320" aria-hidden="true"></svg>
+            <div class="hero-graphic-copy">
+              <div>
+                <strong id="heroCarName">No Car Selected</strong>
+                <span id="heroCarMeta">Choose a car to start building a live tune package.</span>
+              </div>
+              <span class="status-chip"><b id="heroRedline">0</b> Redline</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="grid">
+        <aside class="panel catalog-panel">
+          <div class="panel-head">
+            <h2>Car Catalog</h2>
+            <span class="status" id="carCount">Loading...</span>
+          </div>
+          <div class="panel-body stack">
+            <input id="carSearch" type="search" placeholder="Search cars" />
+            <div class="menu-note">Filter by name, engine, drivetrain, or transmission.</div>
+            <div class="car-list" id="carList"></div>
+          </div>
+        </aside>
+
+        <main class="stack">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Current Build</h2>
+              <span class="status" id="buildStatus">Waiting for catalog...</span>
+            </div>
+            <div class="panel-body stack">
+              <section class="stage-panel">
+                <div class="stage-top">
+                  <div>
+                    <p class="section-kicker">Garage Stage</p>
+                    <h3 class="stage-title" id="stageCarName">No Car Selected</h3>
+                    <p class="stage-meta" id="stageCarMeta">Pick a car from the left to render the build scene and tuning meters.</p>
+                  </div>
+                  <div class="stage-status" id="stageStatus"></div>
+                </div>
+                <div class="stage-scene">
+                  <svg class="stage-svg" id="stageSvg" viewBox="0 0 860 340" aria-label="Garage scene"></svg>
+                </div>
+                <div class="stage-meters" id="stageMeters"></div>
+                <div class="performance-grid" id="performanceBars"></div>
+              </section>
+              <div class="stat-grid" id="carStats"></div>
+              <div class="build-pills" id="buildPills"></div>
+
+              <div class="control-grid">
+                <div class="field">
+                  <label for="boostSetting">Boost</label>
+                  <input id="boostSetting" type="number" min="0" max="10" step="1" value="5" />
+                </div>
+                <div class="field">
+                  <label for="chipSetting">Air/Fuel</label>
+                  <input id="chipSetting" type="number" min="0" max="100" step="1" value="0" />
+                </div>
+                <div class="field">
+                  <label for="shiftLightRpm">Shift Light RPM</label>
+                  <input id="shiftLightRpm" type="number" min="1000" max="12000" step="50" value="7200" />
+                </div>
+              </div>
+
+              <div class="control-grid gears">
+                <div class="field"><label for="g1">1st</label><input id="g1" type="number" step="0.001" /></div>
+                <div class="field"><label for="g2">2nd</label><input id="g2" type="number" step="0.001" /></div>
+                <div class="field"><label for="g3">3rd</label><input id="g3" type="number" step="0.001" /></div>
+                <div class="field"><label for="g4">4th</label><input id="g4" type="number" step="0.001" /></div>
+                <div class="field"><label for="g5">5th</label><input id="g5" type="number" step="0.001" /></div>
+                <div class="field"><label for="g6">6th</label><input id="g6" type="number" step="0.001" /></div>
+                <div class="field"><label for="fg">Final</label><input id="fg" type="number" step="0.001" /></div>
+              </div>
+
+              <div class="studio-actions">
+                <button class="secondary" id="resetBuild" type="button">Reset To Car Defaults</button>
+                <button id="applyBuild" type="button">Apply All To Game</button>
+              </div>
+
+              <section class="session-panel">
+                <div class="session-head">
+                  <div>
+                    <h4>Game Session</h4>
+                    <p>Connect a live session key, pick the matching garage car, then apply the full build directly into the game.</p>
+                  </div>
+                  <span class="status" id="sessionStatus">No session connected</span>
+                </div>
+                <div class="session-input-row">
+                  <input id="sessionKey" type="text" placeholder="Paste session key (sk)" />
+                  <button class="secondary" id="loadSession" type="button">Connect Session</button>
+                </div>
+                <div class="session-player" id="sessionPlayer">
+                  <strong>No active player</strong>
+                  <span>Load a session to discover your selected/default garage car state.</span>
+                </div>
+                <div class="stack">
+                  <div class="subpanel-head">
+                    <h4>Garage Targets</h4>
+                    <span id="garageCount">0 cars</span>
+                  </div>
+                  <div class="garage-list" id="garageList"></div>
+                </div>
+              </section>
+
+              <div>
+                <strong>Warnings</strong>
+                <ul class="warning-list" id="warnings"></ul>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Parts</h2>
+              <span class="status" id="slotCount">0 slots</span>
+            </div>
+            <div class="panel-body stack">
+              <input id="slotSearch" type="search" placeholder="Filter slots or parts" />
+              <div class="slot-groups" id="slotGroups"></div>
+            </div>
+          </section>
+        </main>
+
+        <aside class="panel outputs-panel">
+          <div class="panel-head">
+            <h2>XML Output</h2>
+            <span class="status" id="previewStatus">No preview yet</span>
+          </div>
+          <div class="panel-body">
+            <div class="graph-block">
+              <header>
+                <h4>Dyno Graph</h4>
+                <button data-copy-target="timingText" type="button">Copy Timing</button>
+              </header>
+              <div class="xml-caption">Estimated wheel curve from showroom spec, selected parts, and dyno tune values.</div>
+              <div class="graph-stage">
+                <div class="graph-summary" id="dynoSummary"></div>
+                <svg class="graph-svg" id="dynoGraph" viewBox="0 0 640 280" preserveAspectRatio="none" aria-label="Dyno graph"></svg>
+                <div class="graph-legend">
+                  <span class="legend-item"><span class="legend-line hp"></span> Horsepower</span>
+                  <span class="legend-item"><span class="legend-line tq"></span> Torque</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="xml-block">
+              <header>
+                <h4>Parts XML</h4>
+                <button data-copy-target="partsXml" type="button">Copy</button>
+              </header>
+              <div class="xml-caption">Installed performance parts plus persisted tune attributes.</div>
+              <textarea id="partsXml" readonly></textarea>
+            </div>
+
+            <div class="xml-block">
+              <header>
+                <h4>Engine XML</h4>
+                <button data-copy-target="engineXml" type="button">Copy</button>
+              </header>
+              <div class="xml-caption">Driveable `<n2 />` payload generated from showroom spec plus your gear tune.</div>
+              <textarea id="engineXml" readonly></textarea>
+            </div>
+
+            <div class="xml-block">
+              <header>
+                <h4>Car XML</h4>
+                <button data-copy-target="carXml" type="button">Copy</button>
+              </header>
+              <div class="xml-caption">Garage-ready `<c />` node with wheel, part, and paint state.</div>
+              <textarea id="carXml" readonly></textarea>
+            </div>
+
+            <div class="xml-block">
+              <header>
+                <h4>Wheel XML</h4>
+                <button data-copy-target="wheelXml" type="button">Copy</button>
+              </header>
+              <div class="xml-caption">Current default wheel fitment for the selected car.</div>
+              <textarea id="wheelXml" readonly></textarea>
+            </div>
+
+            <div class="xml-block">
+              <header>
+                <h4>Timing Array</h4>
+                <button data-copy-target="timingText" type="button">Copy</button>
+              </header>
+              <div class="timing-preview" id="timingText"></div>
+            </div>
+          </div>
+        </aside>
+      </section>
+    </div>
+
+    <script>
+      const PART_EDITOR_FIELDS = [
+        { key: "n", label: "Name", type: "text" },
+        { key: "bn", label: "Brand", type: "text" },
+        { key: "mn", label: "Model", type: "text" },
+        { key: "hp", label: "Horsepower", type: "number", step: "1" },
+        { key: "tq", label: "Torque", type: "number", step: "1" },
+        { key: "wt", label: "Weight", type: "number", step: "1" },
+        { key: "p", label: "Price", type: "number", step: "1" },
+        { key: "pp", label: "Point Price", type: "number", step: "1" },
+        { key: "di", label: "Design ID", type: "text" },
+        { key: "pdi", label: "Parent Design", type: "text" },
+        { key: "mo", label: "Motion", type: "text" },
+        { key: "cc", label: "Color Code", type: "text" },
+        { key: "ps", label: "Size", type: "text" },
+      ];
+
+      const state = {
+        catalog: null,
+        selectedCarId: "",
+        selectedPartIds: {},
+        partOverrides: {},
+        openSlotMenu: "",
+        tune: {
+          boostSetting: 5,
+          chipSetting: 0,
+          shiftLightRpm: 7200,
+          gearRatios: {},
+        },
+        preview: null,
+        session: {
+          sessionKey: "",
+          player: null,
+          cars: [],
+          targetGameCarId: "",
+          lastAppliedAt: "",
+        },
+      };
+
+      const elements = {
+        mastheadCars: document.getElementById("mastheadCars"),
+        mastheadSlots: document.getElementById("mastheadSlots"),
+        mastheadBuild: document.getElementById("mastheadBuild"),
+        heroPills: document.getElementById("heroPills"),
+        heroStats: document.getElementById("heroStats"),
+        heroGraphicSvg: document.getElementById("heroGraphicSvg"),
+        heroCarName: document.getElementById("heroCarName"),
+        heroCarMeta: document.getElementById("heroCarMeta"),
+        heroRedline: document.getElementById("heroRedline"),
+        carSearch: document.getElementById("carSearch"),
+        carList: document.getElementById("carList"),
+        carCount: document.getElementById("carCount"),
+        stageCarName: document.getElementById("stageCarName"),
+        stageCarMeta: document.getElementById("stageCarMeta"),
+        stageStatus: document.getElementById("stageStatus"),
+        stageSvg: document.getElementById("stageSvg"),
+        stageMeters: document.getElementById("stageMeters"),
+        performanceBars: document.getElementById("performanceBars"),
+        carStats: document.getElementById("carStats"),
+        buildPills: document.getElementById("buildPills"),
+        buildStatus: document.getElementById("buildStatus"),
+        slotCount: document.getElementById("slotCount"),
+        slotSearch: document.getElementById("slotSearch"),
+        slotGroups: document.getElementById("slotGroups"),
+        previewStatus: document.getElementById("previewStatus"),
+        warnings: document.getElementById("warnings"),
+        dynoSummary: document.getElementById("dynoSummary"),
+        dynoGraph: document.getElementById("dynoGraph"),
+        partsXml: document.getElementById("partsXml"),
+        engineXml: document.getElementById("engineXml"),
+        carXml: document.getElementById("carXml"),
+        wheelXml: document.getElementById("wheelXml"),
+        timingText: document.getElementById("timingText"),
+        boostSetting: document.getElementById("boostSetting"),
+        chipSetting: document.getElementById("chipSetting"),
+        shiftLightRpm: document.getElementById("shiftLightRpm"),
+        g1: document.getElementById("g1"),
+        g2: document.getElementById("g2"),
+        g3: document.getElementById("g3"),
+        g4: document.getElementById("g4"),
+        g5: document.getElementById("g5"),
+        g6: document.getElementById("g6"),
+        fg: document.getElementById("fg"),
+        resetBuild: document.getElementById("resetBuild"),
+        applyBuild: document.getElementById("applyBuild"),
+        sessionKey: document.getElementById("sessionKey"),
+        loadSession: document.getElementById("loadSession"),
+        sessionStatus: document.getElementById("sessionStatus"),
+        sessionPlayer: document.getElementById("sessionPlayer"),
+        garageCount: document.getElementById("garageCount"),
+        garageList: document.getElementById("garageList"),
+      };
+
+      let previewTimer = null;
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function formatMoney(value) {
+        return new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: "USD",
+          maximumFractionDigits: 0,
+        }).format(Number(value || 0));
+      }
+
+      function signed(value, suffix = "") {
+        const numericValue = Number(value || 0);
+        return `${numericValue >= 0 ? "+" : ""}${numericValue}${suffix}`;
+      }
+
+      function clampRatio(value, max) {
+        const numericValue = Number(value || 0);
+        const ceiling = Number(max || 1) || 1;
+        return Math.max(0, Math.min(1, numericValue / ceiling));
+      }
+
+      function findCar() {
+        return state.catalog?.cars?.find((car) => car.id === state.selectedCarId) || null;
+      }
+
+      function groupedSlots() {
+        const groups = new Map();
+        for (const slot of state.catalog?.slots || []) {
+          const key = slot.parentName || "Misc";
+          const bucket = groups.get(key) || [];
+          bucket.push(slot);
+          groups.set(key, bucket);
+        }
+        return [...groups.entries()];
+      }
+
+      function findSlotById(slotId) {
+        return state.catalog?.slots?.find((slot) => String(slot.id) === String(slotId)) || null;
+      }
+
+      function findSelectedPart(slotId) {
+        const slot = findSlotById(slotId);
+        return slot?.parts?.find((part) => String(part.id) === String(state.selectedPartIds[slotId] || "")) || null;
+      }
+
+      function currentPayload() {
+        return {
+          catalogCarId: state.selectedCarId,
+          selectedPartIds: state.selectedPartIds,
+          partOverrides: state.partOverrides,
+          tune: state.tune,
+        };
+      }
+
+      function buildCarThumb(car) {
+        const accentA = 35 + ((Number(car.id || 0) * 29) % 180);
+        const accentB = (accentA + 82) % 360;
+        return `
+          <div class="car-thumb" style="background:
+            radial-gradient(circle at top left, hsla(${accentA}, 90%, 64%, 0.28), transparent 42%),
+            radial-gradient(circle at bottom right, hsla(${accentB}, 88%, 68%, 0.24), transparent 40%),
+            linear-gradient(180deg, rgba(16,16,16,0.98), rgba(28,28,28,0.92));">
+            <small>${escapeHtml(car.make || "Garage")}</small>
+            <svg viewBox="0 0 180 76" aria-hidden="true">
+              <defs>
+                <linearGradient id="carThumbGrad_${escapeHtml(car.id)}" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stop-color="hsla(${accentA}, 90%, 66%, 0.95)"/>
+                  <stop offset="100%" stop-color="hsla(${accentB}, 92%, 72%, 0.95)"/>
+                </linearGradient>
+              </defs>
+              <path d="M24 50 C40 34 58 28 88 28 L112 28 C132 28 147 35 159 47 L166 50 C169 51 171 53 171 57 L171 63 L160 64 C157 73 149 76 139 76 C128 76 120 72 117 64 L73 64 C70 73 61 76 51 76 C39 76 31 72 29 63 L22 61 C17 60 14 56 14 51 C14 47 18 44 24 44 Z"
+                fill="rgba(0,0,0,0.58)" stroke="url(#carThumbGrad_${escapeHtml(car.id)})" stroke-width="3.2"/>
+              <circle cx="51" cy="64" r="10" fill="rgba(8,8,8,0.94)" stroke="rgba(255,255,255,0.12)" stroke-width="2"/>
+              <circle cx="139" cy="64" r="10" fill="rgba(8,8,8,0.94)" stroke="rgba(255,255,255,0.12)" stroke-width="2"/>
+              <path d="M62 30 L92 30 C102 30 113 34 123 42 L76 42 C68 42 64 38 62 30 Z" fill="rgba(255,255,255,0.12)"/>
+            </svg>
+          </div>
+        `;
+      }
+
+      function renderHeroSurface() {
+        const car = findCar();
+        const preview = state.preview;
+        const stats = preview?.stats || car?.spec;
+        const selectedParts = preview?.selectedParts?.length || 0;
+
+        elements.mastheadCars.textContent = String(state.catalog?.cars?.length || 0);
+        elements.mastheadSlots.textContent = String(state.catalog?.slots?.length || 0);
+        elements.mastheadBuild.textContent = car ? `${selectedParts} Parts` : "Stock";
+
+        if (!car || !stats) {
+          elements.heroPills.innerHTML = "";
+          elements.heroStats.innerHTML = "";
+          elements.heroGraphicSvg.innerHTML = "";
+          elements.heroCarName.textContent = "No Car Selected";
+          elements.heroCarMeta.textContent = "Choose a car to start building a live tune package.";
+          elements.heroRedline.textContent = "0";
+          return;
+        }
+
+        elements.heroCarName.textContent = car.name;
+        elements.heroCarMeta.textContent = `${stats.engine || car.spec.engine} / ${stats.drivetrain || car.spec.drivetrain} / ${stats.transmission || car.spec.transmission}`;
+        elements.heroRedline.textContent = `${stats.redLine || 0} rpm`;
+
+        elements.heroPills.innerHTML = `
+          <span class="hero-pill"><b>${formatMoney(car.price)}</b> catalog value</span>
+          <span class="hero-pill"><b>${selectedParts}</b> installed slots</span>
+          <span class="hero-pill"><b>${Object.keys(state.partOverrides).length}</b> part XML edits</span>
+        `;
+
+        elements.heroStats.innerHTML = `
+          <div class="hero-tile"><small>Horsepower</small><b>${stats.horsepower}</b></div>
+          <div class="hero-tile"><small>Torque</small><b>${stats.torque}</b></div>
+          <div class="hero-tile"><small>Weight</small><b>${stats.weight} lb</b></div>
+          <div class="hero-tile"><small>Redline</small><b>${stats.redLine}</b></div>
+        `;
+
+        const hpRatio = clampRatio(stats.horsepower, Math.max(stats.baseHorsepower || stats.horsepower, stats.horsepower, 1200));
+        const tqRatio = clampRatio(stats.torque, Math.max(stats.baseTorque || stats.torque, stats.torque, 1200));
+        const glowWidth = 170 + (hpRatio * 120);
+        const accentY = 206 - (tqRatio * 34);
+
+        elements.heroGraphicSvg.innerHTML = `
+          <defs>
+            <linearGradient id="heroCarFill" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="rgba(248,184,78,0.92)"/>
+              <stop offset="100%" stop-color="rgba(123,216,255,0.88)"/>
+            </linearGradient>
+            <linearGradient id="heroGlow" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="rgba(248,184,78,0)"/>
+              <stop offset="50%" stop-color="rgba(248,184,78,0.45)"/>
+              <stop offset="100%" stop-color="rgba(123,216,255,0)"/>
+            </linearGradient>
+          </defs>
+          <rect x="34" y="42" width="492" height="202" rx="24" fill="rgba(255,255,255,0.02)" stroke="rgba(255,255,255,0.06)"/>
+          <path d="M76 232 C160 ${210 - (hpRatio * 14)} 244 ${220 - (tqRatio * 20)} 320 ${accentY} C394 ${194 - (hpRatio * 18)} 460 206 512 170" fill="none" stroke="url(#heroGlow)" stroke-width="8" stroke-linecap="round"/>
+          <path d="M120 196 C156 156 208 138 292 138 L360 138 C402 138 430 146 454 168 L490 176 C500 178 506 184 506 194 L506 208 L474 210 C468 236 448 254 418 254 C388 254 368 236 362 210 L236 210 C230 236 210 254 180 254 C148 254 126 234 122 206 L104 204 C92 202 84 196 84 186 C84 176 96 166 110 166 L126 166 Z" fill="rgba(11,11,11,0.88)" stroke="url(#heroCarFill)" stroke-width="4"/>
+          <path d="M182 148 L250 148 C270 148 290 152 310 162 L218 162 C198 162 188 158 182 148 Z" fill="rgba(255,255,255,0.09)"/>
+          <circle cx="182" cy="210" r="30" fill="rgba(0,0,0,0.9)" stroke="rgba(255,255,255,0.14)" stroke-width="3"/>
+          <circle cx="182" cy="210" r="14" fill="rgba(248,184,78,0.88)"/>
+          <circle cx="418" cy="210" r="30" fill="rgba(0,0,0,0.9)" stroke="rgba(255,255,255,0.14)" stroke-width="3"/>
+          <circle cx="418" cy="210" r="14" fill="rgba(123,216,255,0.88)"/>
+          <text x="82" y="84" fill="rgba(255,255,255,0.48)" font-size="12" letter-spacing="2">ACTIVE BUILD</text>
+          <text x="82" y="110" fill="rgba(248,184,78,0.95)" font-size="24" font-weight="700">${stats.horsepower} HP</text>
+          <text x="212" y="110" fill="rgba(123,216,255,0.95)" font-size="24" font-weight="700">${stats.torque} TQ</text>
+          <rect x="82" y="258" width="${glowWidth}" height="6" rx="999" fill="rgba(255,255,255,0.08)"/>
+          <rect x="82" y="258" width="${Math.max(44, glowWidth * hpRatio)}" height="6" rx="999" fill="rgba(248,184,78,0.88)"/>
+        `;
+      }
+
+      function renderCars() {
+        const query = elements.carSearch.value.trim().toLowerCase();
+        const cars = (state.catalog?.cars || []).filter((car) => {
+          if (!query) return true;
+          return `${car.name} ${car.make} ${car.spec.engine} ${car.spec.drivetrain} ${car.spec.transmission}`.toLowerCase().includes(query);
+        });
+
+        elements.carCount.textContent = `${cars.length} cars`;
+        elements.carList.innerHTML = "";
+
+        for (const car of cars) {
+          const node = document.createElement("button");
+          node.type = "button";
+          node.className = `car-card${car.id === state.selectedCarId ? " active" : ""}`;
+          node.innerHTML = `
+            <div class="car-card-top">
+              ${buildCarThumb(car)}
+              <div class="car-card-copy">
+                <strong>${escapeHtml(car.name)}</strong>
+                <div class="car-meta">
+                  <div>${formatMoney(car.price)} / ${car.spec.horsepower} hp / ${car.spec.torque} tq</div>
+                  <div>${escapeHtml(car.spec.engine)} / ${escapeHtml(car.spec.drivetrain)} / ${escapeHtml(car.spec.transmission)}</div>
+                </div>
+                <span class="car-badge">Location ${escapeHtml(car.locationId)}</span>
+              </div>
+            </div>
+          `;
+          node.addEventListener("click", () => selectCar(car.id));
+          elements.carList.appendChild(node);
+        }
+      }
+
+      function renderCarStats() {
+        const car = findCar();
+        if (!car) {
+          elements.carStats.innerHTML = "";
+          elements.buildPills.innerHTML = "";
+          renderHeroSurface();
+          renderStageSurface();
+          return;
+        }
+
+        const stats = state.preview?.stats || car.spec;
+        elements.carStats.innerHTML = `
+          <div class="stat"><small>Horsepower</small><b>${stats.horsepower}</b><em>Base ${stats.baseHorsepower || car.spec.horsepower}</em></div>
+          <div class="stat"><small>Torque</small><b>${stats.torque}</b><em>Base ${stats.baseTorque || car.spec.torque}</em></div>
+          <div class="stat"><small>Weight</small><b>${stats.weight} lb</b><em>Base ${stats.baseWeight || car.spec.weight} lb</em></div>
+          <div class="stat"><small>Engine</small><b>${escapeHtml(stats.engine || car.spec.engine)}</b></div>
+          <div class="stat"><small>Drivetrain</small><b>${escapeHtml(stats.drivetrain || car.spec.drivetrain)}</b></div>
+          <div class="stat"><small>Redline</small><b>${stats.redLine || state.tune.shiftLightRpm}</b></div>
+        `;
+
+        const pills = [];
+        if (Number(stats.partHorsepowerDelta || 0) || Number(stats.partTorqueDelta || 0)) {
+          pills.push(`<span class="build-pill"><b>Parts</b> ${signed(stats.partHorsepowerDelta || 0, " hp")} / ${signed(stats.partTorqueDelta || 0, " tq")}</span>`);
+        }
+        if (Number(stats.dynoHorsepowerDelta || 0) || Number(stats.dynoTorqueDelta || 0)) {
+          pills.push(`<span class="build-pill"><b>Dyno</b> ${signed(stats.dynoHorsepowerDelta || 0, " hp")} / ${signed(stats.dynoTorqueDelta || 0, " tq")}</span>`);
+        }
+        if (Number(stats.partWeightDelta || 0)) {
+          pills.push(`<span class="build-pill"><b>Weight</b> ${signed(stats.partWeightDelta || 0, " lb")}</span>`);
+        }
+        if (Object.keys(state.partOverrides).length > 0) {
+          pills.push(`<span class="build-pill"><b>XML</b> ${Object.keys(state.partOverrides).length} tuned slots</span>`);
+        }
+        elements.buildPills.innerHTML = pills.length ? pills.join("") : `<span class="build-pill"><b>Build</b> Stock baseline</span>`;
+        renderHeroSurface();
+        renderStageSurface();
+      }
+
+      function renderStageSurface() {
+        const car = findCar();
+        const preview = state.preview;
+        const stats = preview?.stats || car?.spec;
+        const dyno = preview?.dyno;
+
+        if (!car || !stats) {
+          elements.stageCarName.textContent = "No Car Selected";
+          elements.stageCarMeta.textContent = "Pick a car from the left to render the build scene and tuning meters.";
+          elements.stageStatus.innerHTML = "";
+          elements.stageSvg.innerHTML = "";
+          elements.stageMeters.innerHTML = "";
+          elements.performanceBars.innerHTML = "";
+          return;
+        }
+
+        elements.stageCarName.textContent = car.name;
+        elements.stageCarMeta.textContent = `${stats.engine || car.spec.engine} tuned for ${stats.drivetrain || car.spec.drivetrain} launch behavior. Gear ratios and dyno settings are reflected live.`;
+        elements.stageStatus.innerHTML = `
+          <span class="status-chip"><b>${escapeHtml(stats.drivetrain)}</b> drivetrain</span>
+          <span class="status-chip"><b>${escapeHtml(stats.transmission)}</b> trans</span>
+          <span class="status-chip"><b>${preview?.selectedParts?.length || 0}</b> slots active</span>
+        `;
+
+        const hpRatio = clampRatio(stats.horsepower, Math.max(stats.baseHorsepower || stats.horsepower, stats.horsepower, 1100));
+        const tqRatio = clampRatio(stats.torque, Math.max(stats.baseTorque || stats.torque, stats.torque, 1100));
+        const weightRatio = 1 - clampRatio(stats.weight, Math.max(stats.weight, stats.baseWeight || stats.weight, 5200));
+        const boostGlow = clampRatio(dyno?.boostSetting || 0, 10);
+        const sceneLines = Array.from({ length: 5 }, (_, index) => {
+          const y = 52 + (index * 42);
+          const opacity = 0.08 + (index * 0.03);
+          return `<line x1="40" y1="${y}" x2="820" y2="${y}" stroke="rgba(255,255,255,${opacity})" stroke-dasharray="6 10"/>`;
+        }).join("");
+
+        elements.stageSvg.innerHTML = `
+          <defs>
+            <linearGradient id="garageRoad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="rgba(248,184,78,0)"/>
+              <stop offset="40%" stop-color="rgba(248,184,78,0.2)"/>
+              <stop offset="100%" stop-color="rgba(123,216,255,0)"/>
+            </linearGradient>
+            <linearGradient id="carBodyStage" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="rgba(248,184,78,0.94)"/>
+              <stop offset="55%" stop-color="rgba(255,255,255,0.92)"/>
+              <stop offset="100%" stop-color="rgba(123,216,255,0.94)"/>
+            </linearGradient>
+          </defs>
+          <rect x="26" y="26" width="808" height="238" rx="30" fill="rgba(255,255,255,0.02)" stroke="rgba(255,255,255,0.06)"/>
+          ${sceneLines}
+          <path d="M56 282 C180 ${260 - (boostGlow * 18)} 300 ${288 - (hpRatio * 34)} 446 ${244 - (tqRatio * 24)} C606 ${196 - (boostGlow * 30)} 718 224 804 148" fill="none" stroke="url(#garageRoad)" stroke-width="${10 + (boostGlow * 8)}" stroke-linecap="round"/>
+          <path d="M188 208 C234 160 308 138 420 138 L534 138 C602 138 654 158 706 196 L752 206 C770 210 780 220 780 234 L780 246 L726 248 C714 286 684 306 636 306 C584 306 552 284 542 248 L340 248 C330 284 298 306 248 306 C194 306 160 282 152 244 L128 240 C108 236 96 224 96 210 C96 194 110 182 128 182 L166 182 Z" fill="rgba(8,8,8,0.92)" stroke="url(#carBodyStage)" stroke-width="4.5"/>
+          <path d="M286 150 L392 150 C442 150 488 162 530 186 L334 186 C310 186 294 174 286 150 Z" fill="rgba(255,255,255,0.14)"/>
+          <path d="M618 160 L666 172 C694 178 714 188 726 206 L650 206 C630 206 618 194 618 174 Z" fill="rgba(123,216,255,0.18)"/>
+          <circle cx="248" cy="248" r="44" fill="rgba(0,0,0,0.92)" stroke="rgba(255,255,255,0.12)" stroke-width="4"/>
+          <circle cx="248" cy="248" r="20" fill="rgba(248,184,78,0.9)"/>
+          <circle cx="636" cy="248" r="44" fill="rgba(0,0,0,0.92)" stroke="rgba(255,255,255,0.12)" stroke-width="4"/>
+          <circle cx="636" cy="248" r="20" fill="rgba(123,216,255,0.9)"/>
+          <text x="64" y="78" fill="rgba(255,255,255,0.54)" font-size="12" letter-spacing="2">GARAGE DISPLAY</text>
+          <text x="64" y="108" fill="rgba(248,184,78,0.95)" font-size="28" font-weight="700">${stats.horsepower} HP</text>
+          <text x="206" y="108" fill="rgba(123,216,255,0.95)" font-size="28" font-weight="700">${stats.torque} TQ</text>
+          <text x="348" y="108" fill="rgba(255,255,255,0.8)" font-size="28" font-weight="700">${stats.weight} LB</text>
+          <rect x="64" y="286" width="248" height="7" rx="999" fill="rgba(255,255,255,0.08)"/>
+          <rect x="64" y="286" width="${Math.max(52, 248 * hpRatio)}" height="7" rx="999" fill="rgba(248,184,78,0.88)"/>
+          <rect x="340" y="286" width="248" height="7" rx="999" fill="rgba(255,255,255,0.08)"/>
+          <rect x="340" y="286" width="${Math.max(52, 248 * tqRatio)}" height="7" rx="999" fill="rgba(123,216,255,0.88)"/>
+          <rect x="616" y="286" width="150" height="7" rx="999" fill="rgba(255,255,255,0.08)"/>
+          <rect x="616" y="286" width="${Math.max(40, 150 * Math.max(0.12, weightRatio))}" height="7" rx="999" fill="rgba(166,255,139,0.88)"/>
+        `;
+
+        elements.stageMeters.innerHTML = `
+          <div class="meter-card">
+            <small>Boost</small>
+            <b>${dyno?.boostSetting ?? 0} / 10</b>
+            <div class="meter-track"><div class="meter-fill" style="width:${clampRatio(dyno?.boostSetting || 0, 10) * 100}%"></div></div>
+          </div>
+          <div class="meter-card">
+            <small>Air/Fuel</small>
+            <b>${dyno?.chipSetting ?? 0} / 100</b>
+            <div class="meter-track"><div class="meter-fill" style="width:${clampRatio(dyno?.chipSetting || 0, 100) * 100}%"></div></div>
+          </div>
+          <div class="meter-card">
+            <small>Shift Light</small>
+            <b>${dyno?.shiftLightRpm ?? 0} rpm</b>
+            <div class="meter-track"><div class="meter-fill" style="width:${clampRatio(dyno?.shiftLightRpm || 0, stats.redLine || 1) * 100}%"></div></div>
+          </div>
+        `;
+
+        const performanceRows = [
+          { label: "Power", value: stats.horsepower, max: Math.max(stats.horsepower, stats.baseHorsepower || stats.horsepower, 1200), color: "linear-gradient(90deg, rgba(248,184,78,0.95), rgba(248,184,78,0.35))" },
+          { label: "Torque", value: stats.torque, max: Math.max(stats.torque, stats.baseTorque || stats.torque, 1200), color: "linear-gradient(90deg, rgba(123,216,255,0.95), rgba(123,216,255,0.35))" },
+          { label: "Weight", value: Math.max(0, (stats.baseWeight || stats.weight) - stats.weight), max: Math.max(Math.abs(stats.partWeightDelta || 0), 100, (stats.baseWeight || stats.weight) * 0.2), color: "linear-gradient(90deg, rgba(166,255,139,0.95), rgba(166,255,139,0.35))", text: `${signed((stats.baseWeight || stats.weight) - stats.weight, " lb")}` },
+          { label: "Tune", value: (stats.dynoHorsepowerDelta || 0) + (stats.dynoTorqueDelta || 0), max: 60, color: "linear-gradient(90deg, rgba(248,184,78,0.95), rgba(123,216,255,0.65))", text: `${signed(stats.dynoHorsepowerDelta || 0, " hp")}` },
+        ];
+
+        elements.performanceBars.innerHTML = performanceRows.map((row) => `
+          <div class="performance-row">
+            <label>${row.label}</label>
+            <div class="performance-bar"><span style="width:${clampRatio(row.value, row.max) * 100}%; background:${row.color};"></span></div>
+            <strong>${row.text || row.value}</strong>
+          </div>
+        `).join("");
+      }
+
+      function buildSlotOptionLabel(part) {
+        const gains = [];
+        if (part.horsepower) gains.push(`${signed(part.horsepower, " hp")}`);
+        if (part.torque) gains.push(`${signed(part.torque, " tq")}`);
+        if (part.weight) gains.push(`${signed(part.weight, " wt")}`);
+        return `${formatMoney(part.price)}${gains.length ? ` / ${gains.join(" / ")}` : ""}`;
+      }
+
+      function buildPartEditor(slot, part, overrides) {
+        const editorFields = PART_EDITOR_FIELDS.map((field) => {
+          const baseValue = part.editableAttrs?.[field.key] ?? "";
+          const overrideValue = overrides?.[field.key] ?? "";
+          const stepAttr = field.step ? ` step="${field.step}"` : "";
+          return `
+            <label class="field">
+              <span>${escapeHtml(field.label)}</span>
+              <input
+                data-slot-attr="${escapeHtml(field.key)}"
+                data-slot-id="${escapeHtml(slot.id)}"
+                type="${escapeHtml(field.type)}"
+                value="${escapeHtml(overrideValue)}"
+                placeholder="${escapeHtml(String(baseValue))}"${stepAttr}
+              />
+              <small>Stock: ${escapeHtml(String(baseValue || "empty"))}</small>
+            </label>
+          `;
+        }).join("");
+
+        return `
+          <div class="part-editor">
+            <div class="subpanel-head">
+              <h4>Advanced Part Tune</h4>
+              <span>${escapeHtml(part.name)} / slot ${escapeHtml(slot.id)}</span>
+            </div>
+            <div class="editor-grid">${editorFields}</div>
+            <label class="field">
+              <span>Extra XML Attrs</span>
+              <textarea
+                data-slot-extra="${escapeHtml(slot.id)}"
+                placeholder="key=value&#10;anotherKey=123"
+              >${escapeHtml(overrides?.extraAttrs || "")}</textarea>
+              <small>Add additional XML attrs one per line. Reserved ids are protected.</small>
+            </label>
+            <div class="editor-actions">
+              <button class="secondary" data-clear-overrides="${escapeHtml(slot.id)}" type="button">Clear Slot XML Tune</button>
+            </div>
+            <div class="editor-note">These fields override the generated installed-part XML for this slot, then ride through preview and Apply All unchanged.</div>
+          </div>
+        `;
+      }
+
+      function renderSlots() {
+        elements.slotGroups.innerHTML = "";
+        const query = elements.slotSearch.value.trim().toLowerCase();
+        const slotGroups = groupedSlots()
+          .map(([groupName, slots]) => ([
+            groupName,
+            slots.filter((slot) => {
+              if (!query) return true;
+              const slotText = `${slot.name} ${slot.parentName} ${slot.parts.map((part) => `${part.name} ${part.brand} ${part.model}`).join(" ")}`.toLowerCase();
+              return slotText.includes(query);
+            }),
+          ]))
+          .filter(([, slots]) => slots.length > 0);
+
+        const filteredSlotCount = slotGroups.reduce((count, [, slots]) => count + slots.length, 0);
+        elements.slotCount.textContent = `${filteredSlotCount} slots`;
+
+        for (const [groupName, slots] of slotGroups) {
+          const group = document.createElement("section");
+          group.className = "slot-group";
+
+          const groupBody = slots.map((slot) => {
+            const selectedPart = findSelectedPart(slot.id);
+            const slotOverrides = state.partOverrides[slot.id] || {};
+            const pickerOpen = state.openSlotMenu === slot.id;
+            const optionButtons = [
+              `<button class="slot-option${selectedPart ? "" : " active"}" data-slot-option="" data-slot-id="${escapeHtml(slot.id)}" type="button"><strong>None</strong><span>Remove the installed item from this slot in the generated build.</span></button>`,
+              ...slot.parts.map((part) => `
+                <button
+                  class="slot-option${selectedPart && String(selectedPart.id) === String(part.id) ? " active" : ""}"
+                  data-slot-option="${escapeHtml(part.id)}"
+                  data-slot-id="${escapeHtml(slot.id)}"
+                  type="button">
+                  <strong>${escapeHtml(part.name)}</strong>
+                  <span>${escapeHtml(buildSlotOptionLabel(part))}</span>
+                </button>
+              `),
+            ].join("");
+
+            return `
+              <article class="slot-card${selectedPart ? " active" : ""}" data-slot-card="${escapeHtml(slot.id)}">
+                <header>
+                  <h4>${escapeHtml(slot.name)}</h4>
+                  <span class="slot-caption">slot ${escapeHtml(slot.id)} / ${slot.itemCount} parts</span>
+                </header>
+                <div class="slot-picker" data-slot-picker="${escapeHtml(slot.id)}">
+                  <button class="slot-picker-toggle" data-slot-toggle="${escapeHtml(slot.id)}" type="button">
+                    <span>${escapeHtml(selectedPart?.name || "None")}</span>
+                    <span>${pickerOpen ? "Close" : "Change"}</span>
+                  </button>
+                  ${pickerOpen ? `<div class="slot-picker-menu">${optionButtons}</div>` : ""}
+                </div>
+                <div class="slot-picked-meta">
+                  ${selectedPart
+                    ? `${escapeHtml(buildSlotOptionLabel(selectedPart))} / ${Object.keys(slotOverrides).length} XML overrides`
+                    : "No part selected for this slot."}
+                </div>
+                ${selectedPart ? buildPartEditor(slot, selectedPart, slotOverrides) : ""}
+              </article>
+            `;
+          }).join("");
+
+          group.innerHTML = `
+            <div class="slot-group-head">
+              <h3>${escapeHtml(groupName)}</h3>
+              <span class="slot-caption">${slots.length} slots</span>
+            </div>
+            <div class="slot-grid">${groupBody}</div>
+          `;
+          elements.slotGroups.appendChild(group);
+        }
+
+        elements.slotGroups.querySelectorAll("[data-slot-toggle]").forEach((button) => {
+          button.addEventListener("click", () => {
+            const slotId = button.getAttribute("data-slot-toggle");
+            state.openSlotMenu = state.openSlotMenu === slotId ? "" : slotId;
+            renderSlots();
+          });
+        });
+
+        elements.slotGroups.querySelectorAll("[data-slot-option]").forEach((button) => {
+          button.addEventListener("click", () => {
+            const slotId = button.getAttribute("data-slot-id");
+            const value = button.getAttribute("data-slot-option") || "";
+            const previousValue = state.selectedPartIds[slotId] || "";
+            if (value) {
+              state.selectedPartIds[slotId] = value;
+            } else {
+              delete state.selectedPartIds[slotId];
+            }
+            if (String(previousValue) !== String(value)) {
+              delete state.partOverrides[slotId];
+            }
+            state.openSlotMenu = "";
+            renderSlots();
+            queuePreview();
+          });
+        });
+
+        elements.slotGroups.querySelectorAll("[data-slot-attr]").forEach((input) => {
+          input.addEventListener("input", () => {
+            const slotId = input.getAttribute("data-slot-id");
+            const attr = input.getAttribute("data-slot-attr");
+            const slotOverrides = state.partOverrides[slotId] || {};
+            const value = input.value;
+            if (value) {
+              slotOverrides[attr] = value;
+            } else {
+              delete slotOverrides[attr];
+            }
+            if (Object.keys(slotOverrides).length > 0) {
+              state.partOverrides[slotId] = slotOverrides;
+            } else {
+              delete state.partOverrides[slotId];
+            }
+            queuePreview();
+          });
+        });
+
+        elements.slotGroups.querySelectorAll("[data-slot-extra]").forEach((textarea) => {
+          textarea.addEventListener("input", () => {
+            const slotId = textarea.getAttribute("data-slot-extra");
+            const slotOverrides = state.partOverrides[slotId] || {};
+            if (textarea.value.trim()) {
+              slotOverrides.extraAttrs = textarea.value;
+              state.partOverrides[slotId] = slotOverrides;
+            } else {
+              delete slotOverrides.extraAttrs;
+              if (Object.keys(slotOverrides).length > 0) {
+                state.partOverrides[slotId] = slotOverrides;
+              } else {
+                delete state.partOverrides[slotId];
+              }
+            }
+            queuePreview();
+          });
+        });
+
+        elements.slotGroups.querySelectorAll("[data-clear-overrides]").forEach((button) => {
+          button.addEventListener("click", () => {
+            const slotId = button.getAttribute("data-clear-overrides");
+            delete state.partOverrides[slotId];
+            renderSlots();
+            queuePreview();
+          });
+        });
+      }
+
+      function applyCarDefaults(carId) {
+        const car = state.catalog.cars.find((entry) => entry.id === carId);
+        state.selectedPartIds = { ...(car?.defaultPartIdsBySlot || {}) };
+        state.partOverrides = {};
+        state.openSlotMenu = "";
+        state.tune = {
+          boostSetting: 5,
+          chipSetting: 0,
+          shiftLightRpm: 7200,
+          gearRatios: {},
+        };
+        syncInputsFromState();
+      }
+
+      function syncInputsFromState() {
+        elements.boostSetting.value = state.tune.boostSetting;
+        elements.chipSetting.value = state.tune.chipSetting;
+        elements.shiftLightRpm.value = state.tune.shiftLightRpm;
+        for (const key of ["g1", "g2", "g3", "g4", "g5", "g6", "fg"]) {
+          elements[key].value = state.tune.gearRatios[key] || "";
+        }
+      }
+
+      function matchingGarageCars() {
+        return (state.session.cars || []).filter((car) => String(car.catalogCarId) === String(state.selectedCarId));
+      }
+
+      function syncGarageTarget() {
+        const matches = matchingGarageCars();
+        if (matches.length === 0) {
+          state.session.targetGameCarId = "";
+          return;
+        }
+        if (!matches.some((car) => String(car.gameCarId) === String(state.session.targetGameCarId))) {
+          const preferred = matches.find((car) => car.selected) || matches[0];
+          state.session.targetGameCarId = String(preferred.gameCarId);
+        }
+      }
+
+      function renderSession() {
+        const player = state.session.player;
+        const matchingCars = matchingGarageCars();
+        syncGarageTarget();
+
+        if (!player) {
+          elements.sessionPlayer.innerHTML = `
+            <strong>No active player</strong>
+            <span>Load a session to discover your selected/default garage car state.</span>
+          `;
+          elements.garageCount.textContent = "0 cars";
+          elements.garageList.innerHTML = "";
+          elements.applyBuild.disabled = true;
+          elements.applyBuild.textContent = "Apply All To Game";
+          return;
+        }
+
+        elements.sessionPlayer.innerHTML = `
+          <strong>${escapeHtml(player.username || "Unknown Player")}</strong>
+          <span>Player ${escapeHtml(player.playerId)} / default car ${escapeHtml(player.defaultCarGameId || 0)}</span>
+        `;
+
+        elements.garageCount.textContent = `${matchingCars.length} matching cars`;
+        if (matchingCars.length === 0) {
+          elements.garageList.innerHTML = `<div class="editor-note">This account does not own a garage car for the currently selected catalog car.</div>`;
+        } else {
+          elements.garageList.innerHTML = matchingCars.map((car) => `
+            <button class="garage-car${String(car.gameCarId) === String(state.session.targetGameCarId) ? " active" : ""}" data-garage-car="${escapeHtml(car.gameCarId)}" type="button">
+              <strong>${escapeHtml(car.name)}</strong>
+              <span>Game car ${escapeHtml(car.gameCarId)} / paint ${escapeHtml(car.paintIndex)} / xml ${escapeHtml(car.partsLength)} chars${car.selected ? " / selected in game" : ""}</span>
+            </button>
+          `).join("");
+          elements.garageList.querySelectorAll("[data-garage-car]").forEach((button) => {
+            button.addEventListener("click", () => {
+              state.session.targetGameCarId = button.getAttribute("data-garage-car") || "";
+              renderSession();
+            });
+          });
+        }
+
+        const canApply = Boolean(state.preview && state.session.sessionKey && state.session.targetGameCarId);
+        elements.applyBuild.disabled = !canApply;
+        elements.applyBuild.textContent = canApply ? `Apply All To Game Car ${state.session.targetGameCarId}` : "Apply All To Game";
+      }
+
+      function selectCar(carId) {
+        state.selectedCarId = carId;
+        applyCarDefaults(carId);
+        renderCars();
+        renderSlots();
+        renderCarStats();
+        renderSession();
+        queuePreview();
+      }
+
+      function renderPreview() {
+        const preview = state.preview;
+        if (!preview) {
+          elements.partsXml.value = "";
+          elements.engineXml.value = "";
+          elements.carXml.value = "";
+          elements.wheelXml.value = "";
+          elements.timingText.textContent = "";
+          elements.warnings.innerHTML = "";
+          elements.dynoSummary.innerHTML = "";
+          elements.dynoGraph.innerHTML = "";
+          renderSession();
+          return;
+        }
+
+        elements.partsXml.value = preview.xml.partsXml || "";
+        elements.engineXml.value = preview.xml.engineXml || "";
+        elements.carXml.value = preview.xml.carXml || "";
+        elements.wheelXml.value = preview.xml.wheelXml || "";
+        elements.timingText.textContent = `[${(preview.timing || []).join(", ")}]`;
+        elements.previewStatus.textContent = `Generated ${new Date(preview.generatedAt).toLocaleTimeString()}`;
+        elements.buildStatus.textContent = `${preview.selectedParts.length} installed parts`;
+        elements.warnings.innerHTML = (preview.warnings || []).length
+          ? preview.warnings.map((warning) => `<li><strong>Warning:</strong> ${escapeHtml(warning)}</li>`).join("")
+          : "<li>No contract mismatches detected.</li>";
+
+        const gears = preview.gearRatios || {};
+        for (const key of ["g1", "g2", "g3", "g4", "g5", "g6", "fg"]) {
+          if (!state.tune.gearRatios[key]) {
+            elements[key].value = gears[key] || "";
+          }
+        }
+
+        renderDynoGraph(preview);
+        renderCarStats();
+        renderSession();
+      }
+
+      function renderDynoGraph(preview) {
+        const graph = preview?.dyno?.graph;
+        const points = graph?.points || [];
+        if (!points.length) {
+          elements.dynoSummary.innerHTML = "";
+          elements.dynoGraph.innerHTML = "";
+          return;
+        }
+
+        const width = 640;
+        const height = 280;
+        const padding = { left: 52, right: 18, top: 18, bottom: 34 };
+        const plotWidth = width - padding.left - padding.right;
+        const plotHeight = height - padding.top - padding.bottom;
+        const maxValue = Math.max(...points.flatMap((point) => [point.horsepower, point.torque])) * 1.12;
+        const maxRpm = Math.max(...points.map((point) => point.rpm));
+        const minRpm = Math.min(...points.map((point) => point.rpm));
+        const rpmRange = Math.max(1, maxRpm - minRpm);
+
+        const mapX = (rpm) => padding.left + (((rpm - minRpm) / rpmRange) * plotWidth);
+        const mapY = (value) => padding.top + plotHeight - ((value / maxValue) * plotHeight);
+        const pathFor = (key) => points.map((point, index) => `${index === 0 ? "M" : "L"} ${mapX(point.rpm).toFixed(2)} ${mapY(point[key]).toFixed(2)}`).join(" ");
+
+        const gridLines = [];
+        for (let index = 0; index < 5; index += 1) {
+          const value = Math.round((maxValue / 4) * index);
+          const y = mapY(value);
+          gridLines.push(`<line x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}" stroke="rgba(255,255,255,0.08)" stroke-dasharray="4 6"/>`);
+          gridLines.push(`<text x="${padding.left - 10}" y="${y + 4}" fill="rgba(255,255,255,0.55)" font-size="11" text-anchor="end">${value}</text>`);
+        }
+        for (let index = 0; index < 5; index += 1) {
+          const rpm = Math.round(minRpm + ((rpmRange / 4) * index));
+          const x = mapX(rpm);
+          gridLines.push(`<line x1="${x}" y1="${padding.top}" x2="${x}" y2="${height - padding.bottom}" stroke="rgba(255,255,255,0.06)" stroke-dasharray="4 6"/>`);
+          gridLines.push(`<text x="${x}" y="${height - 12}" fill="rgba(255,255,255,0.55)" font-size="11" text-anchor="middle">${rpm}</text>`);
+        }
+
+        const hpPeak = points.reduce((best, point) => point.horsepower > best.horsepower ? point : best, points[0]);
+        const tqPeak = points.reduce((best, point) => point.torque > best.torque ? point : best, points[0]);
+
+        elements.dynoSummary.innerHTML = `
+          <div class="graph-chip"><small>Peak HP</small><b>${hpPeak.horsepower}</b></div>
+          <div class="graph-chip"><small>Peak TQ</small><b>${tqPeak.torque}</b></div>
+          <div class="graph-chip"><small>Redline</small><b>${graph.redLine}</b></div>
+        `;
+
+        elements.dynoGraph.innerHTML = `
+          <rect x="${padding.left}" y="${padding.top}" width="${plotWidth}" height="${plotHeight}" rx="14" fill="rgba(0,0,0,0.18)" stroke="rgba(255,255,255,0.07)"/>
+          ${gridLines.join("")}
+          <path d="${pathFor("torque")}" fill="none" stroke="#8ad4ff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="${pathFor("horsepower")}" fill="none" stroke="#f8b84e" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="${mapX(hpPeak.rpm)}" cy="${mapY(hpPeak.horsepower)}" r="4.5" fill="#f8b84e"/>
+          <circle cx="${mapX(tqPeak.rpm)}" cy="${mapY(tqPeak.torque)}" r="4.5" fill="#8ad4ff"/>
+          <text x="${mapX(hpPeak.rpm) + 8}" y="${mapY(hpPeak.horsepower) - 8}" fill="#f8b84e" font-size="11">${hpPeak.horsepower} hp @ ${hpPeak.rpm}</text>
+          <text x="${mapX(tqPeak.rpm) + 8}" y="${mapY(tqPeak.torque) + 16}" fill="#8ad4ff" font-size="11">${tqPeak.torque} tq @ ${tqPeak.rpm}</text>
+        `;
+      }
+
+      async function fetchPreview() {
+        if (!state.selectedCarId) {
+          return;
+        }
+
+        elements.previewStatus.textContent = "Rendering preview...";
+        const response = await fetch("/api/tuning-studio/preview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(currentPayload()),
+        });
+
+        if (!response.ok) {
+          const body = await response.text();
+          throw new Error(body || `preview failed (${response.status})`);
+        }
+
+        state.preview = await response.json();
+        renderPreview();
+      }
+
+      function queuePreview() {
+        window.clearTimeout(previewTimer);
+        previewTimer = window.setTimeout(() => {
+          fetchPreview().catch((error) => {
+            elements.previewStatus.textContent = "Preview failed";
+            elements.warnings.innerHTML = `<li><strong>Warning:</strong> ${escapeHtml(error.message)}</li>`;
+          });
+        }, 120);
+      }
+
+      async function loadCatalog() {
+        const response = await fetch("/api/tuning-studio/catalog");
+        if (!response.ok) {
+          throw new Error(`catalog failed (${response.status})`);
+        }
+
+        state.catalog = await response.json();
+        elements.buildStatus.textContent = "Ready";
+        const firstCar = state.catalog.cars[0];
+        renderCars();
+        renderSlots();
+        renderSession();
+        if (firstCar) {
+          selectCar(firstCar.id);
+        }
+      }
+
+      async function loadSession() {
+        const sessionKey = elements.sessionKey.value.trim();
+        state.session.sessionKey = sessionKey;
+        if (!sessionKey) {
+          state.session.player = null;
+          state.session.cars = [];
+          state.session.targetGameCarId = "";
+          state.session.lastAppliedAt = "";
+          elements.sessionStatus.textContent = "No session connected";
+          renderSession();
+          return;
+        }
+
+        elements.sessionStatus.textContent = "Connecting session...";
+        const response = await fetch(`/api/tuning-studio/session?sk=${encodeURIComponent(sessionKey)}`);
+        if (!response.ok) {
+          const body = await response.text();
+          throw new Error(body || `session failed (${response.status})`);
+        }
+
+        const payload = await response.json();
+        state.session.player = payload.player || null;
+        state.session.cars = payload.cars || [];
+        state.session.targetGameCarId = "";
+        syncGarageTarget();
+        elements.sessionStatus.textContent = `Connected ${payload.player?.username || "session"}`;
+        renderSession();
+      }
+
+      async function applyBuildToGame() {
+        if (!state.preview || !state.session.sessionKey || !state.session.targetGameCarId) {
+          return;
+        }
+
+        elements.sessionStatus.textContent = "Applying build...";
+        const response = await fetch("/api/tuning-studio/apply", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...currentPayload(),
+            sessionKey: state.session.sessionKey,
+            targetGameCarId: state.session.targetGameCarId,
+            selectCar: true,
+          }),
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload?.ok) {
+          throw new Error(payload?.error || `apply failed (${response.status})`);
+        }
+
+        state.session.lastAppliedAt = payload.appliedAt || "";
+        elements.sessionStatus.textContent = `Applied ${new Date(payload.appliedAt || Date.now()).toLocaleTimeString()}`;
+        await loadSession();
+      }
+
+      for (const input of [elements.boostSetting, elements.chipSetting, elements.shiftLightRpm]) {
+        input.addEventListener("input", () => {
+          state.tune[input.id] = Number(input.value || 0);
+          queuePreview();
+        });
+      }
+
+      for (const gearKey of ["g1", "g2", "g3", "g4", "g5", "g6", "fg"]) {
+        elements[gearKey].addEventListener("input", () => {
+          state.tune.gearRatios[gearKey] = elements[gearKey].value;
+          queuePreview();
+        });
+      }
+
+      elements.carSearch.addEventListener("input", renderCars);
+      elements.slotSearch.addEventListener("input", renderSlots);
+      elements.resetBuild.addEventListener("click", () => {
+        if (!state.selectedCarId) {
+          return;
+        }
+        applyCarDefaults(state.selectedCarId);
+        renderSlots();
+        renderSession();
+        queuePreview();
+      });
+      elements.loadSession.addEventListener("click", () => {
+        loadSession().catch((error) => {
+          elements.sessionStatus.textContent = "Session failed";
+          elements.warnings.innerHTML = `<li><strong>Warning:</strong> ${escapeHtml(error.message)}</li>`;
+          renderSession();
+        });
+      });
+      elements.applyBuild.addEventListener("click", () => {
+        applyBuildToGame().catch((error) => {
+          elements.sessionStatus.textContent = "Apply failed";
+          elements.warnings.innerHTML = `<li><strong>Warning:</strong> ${escapeHtml(error.message)}</li>`;
+        });
+      });
+
+      document.addEventListener("click", (event) => {
+        if (state.openSlotMenu && !event.target.closest("[data-slot-picker]")) {
+          state.openSlotMenu = "";
+          renderSlots();
+        }
+      });
+
+      document.querySelectorAll("[data-copy-target]").forEach((button) => {
+        button.addEventListener("click", async () => {
+          const targetId = button.getAttribute("data-copy-target");
+          const target = document.getElementById(targetId);
+          const text = "value" in target ? target.value : target.textContent;
+          await navigator.clipboard.writeText(text || "");
+          const original = button.textContent;
+          button.textContent = "Copied";
+          window.setTimeout(() => {
+            button.textContent = original;
+          }, 900);
+        });
+      });
+
+      loadCatalog().catch((error) => {
+        elements.buildStatus.textContent = "Catalog failed";
+        elements.previewStatus.textContent = "Catalog failed";
+        elements.warnings.innerHTML = `<li><strong>Warning:</strong> ${escapeHtml(error.message)}</li>`;
+      });
+    </script>
+  </body>
+</html>

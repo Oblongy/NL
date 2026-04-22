@@ -6,10 +6,21 @@ import { deflateSync } from "node:zlib";
 import { decodeGameCodeQuery, encryptPayload } from "./nitto-cipher.js";
 import { handleGameAction } from "./game-actions.js";
 import { getSessionPlayerId } from "./session.js";
-import { getCarById, getPlayerById, listCarsForPlayer } from "./user-service.js";
+import {
+  getCarById,
+  getPlayerById,
+  listCarsForPlayer,
+  saveCarPartsXml,
+  updatePlayerDefaultCar,
+} from "./user-service.js";
 import { PARTS_CATALOG_XML } from "./parts-catalog.js";
 import { httpRequestsTotal } from "./metrics.js";
+import {
+  buildTuningStudioCatalog,
+  buildTuningStudioPreview,
+} from "./tuning-studio.js";
 import { rememberRecentDecalUpload } from "./upload-state.js";
+import { FULL_CAR_CATALOG } from "./car-catalog.js";
 
 const LOCAL_STATIC_ROUTES = new Map([
   [
@@ -45,6 +56,22 @@ const LOCAL_STATIC_ROUTES = new Map([
     },
   ],
   [
+    "/tuning-studio",
+    {
+      body: readFileSync(new URL("./tuning-studio.html", import.meta.url), "utf8"),
+      contentType: "text/html; charset=utf-8",
+      source: "local:tuning-studio.html",
+    },
+  ],
+  [
+    "/tuning-studio.html",
+    {
+      body: readFileSync(new URL("./tuning-studio.html", import.meta.url), "utf8"),
+      contentType: "text/html; charset=utf-8",
+      source: "local:tuning-studio.html",
+    },
+  ],
+  [
     "/parts-catalog.xml",
     {
       body: PARTS_CATALOG_XML,
@@ -72,6 +99,7 @@ const LOCAL_STATIC_ROUTES = new Map([
 
 const pendingUploadsByRemote = new Map();
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25MB
+const CAR_NAME_BY_ID = new Map(FULL_CAR_CATALOG.map(([id, name]) => [String(id), String(name || `Car ${id}`)]));
 
 // Cleanup stale uploads every 10 minutes
 setInterval(() => {
@@ -405,6 +433,78 @@ async function resolveCompatSessionInfo(supabase, sessionKey) {
     playerId: Number(player.id || 0),
     username: String(player.username || ""),
     defaultCarGameId: Number(selectedCar?.game_car_id || player.default_car_game_id || 0),
+  };
+}
+
+async function resolveStudioSessionGarage(supabase, sessionKey) {
+  const sessionInfo = await resolveCompatSessionInfo(supabase, sessionKey);
+  if (!sessionInfo) {
+    return null;
+  }
+
+  const cars = await listCarsForPlayer(supabase, sessionInfo.playerId);
+  return {
+    player: sessionInfo,
+    cars: cars.map((car) => ({
+      gameCarId: Number(car.game_car_id || 0),
+      accountCarId: Number(car.account_car_id || 0),
+      catalogCarId: String(car.catalog_car_id || ""),
+      name: CAR_NAME_BY_ID.get(String(car.catalog_car_id || "")) || `Car ${car.catalog_car_id || "?"}`,
+      selected: Boolean(car.selected),
+      paintIndex: Number(car.paint_index || 0),
+      imageIndex: Number(car.image_index || 0),
+      partsLength: String(car.parts_xml || "").length,
+    })),
+  };
+}
+
+async function applyTuningStudioBuild(supabase, payload = {}) {
+  const sessionKey = String(payload.sessionKey || payload.sk || "").trim();
+  if (!supabase || !sessionKey) {
+    throw new Error("Missing session key.");
+  }
+
+  const sessionGarage = await resolveStudioSessionGarage(supabase, sessionKey);
+  if (!sessionGarage?.player?.playerId) {
+    throw new Error("Session could not be resolved.");
+  }
+
+  const targetGameCarId = Number(payload.targetGameCarId || payload.gameCarId || sessionGarage.player.defaultCarGameId || 0);
+  if (!Number.isFinite(targetGameCarId) || targetGameCarId <= 0) {
+    throw new Error("Target game car id is required.");
+  }
+
+  const targetCar = await getCarById(supabase, targetGameCarId);
+  if (!targetCar || Number(targetCar.player_id || 0) !== Number(sessionGarage.player.playerId)) {
+    throw new Error("Target car does not belong to the active session.");
+  }
+
+  const preview = buildTuningStudioPreview(payload);
+  if (String(preview.catalogCarId || payload.catalogCarId || "") && String(targetCar.catalog_car_id || "") !== String(payload.catalogCarId || "")) {
+    throw new Error("Selected studio car does not match the chosen garage car.");
+  }
+
+  const savedCar = await saveCarPartsXml(supabase, targetGameCarId, preview.xml.partsXml);
+  if (!savedCar) {
+    throw new Error("Failed to save parts XML.");
+  }
+
+  if (payload.selectCar !== false) {
+    await updatePlayerDefaultCar(supabase, sessionGarage.player.playerId, targetGameCarId);
+  }
+
+  return {
+    ok: true,
+    appliedAt: new Date().toISOString(),
+    player: sessionGarage.player,
+    targetCar: {
+      gameCarId: Number(savedCar.game_car_id || targetGameCarId),
+      catalogCarId: String(savedCar.catalog_car_id || ""),
+      name: CAR_NAME_BY_ID.get(String(savedCar.catalog_car_id || "")) || `Car ${savedCar.catalog_car_id || "?"}`,
+      selected: true,
+      partsLength: String(savedCar.parts_xml || "").length,
+    },
+    preview,
   };
 }
 
@@ -745,6 +845,97 @@ export function createHttpServer({ config, logger, supabase, services = {}, fixt
         }
 
         sendJson(res, 200, { ok: true, ...sessionInfo });
+        return;
+      }
+
+      if (requestUrl.pathname === "/api/tuning-studio/catalog") {
+        sendJson(res, 200, buildTuningStudioCatalog(), {
+          "X-Nitto-Source": "generated:tuning-studio:catalog",
+        });
+        return;
+      }
+
+      if (requestUrl.pathname === "/api/tuning-studio/session") {
+        const sessionKey = String(requestUrl.searchParams.get("sk") || "");
+        if (!sessionKey) {
+          sendJson(res, 400, { ok: false, error: "missing-session-key" });
+          return;
+        }
+
+        const sessionGarage = await resolveStudioSessionGarage(supabase, sessionKey);
+        if (!sessionGarage) {
+          sendJson(res, 404, { ok: false, error: "session-not-found" });
+          return;
+        }
+
+        sendJson(res, 200, {
+          ok: true,
+          ...sessionGarage,
+        }, {
+          "X-Nitto-Source": "generated:tuning-studio:session",
+        });
+        return;
+      }
+
+      if (requestUrl.pathname === "/api/tuning-studio/preview") {
+        if (req.method !== "POST") {
+          sendText(res, 405, "method not allowed\n", { Allow: "POST" });
+          return;
+        }
+
+        let payload;
+        try {
+          payload = bodyBytes.length ? JSON.parse(bodyBytes.toString("utf8")) : {};
+        } catch (error) {
+          sendJson(res, 400, {
+            ok: false,
+            error: "invalid-json",
+          });
+          return;
+        }
+
+        try {
+          const preview = buildTuningStudioPreview(payload);
+          sendJson(res, 200, preview, {
+            "X-Nitto-Source": "generated:tuning-studio:preview",
+          });
+        } catch (error) {
+          sendJson(res, 400, {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
+
+      if (requestUrl.pathname === "/api/tuning-studio/apply") {
+        if (req.method !== "POST") {
+          sendText(res, 405, "method not allowed\n", { Allow: "POST" });
+          return;
+        }
+
+        let payload;
+        try {
+          payload = bodyBytes.length ? JSON.parse(bodyBytes.toString("utf8")) : {};
+        } catch (error) {
+          sendJson(res, 400, {
+            ok: false,
+            error: "invalid-json",
+          });
+          return;
+        }
+
+        try {
+          const applied = await applyTuningStudioBuild(supabase, payload);
+          sendJson(res, 200, applied, {
+            "X-Nitto-Source": "generated:tuning-studio:apply",
+          });
+        } catch (error) {
+          sendJson(res, 400, {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
         return;
       }
 
