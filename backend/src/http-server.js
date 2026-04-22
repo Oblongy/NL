@@ -110,6 +110,15 @@ function sendJson(res, statusCode, payload, headers = {}) {
   res.end(body, "utf8");
 }
 
+function isLoopbackAddress(remoteAddress) {
+  const normalized = String(remoteAddress || "").trim();
+  return (
+    normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    normalized === "::ffff:127.0.0.1"
+  );
+}
+
 function notFound(res, path) {
   sendText(res, 404, `not found: ${path}\n`);
 }
@@ -528,6 +537,52 @@ export function createHttpServer({ config, logger, supabase, services = {}, fixt
           "Content-Length": Buffer.byteLength(body, "utf8"),
         });
         res.end(body, "utf8");
+        return;
+      }
+
+      const debugRaceMatch = requestUrl.pathname.match(/^\/debug\/races(?:\/([^/]+))?$/i);
+      if (debugRaceMatch) {
+        if (!isLoopbackAddress(remoteAddress)) {
+          sendJson(res, 403, {
+            ok: false,
+            error: "debug-endpoints-localhost-only",
+          });
+          return;
+        }
+
+        const tcpServer = services.tcpServer;
+        if (!tcpServer || typeof tcpServer.getRaceDebugSummary !== "function") {
+          sendJson(res, 503, {
+            ok: false,
+            error: "race-debug-unavailable",
+          });
+          return;
+        }
+
+        const raceId = debugRaceMatch[1] ? decodeURIComponent(debugRaceMatch[1]) : "";
+        if (raceId) {
+          const details = tcpServer.getRaceDebugDetails(raceId);
+          if (!details) {
+            sendJson(res, 404, {
+              ok: false,
+              error: "race-debug-not-found",
+              raceId,
+            });
+            return;
+          }
+
+          sendJson(res, 200, {
+            ok: true,
+            generatedAt: Date.now(),
+            ...details,
+          });
+          return;
+        }
+
+        sendJson(res, 200, {
+          ok: true,
+          ...tcpServer.getRaceDebugSummary(),
+        });
         return;
       }
 

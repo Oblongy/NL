@@ -31,6 +31,8 @@ const MESSAGE_DELIMITER = "\x04";
 const FIELD_DELIMITER = "\x1e";
 const DEFAULT_GLOBAL_CHAT_CLASS = 2;
 const RACE_STAGE_SETTLE_MS = 750;
+const MAX_RACE_DEBUG_EVENTS = 250;
+const MAX_RACE_DEBUG_HISTORY = 50;
 const DEFAULT_LIVE_TOURNAMENT_EVENT = Object.freeze({
   id: 9001,
   scheduleId: 4,
@@ -73,6 +75,9 @@ export class TcpServer {
     this.connIdByPlayerId = new Map();
     this.raceIdByPlayerId = new Map();
     this.liveTournamentState = null;
+    this.raceDebugRecords = new Map();
+    this.recentRaceDebugRecords = [];
+    this.debugTelemetry = false;
     
     // Cleanup stale challenges every 5 minutes
     this.challengeCleanupInterval = setInterval(() => {
@@ -204,6 +209,325 @@ export class TcpServer {
     this.connections.delete(conn.id);
   }
 
+  buildPendingChallengeDebugSnapshot(pending) {
+    if (!pending) {
+      return null;
+    }
+
+    return {
+      id: String(pending.id || ""),
+      createdAt: Number(pending.createdAt || 0) || null,
+      roomId: Number(pending.roomId || 0),
+      trackId: Number(pending.trackId || 0),
+      bracketTime: Number(pending.bracketTime ?? -1),
+      ready: {
+        challenger: !!pending.ready?.challenger,
+        challenged: !!pending.ready?.challenged,
+      },
+      challenger: {
+        connId: Number(pending.challenger?.connId || 0) || null,
+        playerId: Number(pending.challenger?.playerId || 0) || null,
+        carId: Number(pending.challenger?.carId || 0) || null,
+        username: pending.challenger?.username || "",
+        lane: Number(pending.challenger?.lane || 0) || null,
+        bracketTime: Number(pending.bracketTime ?? -1),
+      },
+      challenged: {
+        connId: Number(pending.challenged?.connId || 0) || null,
+        playerId: Number(pending.challenged?.playerId || 0) || null,
+        carId: Number(pending.challenged?.carId || 0) || null,
+        username: pending.challenged?.username || "",
+        bracketTime: Number(pending.challenged?.bracketTime ?? -1),
+      },
+    };
+  }
+
+  buildRaceParticipantDebugSnapshot(race, participant) {
+    const playerId = Number(participant?.playerId || 0);
+    const activeConnId = this.getRaceParticipantConnectionId(participant) || null;
+    const activeConn = activeConnId ? this.connections.get(activeConnId) : null;
+    const lastTelemetry = race?.lastTelemetryByPlayer instanceof Map
+      ? race.lastTelemetryByPlayer.get(playerId) || null
+      : null;
+    const telemetryCount = race?.telemetryCountsByPlayer instanceof Map
+      ? Number(race.telemetryCountsByPlayer.get(playerId) || 0)
+      : 0;
+    const reactionTime = race?.reactionTimes instanceof Map
+      ? race.reactionTimes.get(playerId) ?? null
+      : null;
+
+    return {
+      playerId: playerId || null,
+      carId: Number(participant?.carId || 0) || null,
+      lane: Number(participant?.lane || 0) || null,
+      bracketTime: Number(participant?.bracketTime ?? -1),
+      connId: Number(participant?.connId || 0) || null,
+      raceConnId: Number(participant?.raceConnId || 0) || null,
+      activeConnId,
+      activeRoomId: Number(activeConn?.roomId || 0) || null,
+      ready: !!participant?.ready,
+      opened: !!participant?.opened,
+      isStaged: !!participant?.isStaged,
+      stagedSince: Number(participant?.stagedSince || 0) || null,
+      lastDistance: Number.isFinite(Number(participant?.lastDistance))
+        ? Number(participant.lastDistance)
+        : null,
+      reactionTime,
+      telemetryCount,
+      lastTelemetry: lastTelemetry ? { ...lastTelemetry } : null,
+    };
+  }
+
+  buildRaceDebugSnapshot(race, extra = {}) {
+    const finishResults = {};
+    if (race?.finishResults instanceof Map) {
+      for (const [playerId, result] of race.finishResults.entries()) {
+        finishResults[String(playerId)] = result ? { ...result } : null;
+      }
+    }
+
+    const reactionTimes = {};
+    if (race?.reactionTimes instanceof Map) {
+      for (const [playerId, reactionTime] of race.reactionTimes.entries()) {
+        reactionTimes[String(playerId)] = reactionTime;
+      }
+    }
+
+    return {
+      id: String(race?.id || ""),
+      roomId: Number(race?.roomId || 0),
+      trackId: Number(race?.trackId || 0),
+      phase: race?.phase || "LOADED",
+      createdAt: Number(race?.createdAt || 0) || null,
+      lastActivity: Number(race?.lastActivity || 0) || null,
+      announced: !!race?.announced,
+      stagedCount: Number(race?.stagedCount || 0),
+      allStagedSince: Number(race?.allStagedSince || 0) || null,
+      sequenceStarted: !!race?.sequenceStarted,
+      rivalsReadyBroadcasted: !!race?.rivalsReadyBroadcasted,
+      resultBroadcasted: !!race?.resultBroadcasted,
+      engineWearApplied: !!race?.engineWearApplied,
+      reportedWinnerPlayerId: Number(race?.reportedWinnerPlayerId || 0),
+      winnerPlayerId: Number(race?.winnerPlayerId || 0),
+      raceCompletionPlayerIds: Array.from(this.raceCompletions.get(race?.id) || []),
+      metaPlayers: race?.metaByPlayer instanceof Map ? Array.from(race.metaByPlayer.keys()) : [],
+      rivalsReadyAckPlayers: race?.rivalsReadyAcks instanceof Map ? Array.from(race.rivalsReadyAcks.keys()) : [],
+      reactionTimes,
+      finishResults,
+      players: Array.isArray(race?.players)
+        ? race.players.map((participant) => this.buildRaceParticipantDebugSnapshot(race, participant))
+        : [],
+      ...extra,
+    };
+  }
+
+  buildRaceDebugListItem(snapshot, record = null) {
+    if (!snapshot) {
+      return null;
+    }
+
+    return {
+      id: snapshot.id,
+      status: record?.status || snapshot.finalStatus || "active",
+      finalReason: snapshot.finalReason || null,
+      phase: snapshot.phase,
+      roomId: snapshot.roomId,
+      trackId: snapshot.trackId,
+      createdAt: snapshot.createdAt,
+      lastActivity: snapshot.lastActivity,
+      completedAt: record?.completedAt || null,
+      eventCount: Array.isArray(record?.events) ? record.events.length : 0,
+      sequenceStarted: !!snapshot.sequenceStarted,
+      rivalsReadyBroadcasted: !!snapshot.rivalsReadyBroadcasted,
+      resultBroadcasted: !!snapshot.resultBroadcasted,
+      winnerPlayerId: Number(snapshot.winnerPlayerId || 0),
+      reportedWinnerPlayerId: Number(snapshot.reportedWinnerPlayerId || 0),
+      players: (snapshot.players || []).map((player) => ({
+        playerId: player.playerId,
+        carId: player.carId,
+        lane: player.lane,
+        connId: player.connId,
+        raceConnId: player.raceConnId,
+        activeConnId: player.activeConnId,
+        opened: player.opened,
+        isStaged: player.isStaged,
+        bracketTime: player.bracketTime,
+        telemetryCount: player.telemetryCount,
+        lastDistance: player.lastDistance,
+      })),
+    };
+  }
+
+  ensureRaceDebugRecord(race) {
+    if (!race?.id) {
+      return null;
+    }
+
+    let record = this.raceDebugRecords.get(race.id);
+    if (!record) {
+      record = {
+        id: String(race.id),
+        createdAt: Number(race.createdAt || Date.now()),
+        updatedAt: Date.now(),
+        completedAt: null,
+        status: "active",
+        snapshot: null,
+        events: [],
+      };
+      this.raceDebugRecords.set(race.id, record);
+    }
+
+    record.snapshot = this.buildRaceDebugSnapshot(race, {
+      finalStatus: record.status === "active" ? null : record.status,
+    });
+    record.updatedAt = Date.now();
+    return record;
+  }
+
+  updateRaceDebugSnapshot(race, extra = {}) {
+    const record = this.ensureRaceDebugRecord(race);
+    if (!record) {
+      return null;
+    }
+
+    record.snapshot = this.buildRaceDebugSnapshot(race, {
+      finalStatus: record.status === "active" ? null : record.status,
+      ...extra,
+    });
+    record.updatedAt = Date.now();
+    return record;
+  }
+
+  recordRaceDebugEvent(race, type, payload = {}) {
+    const record = this.ensureRaceDebugRecord(race);
+    if (!record) {
+      return;
+    }
+
+    record.events.push({
+      at: Date.now(),
+      type,
+      payload,
+    });
+    if (record.events.length > MAX_RACE_DEBUG_EVENTS) {
+      record.events.splice(0, record.events.length - MAX_RACE_DEBUG_EVENTS);
+    }
+    this.updateRaceDebugSnapshot(race);
+  }
+
+  archiveRaceDebugRecord(race, status = "completed", { reason = "" } = {}) {
+    const record = this.ensureRaceDebugRecord(race);
+    if (!record) {
+      return;
+    }
+
+    record.status = status;
+    record.completedAt = Date.now();
+    record.updatedAt = record.completedAt;
+    record.snapshot = this.buildRaceDebugSnapshot(race, {
+      finalStatus: status,
+      finalReason: reason || null,
+    });
+
+    const archivedRecord = {
+      id: record.id,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+      completedAt: record.completedAt,
+      status: record.status,
+      snapshot: record.snapshot,
+      events: [...record.events],
+    };
+
+    this.recentRaceDebugRecords = [
+      archivedRecord,
+      ...this.recentRaceDebugRecords.filter((entry) => entry.id !== archivedRecord.id),
+    ].slice(0, MAX_RACE_DEBUG_HISTORY);
+    this.raceDebugRecords.delete(race.id);
+  }
+
+  getRaceDebugSummary() {
+    const active = Array.from(this.races.values())
+      .map((race) => {
+        const record = this.ensureRaceDebugRecord(race);
+        return this.buildRaceDebugListItem(record?.snapshot, record);
+      })
+      .filter(Boolean)
+      .sort((left, right) => (right?.createdAt || 0) - (left?.createdAt || 0));
+
+    const recent = this.recentRaceDebugRecords
+      .map((record) => this.buildRaceDebugListItem(record.snapshot, record))
+      .filter(Boolean);
+
+    const pendingChallenges = Array.from(this.pendingRaceChallenges.values())
+      .map((pending) => this.buildPendingChallengeDebugSnapshot(pending))
+      .sort((left, right) => (right?.createdAt || 0) - (left?.createdAt || 0));
+
+    return {
+      generatedAt: Date.now(),
+      activeCount: active.length,
+      recentCount: recent.length,
+      pendingChallengeCount: pendingChallenges.length,
+      active,
+      recent,
+      pendingChallenges,
+    };
+  }
+
+  getRaceDebugDetails(raceId) {
+    const id = String(raceId || "").trim();
+    if (!id) {
+      return null;
+    }
+
+    const activeRace = this.races.get(id);
+    if (activeRace) {
+      const record = this.ensureRaceDebugRecord(activeRace);
+      return record
+        ? {
+            type: "active-race",
+            id: record.id,
+            status: record.status,
+            createdAt: record.createdAt,
+            updatedAt: record.updatedAt,
+            completedAt: record.completedAt,
+            snapshot: record.snapshot,
+            events: record.events,
+          }
+        : null;
+    }
+
+    const archivedRecord = this.recentRaceDebugRecords.find((entry) => entry.id === id);
+    if (archivedRecord) {
+      return {
+        type: "recent-race",
+        id: archivedRecord.id,
+        status: archivedRecord.status,
+        createdAt: archivedRecord.createdAt,
+        updatedAt: archivedRecord.updatedAt,
+        completedAt: archivedRecord.completedAt,
+        snapshot: archivedRecord.snapshot,
+        events: archivedRecord.events,
+      };
+    }
+
+    const pendingChallenge = this.pendingRaceChallenges.get(id);
+    if (pendingChallenge) {
+      return {
+        type: "pending-challenge",
+        id,
+        status: "pending",
+        createdAt: Number(pendingChallenge.createdAt || 0) || null,
+        updatedAt: Number(pendingChallenge.createdAt || 0) || null,
+        completedAt: null,
+        snapshot: this.buildPendingChallengeDebugSnapshot(pendingChallenge),
+        events: [],
+      };
+    }
+
+    return null;
+  }
+
   handleRaceDisconnect(conn) {
     const playerId = Number(conn?.playerId || 0);
     const raceId = String(conn?.raceId || "");
@@ -247,8 +571,16 @@ export class TcpServer {
       winnerPlayerId,
       phase: race.phase || "LOADED",
     });
+    this.recordRaceDebugEvent(race, "disconnect-resolution", {
+      disconnectedPlayerId: playerId,
+      winnerPlayerId,
+      phase: race.phase || "LOADED",
+    });
 
     this.tryBroadcastRaceResult(race, winnerPlayerId);
+    this.archiveRaceDebugRecord(race, "disconnect-win", {
+      reason: "player-disconnected",
+    });
     this.races.delete(raceId);
     this.raceCompletions.delete(raceId);
     this.raceIdByPlayerId.delete(playerId);
@@ -413,6 +745,11 @@ export class TcpServer {
               playerId,
               messageType,
             });
+            this.recordRaceDebugEvent(race, "rd-ignored-before-start", {
+              connId: conn.id,
+              playerId,
+              messageType,
+            });
             return;
           }
 
@@ -458,10 +795,17 @@ export class TcpServer {
               reportedWinnerPlayerId: race.reportedWinnerPlayerId || 0,
               computedWinnerPlayerId,
             });
+            this.recordRaceDebugEvent(race, "rd-all-players-complete", {
+              reportedWinnerPlayerId: race.reportedWinnerPlayerId || 0,
+              computedWinnerPlayerId,
+            });
             this.tryBroadcastRaceResult(
               race,
               computedWinnerPlayerId,
             );
+            this.archiveRaceDebugRecord(race, "completed", {
+              reason: "both-rd-received",
+            });
             this.races.delete(race.id);
             this.raceCompletions.delete(race.id);
             this.logger.info("TCP race cleaned up", { raceId: race.id });
@@ -1161,6 +1505,11 @@ export class TcpServer {
     if (!result) {
       return;
     }
+    this.recordRaceDebugEvent(race, "race-done", {
+      playerId: Number(playerId || 0),
+      elapsedTime: result?.et ?? "-1",
+      trapSpeed: result?.ts ?? "-1",
+    });
     const escapedXml = this.escapeForTcp(this.buildRaceDoneXml(playerId, result));
     for (const participant of race.players) {
       const connectionIds = [...new Set([participant.connId, participant.raceConnId].filter(Boolean))];
@@ -1182,6 +1531,10 @@ export class TcpServer {
     race.resultBroadcasted = true;
     race.winnerPlayerId = winnerPlayerId || race.winnerPlayerId || 0;
     this.maybeAwardRaceScore(race, race.winnerPlayerId);
+    this.recordRaceDebugEvent(race, "race-result-broadcast", {
+      winnerPlayerId: race.winnerPlayerId,
+      reportedWinnerPlayerId: race.reportedWinnerPlayerId || 0,
+    });
 
     const escapedXml = this.escapeForTcp(this.buildRaceSummaryXml(race, race.winnerPlayerId));
     for (const participant of race.players) {
@@ -1221,6 +1574,11 @@ export class TcpServer {
     const previous = race.phase || "LOADED";
     race.phase = phase;
     if (previous !== phase) {
+      this.recordRaceDebugEvent(race, "phase-change", {
+        previousPhase: previous,
+        phase,
+        reason,
+      });
       this.logger.info("TCP race phase changed", {
         raceId: race.id,
         previousPhase: previous,
@@ -1287,6 +1645,10 @@ export class TcpServer {
       allStaged,
       trigger: trigger || null,
     });
+    this.recordRaceDebugEvent(race, "rivals-ready-broadcast", {
+      allStaged,
+      trigger: trigger || null,
+    });
   }
 
   maybeStartRaceSequence(race, trigger = "") {
@@ -1298,6 +1660,11 @@ export class TcpServer {
     this.setRacePhase(race, "RACING", trigger || "both-opened");
     this.logger.info("TCP race sequence started", {
       raceId: race.id,
+      trigger: trigger || "both-opened",
+      stagedCount: race.stagedCount || 0,
+      rivalsReadyAcks: Array.from(race.rivalsReadyAcks.keys()),
+    });
+    this.recordRaceDebugEvent(race, "race-sequence-started", {
       trigger: trigger || "both-opened",
       stagedCount: race.stagedCount || 0,
       rivalsReadyAcks: Array.from(race.rivalsReadyAcks.keys()),
@@ -1429,6 +1796,7 @@ export class TcpServer {
     const numericDistance = Number(distance);
     const numericVelocity = Number(velocity);
     const numericAcceleration = Number(acceleration);
+    const numericTick = Number(tick);
     const isPrelaunchTelemetry =
       this.isRaceStartWindow(numericDistance) ||
       this.isStagedDistance(numericDistance) ||
@@ -1445,6 +1813,14 @@ export class TcpServer {
           velocity: numericVelocity,
           acceleration: numericAcceleration,
         });
+        this.recordRaceDebugEvent(race, "midrun-open-inference-ignored", {
+          connId: conn.id,
+          playerId: sender.playerId,
+          messageType,
+          distance: numericDistance,
+          velocity: numericVelocity,
+          acceleration: numericAcceleration,
+        });
         return;
       }
 
@@ -1452,6 +1828,11 @@ export class TcpServer {
       this.logger.info("TCP race open inferred from telemetry", {
         connId: conn.id,
         raceId: race.id,
+        playerId: sender.playerId,
+        messageType,
+      });
+      this.recordRaceDebugEvent(race, "race-open-inferred", {
+        connId: conn.id,
         playerId: sender.playerId,
         messageType,
       });
@@ -1470,6 +1851,24 @@ export class TcpServer {
     race.lastActivity = Date.now();
 
     sender.lastDistance = numericDistance;
+    if (!race.lastTelemetryByPlayer) {
+      race.lastTelemetryByPlayer = new Map();
+    }
+    race.lastTelemetryByPlayer.set(Number(sender.playerId), {
+      at: Date.now(),
+      messageType,
+      distance: numericDistance,
+      velocity: numericVelocity,
+      acceleration: numericAcceleration,
+      tick: Number.isFinite(numericTick) ? numericTick : null,
+    });
+    if (!race.telemetryCountsByPlayer) {
+      race.telemetryCountsByPlayer = new Map();
+    }
+    race.telemetryCountsByPlayer.set(
+      Number(sender.playerId),
+      Number(race.telemetryCountsByPlayer.get(Number(sender.playerId)) || 0) + 1,
+    );
     sender.isStaged =
       this.isStagedDistance(sender.lastDistance) ||
       (!race.sequenceStarted && this.isStationaryPrelaunchState(numericDistance, numericVelocity, numericAcceleration));
@@ -1487,6 +1886,14 @@ export class TcpServer {
         this.logger.warn("TCP telemetry ignored before race sequence start", {
           connId: conn.id,
           raceId: race.id,
+          playerId: sender.playerId,
+          messageType,
+          distance: numericDistance,
+          velocity: numericVelocity,
+          acceleration: numericAcceleration,
+        });
+        this.recordRaceDebugEvent(race, "prestart-telemetry-ignored", {
+          connId: conn.id,
           playerId: sender.playerId,
           messageType,
           distance: numericDistance,
@@ -1630,6 +2037,10 @@ export class TcpServer {
     if (this.hasAllRaceMeta(race) && !race.sequenceStarted) {
       this.setRacePhase(race, "STAGED", "meta-from-both");
     }
+    this.recordRaceDebugEvent(race, "race-meta-updated", {
+      playerId: Number(conn.playerId || 0),
+      metaCount: race.metaByPlayer.size,
+    });
     this.maybeBroadcastRivalsReady(race);
     this.maybeStartRaceSequence(race, "meta-update");
   }
@@ -1657,6 +2068,11 @@ export class TcpServer {
     this.logger.info("TCP RIVRDY ack received", {
       connId: conn.id,
       raceId: race.id,
+      playerId: sender.playerId,
+      ackCount: race.rivalsReadyAcks.size,
+    });
+    this.recordRaceDebugEvent(race, "rivrdy-ack", {
+      connId: conn.id,
       playerId: sender.playerId,
       ackCount: race.rivalsReadyAcks.size,
     });
@@ -1857,6 +2273,12 @@ export class TcpServer {
         }
         race.players = race.players.filter((player) => Boolean(player.connId || player.raceConnId));
         if (race.players.length === 0) {
+          this.recordRaceDebugEvent(race, "race-emptied", {
+            connId: conn.id,
+          });
+          this.archiveRaceDebugRecord(race, "abandoned", {
+            reason: "all-players-left",
+          });
           this.races.delete(conn.raceId);
           this.raceCompletions.delete(conn.raceId);
           this.logger.info("TCP race cleaned up (all players left)", { raceId: conn.raceId });
@@ -2892,6 +3314,11 @@ export class TcpServer {
     }
     player.opened = true;
     this.logger.info("TCP RO received", { connId: conn.id, raceId: race.id, openedCount: race.players.filter((entry) => entry.opened).length });
+    this.recordRaceDebugEvent(race, "race-open", {
+      connId: conn.id,
+      playerId: Number(player.playerId || 0),
+      openedCount: race.players.filter((entry) => entry.opened).length,
+    });
 
     // Ack the tree-open event only after the client explicitly sends RO.
     this.sendMessage(conn, '"ac", "RO", "t", 32');
@@ -3027,9 +3454,20 @@ export class TcpServer {
       sequenceStarted: false,
       metaByPlayer: new Map(),
       rivalsReadyAcks: new Map(),
+      lastTelemetryByPlayer: new Map(),
+      telemetryCountsByPlayer: new Map(),
     };
 
     this.races.set(race.id, race);
+    this.ensureRaceDebugRecord(race);
+    this.recordRaceDebugEvent(race, "race-created", {
+      challengerPlayerId: pending.challenger.playerId,
+      challengedPlayerId: pending.challenged.playerId,
+      challengerCarId: pending.challenger.carId,
+      challengedCarId: pending.challenged.carId,
+      challengerBracketTime,
+      challengedBracketTime,
+    });
     challengerConn.raceId = race.id;
     challengedConn.raceId = race.id;
 
@@ -3310,6 +3748,12 @@ export class TcpServer {
       
       if (shouldCleanup) {
         this.logger.info("Cleaning up race", { raceId, reason });
+        this.recordRaceDebugEvent(race, "stale-race-cleanup", {
+          reason,
+        });
+        this.archiveRaceDebugRecord(race, "stale-cleanup", {
+          reason,
+        });
         
         // Clean up reverse lookups for all players in this race
         for (const player of race.players) {
