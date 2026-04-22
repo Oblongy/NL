@@ -406,6 +406,16 @@ export class TcpServer {
         const playerId = Number(conn.playerId || 0);
         
         if (race) {
+          if (!race.sequenceStarted) {
+            this.logger.warn("TCP RD ignored before race sequence start", {
+              connId: conn.id,
+              raceId: race.id,
+              playerId,
+              messageType,
+            });
+            return;
+          }
+
           const participant = this.findRaceParticipant(race, conn, { bindRaceConn: true });
           if (participant) {
             if (!race.finishResults) {
@@ -987,6 +997,17 @@ export class TcpServer {
     );
   }
 
+  isRaceStartWindow(distance) {
+    const numericDistance = Number(distance);
+    if (!Number.isFinite(numericDistance)) {
+      return false;
+    }
+
+    // Only treat telemetry near the line as prelaunch/open-state traffic.
+    // Mid-run packets should not be allowed to backfill a missing RO/tree sync.
+    return numericDistance >= -20 && numericDistance <= 20;
+  }
+
   determineRaceWinnerFromResults(race) {
     if (!race?.finishResults || race.finishResults.size < race.players.length) {
       return 0;
@@ -1370,28 +1391,6 @@ export class TcpServer {
       return;
     }
 
-    if (!sender.opened && sender.raceConnId === conn.id) {
-      sender.opened = true;
-      this.logger.info("TCP race open inferred from telemetry", {
-        connId: conn.id,
-        raceId: race.id,
-        playerId: sender.playerId,
-        messageType,
-      });
-
-      // Some race flows begin streaming telemetry on the race channel without
-      // emitting a separate RO packet first. Acking RO here keeps those
-      // clients on the expected tree/open state without reopening at SRC time.
-      this.sendMessage(conn, '"ac", "RO", "t", 32');
-    }
-
-    if (!this.isRaceReadyForTelemetry(race)) {
-      return;
-    }
-
-    // Update race activity timestamp
-    race.lastActivity = Date.now();
-
     // Parse the decoded fields for server-side staging/state tracking, but relay
     // the original race packet bytes to the opponent unchanged.
     const rawDistance = String(parts[1] ?? "").trim();
@@ -1430,6 +1429,45 @@ export class TcpServer {
     const numericDistance = Number(distance);
     const numericVelocity = Number(velocity);
     const numericAcceleration = Number(acceleration);
+    const isPrelaunchTelemetry =
+      this.isRaceStartWindow(numericDistance) ||
+      this.isStagedDistance(numericDistance) ||
+      this.isStationaryPrelaunchState(numericDistance, numericVelocity, numericAcceleration);
+
+    if (!sender.opened && sender.raceConnId === conn.id) {
+      if (!isPrelaunchTelemetry) {
+        this.logger.warn("TCP race open inference ignored for mid-run telemetry", {
+          connId: conn.id,
+          raceId: race.id,
+          playerId: sender.playerId,
+          messageType,
+          distance: numericDistance,
+          velocity: numericVelocity,
+          acceleration: numericAcceleration,
+        });
+        return;
+      }
+
+      sender.opened = true;
+      this.logger.info("TCP race open inferred from telemetry", {
+        connId: conn.id,
+        raceId: race.id,
+        playerId: sender.playerId,
+        messageType,
+      });
+
+      // Some race flows begin streaming telemetry on the race channel without
+      // emitting a separate RO packet first. Acking RO here keeps those
+      // clients on the expected tree/open state without reopening at SRC time.
+      this.sendMessage(conn, '"ac", "RO", "t", 32');
+    }
+
+    if (!this.isRaceReadyForTelemetry(race)) {
+      return;
+    }
+
+    // Update race activity timestamp
+    race.lastActivity = Date.now();
 
     sender.lastDistance = numericDistance;
     sender.isStaged =
@@ -1443,6 +1481,21 @@ export class TcpServer {
     }
     this.maybeBroadcastRivalsReady(race);
     this.maybeStartRaceSequence(race, "staging-complete");
+
+    if (!race.sequenceStarted) {
+      if (!isPrelaunchTelemetry) {
+        this.logger.warn("TCP telemetry ignored before race sequence start", {
+          connId: conn.id,
+          raceId: race.id,
+          playerId: sender.playerId,
+          messageType,
+          distance: numericDistance,
+          velocity: numericVelocity,
+          acceleration: numericAcceleration,
+        });
+      }
+      return;
+    }
 
     const rawTelemetryFrame =
       typeof conn._lastRaw === "string" && conn._lastRaw.length > 0
