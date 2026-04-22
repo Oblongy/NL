@@ -2,13 +2,55 @@
 # No Git required - uses SCP to copy files directly
 
 param(
-    [string]$VpsIp = "173.249.220.49",
-    [string]$VpsUser = "root"
+    [string]$VpsIp = "3.93.35.32",
+    [string]$VpsUser = "ubuntu",
+    [string]$IdentityFile
 )
 
 $ErrorActionPreference = "Stop"
 $LocalBackendDir = $PSScriptRoot
 $VpsBackendDir = "/opt/NL/backend"
+
+function Invoke-NativeChecked {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath,
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]]$ArgumentList
+    )
+
+    & $FilePath @ArgumentList
+    if ($LASTEXITCODE -ne 0) {
+        throw "Command failed with exit code ${LASTEXITCODE}: $FilePath $($ArgumentList -join ' ')"
+    }
+}
+
+function Invoke-UploadOverSsh {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$SshArgs,
+        [Parameter(Mandatory = $true)]
+        [string]$LocalFile,
+        [Parameter(Mandatory = $true)]
+        [string]$RemoteTarget
+    )
+
+    $quotedLocalFile = '"' + $LocalFile.Replace('"', '\"') + '"'
+    $sshCommand = @("ssh") + $SshArgs + @("${VpsUser}@${VpsIp}", "`"cat > $RemoteTarget`"")
+    $cmdLine = ($sshCommand -join ' ') + " < $quotedLocalFile"
+    cmd /c $cmdLine
+    if ($LASTEXITCODE -ne 0) {
+        throw "Upload failed with exit code ${LASTEXITCODE}: $cmdLine"
+    }
+}
+
+$SshCommonArgs = @()
+if ($IdentityFile) {
+    if (-not (Test-Path $IdentityFile)) {
+        throw "Identity file not found: $IdentityFile"
+    }
+    $SshCommonArgs += @("-i", $IdentityFile)
+}
 
 Write-Host "=== Direct VPS Deployment ===" -ForegroundColor Cyan
 Write-Host "Local:  $LocalBackendDir"
@@ -41,6 +83,9 @@ $ExcludePatterns = @(
 if (Get-Command 7z -ErrorAction SilentlyContinue) {
     $ExcludeArgs = $ExcludePatterns | ForEach-Object { "-xr!$_" }
     & 7z a -tzip $TempArchive "$LocalBackendDir\*" $ExcludeArgs -mx1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "7z failed with exit code ${LASTEXITCODE}"
+    }
 } else {
     # Fallback: create temp directory and copy files
     $TempDir = Join-Path $env:TEMP "nl-backend-deploy"
@@ -73,28 +118,28 @@ if (Get-Command 7z -ErrorAction SilentlyContinue) {
 }
 
 Write-Host "Uploading to VPS..." -ForegroundColor Yellow
-scp $TempArchive "${VpsUser}@${VpsIp}:/tmp/nl-backend-deploy.zip"
+Invoke-UploadOverSsh -SshArgs $SshCommonArgs -LocalFile $TempArchive -RemoteTarget "/tmp/nl-backend-deploy.zip"
 
 Write-Host "Extracting and installing on VPS..." -ForegroundColor Yellow
 
 # Execute commands one by one to avoid line ending issues
-ssh "${VpsUser}@${VpsIp}" "cd /tmp && unzip -o nl-backend-deploy.zip -d nl-backend-temp"
-ssh "${VpsUser}@${VpsIp}" "rm -rf $VpsBackendDir/src"
-ssh "${VpsUser}@${VpsIp}" "rm -f $VpsBackendDir/package*.json $VpsBackendDir/*.js $VpsBackendDir/*.sh $VpsBackendDir/*.ps1"
-ssh "${VpsUser}@${VpsIp}" "mkdir -p $VpsBackendDir"
-ssh "${VpsUser}@${VpsIp}" "cp -rf /tmp/nl-backend-temp/* $VpsBackendDir/"
-ssh "${VpsUser}@${VpsIp}" "rm -rf /tmp/nl-backend-temp /tmp/nl-backend-deploy.zip"
-ssh "${VpsUser}@${VpsIp}" "cd $VpsBackendDir && npm install --omit=dev"
-ssh "${VpsUser}@${VpsIp}" "pm2 delete nl-backend || true"
-ssh "${VpsUser}@${VpsIp}" "pm2 start $VpsBackendDir/ecosystem.config.cjs"
+Invoke-NativeChecked ssh @SshCommonArgs "${VpsUser}@${VpsIp}" "cd /tmp && unzip -o nl-backend-deploy.zip -d nl-backend-temp"
+Invoke-NativeChecked ssh @SshCommonArgs "${VpsUser}@${VpsIp}" "rm -rf $VpsBackendDir/src"
+Invoke-NativeChecked ssh @SshCommonArgs "${VpsUser}@${VpsIp}" "rm -f $VpsBackendDir/package*.json $VpsBackendDir/*.js $VpsBackendDir/*.sh $VpsBackendDir/*.ps1"
+Invoke-NativeChecked ssh @SshCommonArgs "${VpsUser}@${VpsIp}" "mkdir -p $VpsBackendDir"
+Invoke-NativeChecked ssh @SshCommonArgs "${VpsUser}@${VpsIp}" "cp -rf /tmp/nl-backend-temp/* $VpsBackendDir/"
+Invoke-NativeChecked ssh @SshCommonArgs "${VpsUser}@${VpsIp}" "rm -rf /tmp/nl-backend-temp /tmp/nl-backend-deploy.zip"
+Invoke-NativeChecked ssh @SshCommonArgs "${VpsUser}@${VpsIp}" "cd $VpsBackendDir && npm install --omit=dev"
+Invoke-NativeChecked ssh @SshCommonArgs "${VpsUser}@${VpsIp}" "pm2 delete nl-backend || true"
+Invoke-NativeChecked ssh @SshCommonArgs "${VpsUser}@${VpsIp}" "pm2 start $VpsBackendDir/ecosystem.config.cjs"
 
 Write-Host ""
 Write-Host "Checking status..." -ForegroundColor Yellow
-ssh "${VpsUser}@${VpsIp}" "pm2 status"
+Invoke-NativeChecked ssh @SshCommonArgs "${VpsUser}@${VpsIp}" "pm2 status"
 
 Write-Host ""
 Write-Host "Recent logs:" -ForegroundColor Yellow
-ssh "${VpsUser}@${VpsIp}" "pm2 logs nl-backend --lines 20 --nostream"
+Invoke-NativeChecked ssh @SshCommonArgs "${VpsUser}@${VpsIp}" "pm2 logs nl-backend --lines 20 --nostream"
 
 Remove-Item $TempArchive -Force
 

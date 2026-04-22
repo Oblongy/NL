@@ -11,6 +11,7 @@
     "check:showroom-specs": "python tools/check_showroom_specs.py"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.101.1"
+    "@supabase/supabase-js": "^2.101.1",
+    "ws": "^8.20.0"
   }
 }

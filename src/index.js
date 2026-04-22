@@ -12,6 +12,8 @@ import { TcpNotify } from "./tcp-notify.js";
 import { TcpProxy } from "./tcp-proxy.js";
 import { TcpServer } from "./tcp-server.js";
 import { logShowroomSpecCoverage } from "./showroom-spec-audit.js";
+import { createApiRouter } from "./api-routes.js";
+import { createWsServer } from "./ws-server.js";
 
 const supabase = await createGameSupabase(config, logger);
 logShowroomSpecCoverage(logger);
@@ -65,6 +67,39 @@ const server = createHttpServer({
     tcpServer,
   },
 });
+
+// Mount the custom-client JSON API router additively.
+// The apiRouter calls next() for non-/api/* paths so the existing handler takes over.
+const jwtSecret = process.env.JWT_SECRET || config.jwtSecret || "change-me-in-production";
+const apiRouter = createApiRouter({
+  supabase,
+  logger,
+  services: {
+    raceRoomRegistry,
+    raceManager,
+    rivalsState,
+    teamState,
+    homePollState,
+    tcpNotify,
+    tcpProxy,
+    tcpServer,
+  },
+  jwtSecret,
+});
+
+// Wrap the server's request listener so apiRouter runs first.
+const originalListeners = server.listeners("request");
+server.removeAllListeners("request");
+server.on("request", async (req, res) => {
+  await apiRouter(req, res, () => {
+    for (const listener of originalListeners) {
+      listener.call(server, req, res);
+    }
+  });
+});
+
+// Attach the WebSocket server for the custom client.
+createWsServer(server, { tcpServer, logger }, jwtSecret);
 
 await tcpServer.start();
 

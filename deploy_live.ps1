@@ -1,6 +1,6 @@
 param(
-  [string]$HostName = $(if ($env:NL_VPS_HOST) { $env:NL_VPS_HOST } else { "173.249.220.49" }),
-  [string]$UserName = $(if ($env:NL_VPS_USER) { $env:NL_VPS_USER } else { "root" }),
+  [string]$HostName = $(if ($env:NL_VPS_HOST) { $env:NL_VPS_HOST } else { "3.93.35.32" }),
+  [string]$UserName = $(if ($env:NL_VPS_USER) { $env:NL_VPS_USER } else { "ubuntu" }),
   [string]$RemoteDir = $(if ($env:NL_VPS_BACKEND_DIR) { $env:NL_VPS_BACKEND_DIR } else { "/opt/NL/backend" }),
   [string]$AppName = $(if ($env:NL_VPS_PM2_APP) { $env:NL_VPS_PM2_APP } else { "nl-backend" }),
   [string[]]$Files,

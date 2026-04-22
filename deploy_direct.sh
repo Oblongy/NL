@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-VPS_IP="173.249.220.49"
+VPS_IP="3.93.35.32"
 VPS_USER="root"
 VPS_BACKEND_DIR="/opt/NL/backend"
 LOCAL_BACKEND_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
