@@ -2677,6 +2677,30 @@ async function handleGetUsers(context) {
   };
 }
 
+function isFixtureModeEnabled(context) {
+  return Boolean(context?.config?.useFixtures);
+}
+
+function buildFixtureRaceCar(gameCarId, options = {}) {
+  const resolvedGameCarId = Number(gameCarId || options.accountCarId || 1);
+  const catalogCarId = Number(options.catalogCarId || DEFAULT_STARTER_CATALOG_CAR_ID);
+
+  return {
+    game_car_id: resolvedGameCarId,
+    account_car_id: Number(options.accountCarId || resolvedGameCarId),
+    catalog_car_id: catalogCarId,
+    selected: Boolean(options.selected),
+    color_code: String(options.colorCode || "FF0000"),
+    paint_index: Number(options.paintIndex || 1),
+    image_index: Number(options.imageIndex || 0),
+    wheel_xml: options.wheelXml || getDefaultWheelXmlForCar(catalogCarId),
+    parts_xml: options.partsXml || DEFAULT_STOCK_PARTS_XML,
+    locked: 0,
+    owner_public_id: Number(options.ownerPublicId || Math.max(1, Math.floor(resolvedGameCarId / 100) || 1)),
+    plate_name: "",
+  };
+}
+
 async function handleGetRacersCars(context) {
   const { supabase, params } = context;
   if (!supabase) {
@@ -2687,6 +2711,14 @@ async function handleGetRacersCars(context) {
     .split(",")
     .map((value) => Number(value.trim()))
     .filter((value) => Number.isFinite(value) && value > 0);
+
+  if (isFixtureModeEnabled(context)) {
+    const fixtureCars = acidList.map((gameCarId) => buildFixtureRaceCar(gameCarId));
+    return {
+      body: wrapSuccessData(renderRacerCars(fixtureCars)),
+      source: "fixture:getracerscars",
+    };
+  }
 
   const caller = await resolveCallerSession(context, "supabase:getracerscars");
   if (!caller?.ok) {
@@ -2719,6 +2751,22 @@ async function handleGetAllOtherUserCars(context) {
   const targetPublicId = Number(params.get("tid") || 0);
   if (!targetPublicId) {
     return { body: failureBody(), source: "supabase:getallotherusercars:missing-target" };
+  }
+
+  if (isFixtureModeEnabled(context)) {
+    return {
+      body: wrapSuccessData(
+        renderOwnedGarageCarsWrapper([
+          buildFixtureRaceCar(targetPublicId, {
+            selected: true,
+            ownerPublicId: targetPublicId,
+          }),
+        ], {
+          ownerPublicId: targetPublicId,
+        }),
+      ),
+      source: "fixture:getallotherusercars",
+    };
   }
 
   const targetPlayer = await resolveTargetPlayerByPublicId(supabase, targetPublicId);
@@ -2756,6 +2804,28 @@ async function handleGetTwoRacersCars(context) {
 
   if (gameCarIds.length === 0) {
     return { body: failureBody(), source: "supabase:gettworacerscars:missing-cars" };
+  }
+
+  if (isFixtureModeEnabled(context)) {
+    const orderedCars = gameCarIds.map((gameCarId) =>
+      buildFixtureRaceCar(gameCarId, {
+        accountCarId: gameCarId,
+      }),
+    );
+
+    if (requestedCarIds.length >= 2 && Number(requestedCarIds[1] || 0) <= 0 && orderedCars.length === 1) {
+      const primaryCar = orderedCars[0];
+      orderedCars.push({
+        ...primaryCar,
+        game_car_id: Number(primaryCar.game_car_id),
+        account_car_id: Number(primaryCar.account_car_id || primaryCar.game_car_id),
+      });
+    }
+
+    return {
+      body: wrapSuccessData(renderTwoRacerCars(orderedCars)),
+      source: "fixture:gettworacerscars",
+    };
   }
 
   const cars = await listCarsByIds(supabase, gameCarIds);
@@ -2831,6 +2901,18 @@ async function handleGetOneCar(context) {
   }
 
   const requestedCarId = Number(params.get("acid") || 0);
+
+  if (isFixtureModeEnabled(context)) {
+    const fixtureCar = buildFixtureRaceCar(requestedCarId || 1, {
+      selected: true,
+      ownerPublicId: caller.publicId,
+    });
+    return {
+      body: wrapSuccessData(renderOwnedGarageCar(fixtureCar)),
+      source: "fixture:getonecar",
+    };
+  }
+
   const cars = await ensurePlayerHasGarageCar(supabase, caller.playerId, {
     catalogCarId: DEFAULT_STARTER_CATALOG_CAR_ID,
     wheelXml: getDefaultWheelXmlForCar(DEFAULT_STARTER_CATALOG_CAR_ID),
@@ -2880,6 +2962,21 @@ async function handleGetOneCarEngine(context) {
   const accountCarId = params.get("acid") || "";
   let car = null;
 
+  if (isFixtureModeEnabled(context)) {
+    const caller = await resolveCallerSession(context, "fixture:getonecarengine");
+    if (!caller?.ok) {
+      return {
+        body: caller?.body || failureBody(),
+        source: caller?.source || "fixture:getonecarengine:bad-session",
+      };
+    }
+
+    car = buildFixtureRaceCar(Number(accountCarId || 1), {
+      selected: true,
+      ownerPublicId: caller.publicId,
+    });
+  }
+
   if (supabase) {
     const caller = await resolveCallerSession(context, "supabase:getonecarengine");
     if (!caller?.ok) {
@@ -2890,7 +2987,7 @@ async function handleGetOneCarEngine(context) {
     }
 
     if (accountCarId) {
-      car = await getCarById(supabase, accountCarId);
+      car = car || await getCarById(supabase, accountCarId);
     }
   }
 
