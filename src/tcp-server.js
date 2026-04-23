@@ -581,6 +581,7 @@ export class TcpServer {
     this.archiveRaceDebugRecord(race, "disconnect-win", {
       reason: "player-disconnected",
     });
+    this.clearRaceStageSettleTimer(race);
     this.races.delete(raceId);
     this.raceCompletions.delete(raceId);
     this.raceIdByPlayerId.delete(playerId);
@@ -806,6 +807,7 @@ export class TcpServer {
             this.archiveRaceDebugRecord(race, "completed", {
               reason: "both-rd-received",
             });
+            this.clearRaceStageSettleTimer(race);
             this.races.delete(race.id);
             this.raceCompletions.delete(race.id);
             this.logger.info("TCP race cleaned up", { raceId: race.id });
@@ -1103,9 +1105,11 @@ export class TcpServer {
             });
 
             if (isRaceChannelReconnect) {
+              this.clearRaceStageSettleTimer(srcRace);
               srcRace.sequenceStarted = false;
               srcRace.rivalsReadyBroadcasted = false;
               srcRace.stagedCount = 0;
+              srcRace.allStagedSince = 0;
               srcRace.metaByPlayer = new Map();
               srcRace.rivalsReadyAcks = new Map();
               srcRace.reactionTimes = new Map();
@@ -1569,6 +1573,36 @@ export class TcpServer {
     return Boolean(race?.rivalsReadyAcks instanceof Map) && race.rivalsReadyAcks.size >= race.players.length;
   }
 
+  clearRaceStageSettleTimer(race) {
+    if (!race?.stageSettleTimer) {
+      return;
+    }
+    clearTimeout(race.stageSettleTimer);
+    race.stageSettleTimer = null;
+  }
+
+  scheduleRaceStageSettleCheck(race) {
+    if (!race || race.stageSettleTimer || race.rivalsReadyBroadcasted || race.resultBroadcasted) {
+      return;
+    }
+
+    race.stageSettleTimer = setTimeout(() => {
+      race.stageSettleTimer = null;
+      if (race.id && !this.races.has(race.id)) {
+        return;
+      }
+      if (race.resultBroadcasted || race.rivalsReadyBroadcasted) {
+        return;
+      }
+      this.maybeBroadcastRivalsReady(race, {
+        trigger: "staged-settle-timer",
+      });
+      this.maybeStartRaceSequence(race, "staged-settle-timer");
+    }, RACE_STAGE_SETTLE_MS + 50);
+
+    race.stageSettleTimer.unref?.();
+  }
+
   setRacePhase(race, phase, reason = "") {
     if (!race) return;
     const previous = race.phase || "LOADED";
@@ -1604,11 +1638,15 @@ export class TcpServer {
   maybeBroadcastRivalsReady(race, options = {}) {
     if (!race) return;
     if (!race.players.every((entry) => entry.opened)) return;
-    if (race.rivalsReadyBroadcasted) return;
+    if (race.rivalsReadyBroadcasted) {
+      this.clearRaceStageSettleTimer(race);
+      return;
+    }
     const { allowUnstagedFallback = false, trigger = "" } = options;
     const allStaged = race.players.every((entry) => entry.isStaged);
 
     if (!allStaged) {
+      this.clearRaceStageSettleTimer(race);
       race.allStagedSince = 0;
       if (!allowUnstagedFallback) {
         return;
@@ -1620,6 +1658,7 @@ export class TcpServer {
       if (!race.allStagedSince) {
         race.allStagedSince = now;
         this.setRacePhase(race, "STAGED", "both-staged-hold");
+        this.scheduleRaceStageSettleCheck(race);
         return;
       }
 
@@ -1628,6 +1667,7 @@ export class TcpServer {
       }
     }
 
+    this.clearRaceStageSettleTimer(race);
     race.rivalsReadyBroadcasted = true;
     this.setRacePhase(
       race,
@@ -2279,6 +2319,7 @@ export class TcpServer {
           this.archiveRaceDebugRecord(race, "abandoned", {
             reason: "all-players-left",
           });
+          this.clearRaceStageSettleTimer(race);
           this.races.delete(conn.raceId);
           this.raceCompletions.delete(conn.raceId);
           this.logger.info("TCP race cleaned up (all players left)", { raceId: conn.raceId });
@@ -3133,6 +3174,7 @@ export class TcpServer {
       sequenceStarted: false,
       metaByPlayer: new Map(),
       rivalsReadyAcks: new Map(),
+      stageSettleTimer: null,
     };
 
     this.races.set(raceId, race);
@@ -3456,6 +3498,7 @@ export class TcpServer {
       rivalsReadyAcks: new Map(),
       lastTelemetryByPlayer: new Map(),
       telemetryCountsByPlayer: new Map(),
+      stageSettleTimer: null,
     };
 
     this.races.set(race.id, race);
@@ -3754,6 +3797,7 @@ export class TcpServer {
         this.archiveRaceDebugRecord(race, "stale-cleanup", {
           reason,
         });
+        this.clearRaceStageSettleTimer(race);
         
         // Clean up reverse lookups for all players in this race
         for (const player of race.players) {

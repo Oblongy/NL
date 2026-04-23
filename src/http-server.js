@@ -22,80 +22,60 @@ import {
 import { rememberRecentDecalUpload } from "./upload-state.js";
 import { FULL_CAR_CATALOG } from "./car-catalog.js";
 
-const LOCAL_STATIC_ROUTES = new Map([
-  [
-    "/",
-    {
-      body: readFileSync(new URL("./oneclient.html", import.meta.url), "latin1"),
-      contentType: "text/html; charset=latin1",
-      source: "local:oneclient.html",
-    },
-  ],
-  [
-    "/oneclient.html",
-    {
-      body: readFileSync(new URL("./oneclient.html", import.meta.url), "latin1"),
-      contentType: "text/html; charset=latin1",
-      source: "local:oneclient.html",
-    },
-  ],
-  [
-    "/register.html",
-    {
-      body: readFileSync(new URL("./register.html", import.meta.url), "utf8"),
-      contentType: "text/html; charset=utf-8",
-      source: "local:register.html",
-    },
-  ],
-  [
-    "/register",
-    {
-      body: readFileSync(new URL("./register.html", import.meta.url), "utf8"),
-      contentType: "text/html; charset=utf-8",
-      source: "local:register.html",
-    },
-  ],
-  [
-    "/tuning-studio",
-    {
-      body: readFileSync(new URL("./tuning-studio.html", import.meta.url), "utf8"),
-      contentType: "text/html; charset=utf-8",
-      source: "local:tuning-studio.html",
-    },
-  ],
-  [
-    "/tuning-studio.html",
-    {
-      body: readFileSync(new URL("./tuning-studio.html", import.meta.url), "utf8"),
-      contentType: "text/html; charset=utf-8",
-      source: "local:tuning-studio.html",
-    },
-  ],
-  [
-    "/parts-catalog.xml",
-    {
-      body: PARTS_CATALOG_XML,
-      contentType: "application/xml; charset=utf-8",
-      source: "generated:parts-catalog.xml",
-    },
-  ],
-  [
-    "/gameStyles.css",
-    {
-      body: readFileSync(new URL("./gameStyles.css", import.meta.url), "latin1"),
-      contentType: "text/css; charset=latin1",
-      source: "local:gameStyles.css",
-    },
-  ],
-  [
-    "/newsStyles.css",
-    {
-      body: readFileSync(new URL("./newsStyles.css", import.meta.url), "latin1"),
-      contentType: "text/css; charset=latin1",
-      source: "local:newsStyles.css",
-    },
-  ],
-]);
+function buildStaticFileRoute(relativePath, contentType, encoding = "utf8") {
+  const assetUrl = new URL(relativePath, import.meta.url);
+  if (!existsSync(assetUrl)) {
+    return null;
+  }
+
+  return {
+    body: readFileSync(assetUrl, encoding),
+    contentType,
+    source: `local:${relativePath.replace(/^\.\//, "")}`,
+  };
+}
+
+function buildLocalStaticRoutes() {
+  const routes = new Map();
+  const oneClientRoute = buildStaticFileRoute("./oneclient.html", "text/html; charset=latin1", "latin1");
+  const registerRoute = buildStaticFileRoute("./register.html", "text/html; charset=utf-8");
+  const tuningStudioRoute = buildStaticFileRoute("./tuning-studio.html", "text/html; charset=utf-8");
+  const gameStylesRoute = buildStaticFileRoute("./gameStyles.css", "text/css; charset=latin1", "latin1");
+  const newsStylesRoute = buildStaticFileRoute("./newsStyles.css", "text/css; charset=latin1", "latin1");
+
+  if (oneClientRoute) {
+    routes.set("/", oneClientRoute);
+    routes.set("/oneclient.html", oneClientRoute);
+  }
+
+  if (registerRoute) {
+    routes.set("/register.html", registerRoute);
+    routes.set("/register", registerRoute);
+  }
+
+  if (tuningStudioRoute) {
+    routes.set("/tuning-studio", tuningStudioRoute);
+    routes.set("/tuning-studio.html", tuningStudioRoute);
+  }
+
+  routes.set("/parts-catalog.xml", {
+    body: PARTS_CATALOG_XML,
+    contentType: "application/xml; charset=utf-8",
+    source: "generated:parts-catalog.xml",
+  });
+
+  if (gameStylesRoute) {
+    routes.set("/gameStyles.css", gameStylesRoute);
+  }
+
+  if (newsStylesRoute) {
+    routes.set("/newsStyles.css", newsStylesRoute);
+  }
+
+  return routes;
+}
+
+const LOCAL_STATIC_ROUTES = buildLocalStaticRoutes();
 
 const pendingUploadsByRemote = new Map();
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25MB
