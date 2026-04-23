@@ -5000,9 +5000,50 @@ function getBoundComputerTournamentSession({ tournamentKey, playerId }) {
   return null;
 }
 
-function getComputerTournamentOpponentProfile(session) {
+function resolveComputerTournamentOpponentIndex(session, requestedOpponentId) {
+  const fallbackIndex = Number(session?.wins || 0) % 31;
   const tournament = getComputerTournamentDefinition(session?.tournamentId);
-  const opponentIndex = Number(session?.wins || 0) % 31;
+  const numericRequestedId = Number(requestedOpponentId || 0);
+
+  if (!Number.isFinite(numericRequestedId) || numericRequestedId <= 0) {
+    return fallbackIndex;
+  }
+
+  const parsePrefixedId = (baseId) => {
+    if (numericRequestedId < baseId) {
+      return null;
+    }
+
+    const rawId = numericRequestedId - baseId;
+    const requestedTournamentId = Math.floor(rawId / 100);
+    const opponentIndex = rawId % 100;
+    if (requestedTournamentId !== Number(tournament.id)) {
+      return null;
+    }
+    if (opponentIndex < 0 || opponentIndex >= 31) {
+      return null;
+    }
+    return opponentIndex;
+  };
+
+  for (const baseId of [1000, 2000, 6000]) {
+    const parsedIndex = parsePrefixedId(baseId);
+    if (parsedIndex !== null) {
+      return parsedIndex;
+    }
+  }
+
+  const looseIndex = numericRequestedId % 100;
+  if (looseIndex >= 0 && looseIndex < 31) {
+    return looseIndex;
+  }
+
+  return fallbackIndex;
+}
+
+function getComputerTournamentOpponentProfile(session, requestedOpponentId) {
+  const tournament = getComputerTournamentDefinition(session?.tournamentId);
+  const opponentIndex = resolveComputerTournamentOpponentIndex(session, requestedOpponentId);
   const seedBase = Number(tournament.id) * 300 + opponentIndex * 19;
   const horsepower = Math.round(interpolate(tournament.minHp, tournament.maxHp, seededFraction(seedBase + 1)));
   const weight = Math.round(interpolate(tournament.minWeight, tournament.maxWeight, seededFraction(seedBase + 2)));
@@ -5010,8 +5051,8 @@ function getComputerTournamentOpponentProfile(session) {
   const elapsedTime = interpolate(tournament.minEt, tournament.maxEt, seededFraction(seedBase + 4));
   const trapSpeed = interpolate(tournament.minTrap, tournament.maxTrap, seededFraction(seedBase + 5));
   const bracketTime = computeComputerTournamentBracketTime(horsepower, weight);
-  const competitorId = 1000 + Number(tournament.id) * 100 + opponentIndex;
-  const competitorCarId = 2000 + Number(tournament.id) * 100 + opponentIndex;
+  const competitorId = 1000 + opponentIndex;
+  const competitorCarId = 2000 + opponentIndex;
   const virtualCarId = 6000 + Number(tournament.id) * 100 + opponentIndex;
   const username = `${tournament.type} ${String(opponentIndex + 1).padStart(2, "0")}`;
 
@@ -5137,13 +5178,13 @@ function buildComputerTournamentCompetitorNode(tournament, index) {
   const elapsedTime = interpolate(tournament.minEt, tournament.maxEt, seededFraction(seedBase + 4));
   const trapSpeed = interpolate(tournament.minTrap, tournament.maxTrap, seededFraction(seedBase + 5));
   const totalTime = reactionTime + elapsedTime;
-  const competitorId = 1000 + Number(tournament.id) * 100 + index;
-  const accountCarId = 2000 + Number(tournament.id) * 100 + index;
+  const competitorId = 1000 + index;
+  const competitorCarId = 2000 + index;
   const racerNumber = 100 + index;
   const username = `${tournament.type} ${String(index + 1).padStart(2, "0")}`;
 
   return (
-    `<r id='${competitorId}' i='${accountCarId}' n='${escapeXml(username)}' u='${escapeXml(username)}' ` +
+    `<r id='${competitorId}' i='${competitorId}' caid='${competitorCarId}' n='${escapeXml(username)}' u='${escapeXml(username)}' ` +
     `bt='${formatMetric(totalTime)}' rt='${formatMetric(reactionTime)}' et='${formatMetric(elapsedTime)}' ts='${formatMetric(trapSpeed, 2)}' ` +
     `total='${formatMetric(totalTime)}' racerNum='${racerNumber}' type='C' hp='${horsepower}' w='${weight}'/>`
   );
@@ -5157,8 +5198,8 @@ function buildComputerTournamentFieldXml(tournamentId) {
   return `<n2>${competitorsXml}</n2>`;
 }
 
-function buildComputerTournamentOpponentXml(session) {
-  const opponent = getComputerTournamentOpponentProfile(session);
+function buildComputerTournamentOpponentXml(session, requestedOpponentId) {
+  const opponent = getComputerTournamentOpponentProfile(session, requestedOpponentId);
   const baseBracketTime = Number(session?.bracketTime || 0);
   const bkDiff = Number.isFinite(baseBracketTime) && baseBracketTime > 0
     ? Number(formatMetric(opponent.bracketTime - baseBracketTime))
@@ -5170,7 +5211,7 @@ function buildComputerTournamentOpponentXml(session) {
     xml:
       `<r cid='${opponent.competitorId}' cacid='${opponent.virtualCarId}' ` +
       `bt='${formatMetric(opponent.bracketTime)}' rt='${formatMetric(opponent.reactionTime)}' ` +
-      `et='${formatMetric(opponent.elapsedTime)}' ts='${formatMetric(opponent.trapSpeed, 2)}' ` +
+      `et='${formatMetric(opponent.elapsedTime)}' ts='${formatMetric(opponent.trapSpeed, 2)}' p='${opponent.purse}' ` +
       `pp='${opponent.pp}'/>`,
   };
 }
@@ -6195,7 +6236,7 @@ const handlers = {
   ctrt: async (context) => {
     const { params, logger } = context;
     const caller = await resolveCallerSession(context, "generated:ctrt");
-    const requestedCarId = Number(params.get("caid") || 0) || null;
+    const requestedOpponentId = Number(params.get("caid") || 0) || null;
     const session = getBoundComputerTournamentSession({
       tournamentKey: params.get("k") || "",
       playerId: caller?.ok ? caller.playerId : null,
@@ -6206,15 +6247,12 @@ const handlers = {
       wins: 0,
       playerId: caller?.ok ? caller.playerId : null,
       publicId: caller?.ok ? caller.publicId : null,
-      activeCarId: requestedCarId,
+      activeCarId: null,
     };
-    if (requestedCarId) {
-      session.activeCarId = requestedCarId;
-    }
     bindComputerTournamentSession(session);
-    const opponent = buildComputerTournamentOpponentXml(session);
+    const opponent = buildComputerTournamentOpponentXml(session, requestedOpponentId);
 
-    const responseBody = `"s", 1, "d", "${opponent.xml}", "b", ${opponent.purse}`;
+    const responseBody = `"s", 1, "d", "${opponent.xml}", "b", ${opponent.bkDiff}`;
 
     logger.info("ctrt called - returning computer tournament opponent", {
       tournamentKey: session.sessionKey,
@@ -6222,7 +6260,9 @@ const handlers = {
       wins: session.wins,
       purse: opponent.purse,
       bkDiff: opponent.bkDiff,
-      requestedCarId,
+      requestedOpponentId,
+      opponentIndex: opponent.opponentIndex,
+      opponentCompetitorId: opponent.competitorId,
       opponentCompetitorCarId: opponent.competitorCarId,
       opponentVirtualCarId: opponent.virtualCarId,
     });
@@ -6232,7 +6272,9 @@ const handlers = {
       wins: session.wins,
       purse: opponent.purse,
       bkDiff: opponent.bkDiff,
-      requestedCarId,
+      requestedOpponentId,
+      opponentIndex: opponent.opponentIndex,
+      opponentCompetitorId: opponent.competitorId,
       opponentCompetitorCarId: opponent.competitorCarId,
       opponentVirtualCarId: opponent.virtualCarId,
     });
