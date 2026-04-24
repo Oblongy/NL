@@ -235,6 +235,7 @@ function createBuyCarSupabaseStub({
   playerId = 14,
   sessionKey = "buycar-session",
   startingMoney = 50000,
+  startingPoints = 100,
   existingCars = [],
 } = {}) {
   const sessionRow = {
@@ -246,6 +247,7 @@ function createBuyCarSupabaseStub({
     id: playerId,
     username: "GarageColorTester",
     money: startingMoney,
+    points: startingPoints,
     default_car_game_id: existingCars[0]?.game_car_id ?? 0,
     location_id: 100,
   };
@@ -279,9 +281,6 @@ function createBuyCarSupabaseStub({
         },
         eq(field, value) {
           filters.push({ type: "eq", field, value });
-          if (mode === "update") {
-            return Promise.resolve(runUpdate());
-          }
           return query;
         },
         gte() {
@@ -307,7 +306,7 @@ function createBuyCarSupabaseStub({
         maybeSingle: async () => runMaybeSingle(),
         single: async () => runSingle(),
         then(resolve, reject) {
-          return Promise.resolve(runMany()).then(resolve, reject);
+          return Promise.resolve(mode === "update" ? runUpdate() : runMany()).then(resolve, reject);
         },
       };
 
@@ -336,6 +335,19 @@ function createBuyCarSupabaseStub({
       }
 
       function runSingle() {
+        if (table === "game_players" && mode === "update") {
+          Object.assign(playerRow, payload || {});
+          return { data: playerRow, error: null };
+        }
+        if (table === "game_cars" && mode === "update") {
+          for (const car of gameCars) {
+            if (matchesFilters(car, filters)) {
+              Object.assign(car, payload || {});
+              return { data: car, error: null };
+            }
+          }
+          return { data: null, error: null };
+        }
         if (table === "game_cars" && mode === "insert") {
           const insertedRow = {
             game_car_id: nextGameCarId++,
@@ -359,6 +371,9 @@ function createBuyCarSupabaseStub({
       }
 
       function runMany() {
+        if (mode === "update") {
+          return runUpdate();
+        }
         if (table === "game_cars") {
           return {
             data: getRows().filter((row) => matchesFilters(row, filters)),
@@ -430,7 +445,7 @@ async function testLoginPayloadSeedsHiddenTournamentPlaceholderCar() {
   );
 }
 
-async function testBuyCarReturnsFullGarageCarXml() {
+async function testBuyCarReturnsClientPurchaseBalances() {
   const playerId = 14;
   const sessionKey = `buycar-color-${Date.now()}`;
   const supabase = createBuyCarSupabaseStub({ playerId, sessionKey });
@@ -453,12 +468,60 @@ async function testBuyCarReturnsFullGarageCarXml() {
 
   assert.ok(result, 'buycar should return a response');
   assert.strictEqual(result.source, 'supabase:buycar');
-  assert.ok(result.body.includes(`"m", 49000`), 'buycar should return the updated player balance');
-  assert.ok(result.body.includes(`"d", "<c `), 'buycar should return a full garage car node');
-  assert.ok(result.body.includes(`ci='105'`), 'buycar should preserve the purchased catalog car id');
-  assert.ok(result.body.includes(`cc='0033FF'`), 'buycar should include the selected paint color');
-  assert.ok(result.body.includes(`<ps><p `), 'buycar should include paint state xml');
-  assert.ok(result.body.includes(`cd='0033FF'`), 'buycar should include the paint color code in the body xml');
+  assert.ok(result.body.includes(`"d1", "<r s='2' b='49000' ai='243'/>"`), 'buycar should return the updated money balance in the legacy balance wrapper');
+  assert.ok(result.body.includes(`"d", "<r s='1' b='100'></r>"`), 'buycar should preserve the current points balance in the purchase response');
+}
+
+async function testBuyCarParsesFormattedPrices() {
+  const playerId = 22;
+  const sessionKey = `buycar-formatted-${Date.now()}`;
+  const supabase = createBuyCarSupabaseStub({ playerId, sessionKey, startingMoney: 50000 });
+   const result = await handleGameAction({
+    action: 'buycar',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['cid', '105'],
+      ['c', 'FF6600'],
+      ['pt', 'm'],
+      ['pr', '$35,000'],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger: createLogger(),
+    supabase,
+    services: {},
+  });
+
+  assert.ok(result, 'buycar with formatted price should return a response');
+  assert.strictEqual(result.source, 'supabase:buycar');
+  assert.ok(result.body.includes(`"d1", "<r s='2' b='15000' ai='243'/>"`), 'buycar should normalize formatted showroom prices before charging money');
+}
+
+async function testBuyCarSupportsPointPurchases() {
+  const playerId = 33;
+  const sessionKey = `buycar-points-${Date.now()}`;
+  const supabase = createBuyCarSupabaseStub({ playerId, sessionKey, startingMoney: 50000, startingPoints: 90 });
+  const result = await handleGameAction({
+    action: 'buycar',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['cid', '105'],
+      ['pt', 'p'],
+      ['pr', '35'],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger: createLogger(),
+    supabase,
+    services: {},
+  });
+
+  assert.ok(result, 'buycar points purchase should return a response');
+  assert.strictEqual(result.source, 'supabase:buycar');
+  assert.ok(result.body.includes(`"d1", "<r s='2' b='50000' ai='243'/>"`), 'buycar points purchase should leave money unchanged');
+  assert.ok(result.body.includes(`"d", "<r s='1' b='55'></r>"`), 'buycar points purchase should deduct points and return the updated points balance');
 }
 
 async function testCtrtLegacyDialKeyPrefersPlayerSession() {
@@ -576,7 +639,9 @@ const tests = [
   ['ctct qualify seed', testCtctSeedsNeutralQualifyPayload],
   ['ctct legacy dial key includes seed', testCtctLegacyDialKeyIncludesSeedPayload],
   ['login payload seeds hidden tournament placeholder car', testLoginPayloadSeedsHiddenTournamentPlaceholderCar],
-  ['buycar returns full garage car xml', testBuyCarReturnsFullGarageCarXml],
+  ['buycar returns client purchase balances', testBuyCarReturnsClientPurchaseBalances],
+  ['buycar parses formatted prices', testBuyCarParsesFormattedPrices],
+  ['buycar supports point purchases', testBuyCarSupportsPointPurchases],
   ['ctrt legacy dial key prefers player session', testCtrtLegacyDialKeyPrefersPlayerSession],
   ['ctrt opponent aliases', testCtrtIncludesOpponentAliases],
 ];

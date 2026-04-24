@@ -854,13 +854,16 @@ function parseShowroomPurchaseCatalogCarId(params) {
 }
 
 function parseShowroomPurchasePrice(params) {
-  return Number(
+  const rawValue =
     params.get("pr")
     || params.get("price")
     || params.get("cp")
     || params.get("p")
-    || 0,
-  );
+    || 0;
+  const normalized = String(rawValue)
+    .replace(/[^0-9.-]/g, "")
+    .trim();
+  return Number(normalized || 0);
 }
 
 async function resolveInternalPlayerIdByPublicId(supabase, publicId) {
@@ -3125,6 +3128,10 @@ function buildPartPurchaseResponseBody({ moneyBalance, pointsBalance, installId 
   return `"s", 1, "d1", "<r s='2' b='${moneyBalance}' ai='${installId}'/>", "d", "<r s='1' b='${pointsBalance}'></r>"`;
 }
 
+function buildCarPurchaseResponseBody({ moneyBalance, pointsBalance, gameCarId }) {
+  return `"s", 1, "d1", "<r s='2' b='${moneyBalance}' ai='${gameCarId}'/>", "d", "<r s='1' b='${pointsBalance}'></r>"`;
+}
+
 async function handleBuyPart(context) {
   const { supabase, params, logger, remoteAddress } = context;
   const accountCarId = params.get("acid") || "";
@@ -3470,10 +3477,26 @@ async function handleBuyCar(context) {
     return { body: failureBody(), source: "supabase:buycar:no-player" };
   }
 
-  const purchasePrice = parseShowroomPurchasePrice(params) || getCatalogCarPrice(catalogCarId);
-  const newBalance = Number(player.money) - purchasePrice;
-  if (newBalance < 0) {
-    return { body: failureBody(), source: "supabase:buycar:insufficient-funds" };
+  const paymentType = String(params.get("pt") || "m").toLowerCase();
+  const moneyPrice = getCatalogCarPrice(catalogCarId);
+  const pointPrice = getCatalogCarPointPrice(catalogCarId);
+  const requestedPrice = parseShowroomPurchasePrice(params);
+  const purchasePrice = requestedPrice || (paymentType === "p" ? pointPrice : moneyPrice);
+  const currentMoneyBalance = Number(player.money || 0);
+  const currentPointsBalance = Number(player.points || 0);
+  let newMoneyBalance = currentMoneyBalance;
+  let newPointsBalance = currentPointsBalance;
+
+  if (paymentType === "p") {
+    newPointsBalance -= purchasePrice;
+    if (newPointsBalance < 0) {
+      return { body: failureBody(), source: "supabase:buycar:insufficient-points" };
+    }
+  } else {
+    newMoneyBalance -= purchasePrice;
+    if (newMoneyBalance < 0) {
+      return { body: failureBody(), source: "supabase:buycar:insufficient-funds" };
+    }
   }
 
   const existingCars = await listCarsForPlayer(supabase, caller.playerId);
@@ -3496,10 +3519,18 @@ async function handleBuyCar(context) {
     wheelXml: getDefaultWheelXmlForCar(catalogCarId),
   });
 
-  await updatePlayerMoney(supabase, caller.playerId, newBalance);
+  if (paymentType === "p") {
+    await updatePlayerRecord(supabase, caller.playerId, { points: newPointsBalance });
+  } else {
+    await updatePlayerMoney(supabase, caller.playerId, newMoneyBalance);
+  }
 
   return {
-    body: `"s", 2, "m", ${newBalance}, "d", "${renderOwnedGarageCar(createdCar)}"`,
+    body: buildCarPurchaseResponseBody({
+      moneyBalance: newMoneyBalance,
+      pointsBalance: newPointsBalance,
+      gameCarId: createdCar.game_car_id,
+    }),
     source: "supabase:buycar",
   };
 }
@@ -4517,9 +4548,6 @@ function buildShowroomXml(locationId, starterOnly = false) {
       const carLocationId = starterOnly ? 100 : getCarLocation(price);
       const catId = locationToCatId[carLocationId] || 1001;
       const primarySwatch = showroomColors[index % showroomColors.length];
-      const swatchNodes = showroomColors
-        .map(({ paintId, colorCode }) => `<p i='${paintId}' cd='${colorCode}'/>`)
-        .join("");
       const purchasePrice = Number(price) || 0;
       const pointPrice = getCatalogCarPointPrice(cid);
 
@@ -4535,11 +4563,13 @@ function buildShowroomXml(locationId, starterOnly = false) {
         `eo='${escapeXml(spec.eo)}' dt='${escapeXml(spec.dt)}' np='${escapeXml(spec.np)}' ct='${escapeXml(spec.ct)}' ` +
         `et='${escapeXml(spec.et)}' tt='${escapeXml(spec.tt)}' sw='${escapeXml(spec.sw)}' st='${escapeXml(spec.st)}' y='${escapeXml(spec.y)}'` +
         `>` +
+        // Child <p /> nodes under a showroom car are parsed like installed visual parts.
+        // Serializing the swatch list here causes the Flash client to render extra paint
+        // layers directly on the car preview, which shows up as dark blotches.
         renderShowroomCarBody(cid, {
           colorCode: primarySwatch.colorCode,
           paintIndex: primarySwatch.paintId,
         }) +
-        swatchNodes +
         `</c>`
       );
     })
