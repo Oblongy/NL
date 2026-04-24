@@ -2339,6 +2339,80 @@ export class TcpServer {
     }
   }
 
+  removePlayerFromRooms(playerId, { connId = null, clearConnections = false } = {}) {
+    const normalizedPlayerId = Number(playerId || 0);
+    const normalizedConnId = Number(connId || 0);
+    if (!normalizedPlayerId && !normalizedConnId) {
+      return [];
+    }
+
+    const affectedRoomIds = [];
+    for (const [rawRoomId, roomPlayers] of this.rooms.entries()) {
+      const nextPlayers = (roomPlayers || []).filter((player) => {
+        if (normalizedConnId && Number(player.connId || 0) === normalizedConnId) {
+          return false;
+        }
+        if (normalizedPlayerId && Number(player.playerId || 0) === normalizedPlayerId) {
+          return false;
+        }
+        return true;
+      });
+
+      if (nextPlayers.length === (roomPlayers || []).length) {
+        continue;
+      }
+
+      const roomId = Number(rawRoomId || 0);
+      this.rooms.set(roomId, nextPlayers);
+      affectedRoomIds.push(roomId);
+
+      if (this.raceRoomRegistry && normalizedPlayerId) {
+        this.raceRoomRegistry.removePlayer(roomId, normalizedPlayerId);
+      }
+
+      for (const member of nextPlayers) {
+        const otherConn = this.connections.get(member.connId);
+        if (otherConn) {
+          this.sendRoomUsers(otherConn, nextPlayers);
+        }
+      }
+
+      const roomType = this.getRoomDefinition(roomId)?.type || "";
+      if (this.isKingOfTheHillRoomType(roomType)) {
+        this.broadcastKothQueueUpdate(roomId);
+      }
+    }
+
+    if (clearConnections && affectedRoomIds.length > 0) {
+      const affectedRoomIdSet = new Set(affectedRoomIds.map((roomId) => Number(roomId || 0)));
+      const connectionIdsToClear = new Set();
+
+      if (normalizedConnId) {
+        connectionIdsToClear.add(normalizedConnId);
+      }
+      if (normalizedPlayerId) {
+        for (const connection of this.getConnectionsByPlayerId(normalizedPlayerId)) {
+          connectionIdsToClear.add(connection.id);
+        }
+      }
+
+      for (const connectionId of connectionIdsToClear) {
+        const connection = this.connections.get(connectionId);
+        if (!connection) {
+          continue;
+        }
+        if (!affectedRoomIdSet.has(Number(connection.roomId || 0))) {
+          continue;
+        }
+        delete connection.kingOfHillSelection;
+        delete connection.liveTournamentSpectator;
+        connection.roomId = null;
+      }
+    }
+
+    return affectedRoomIds;
+  }
+
   leaveRoom(conn) {
     if (conn.raceId) {
       const race = this.races.get(conn.raceId);
@@ -2375,29 +2449,21 @@ export class TcpServer {
     }
     if (!conn.roomId) return;
     const roomId = Number(conn.roomId);
-    const roomType = this.getRoomDefinition(roomId)?.type || "";
     const hadKothSelection = Boolean(conn.kingOfHillSelection);
-    const room = this.rooms.get(roomId) || [];
-    const updated = room.filter(p => p.connId !== conn.id);
-    this.rooms.set(roomId, updated);
-
-    if (this.raceRoomRegistry && conn.playerId) {
-      this.raceRoomRegistry.removePlayer(roomId, Number(conn.playerId));
-    }
-
+    const removedRooms = this.removePlayerFromRooms(Number(conn.playerId || 0), {
+      connId: conn.id,
+      clearConnections: false,
+    });
+    const remaining = (this.rooms.get(roomId) || []).length;
     delete conn.kingOfHillSelection;
-
-    // Notify remaining players
-    if (updated.length > 0) {
-      for (const member of updated) {
-        const otherConn = this.connections.get(member.connId);
-        if (otherConn) this.sendRoomUsers(otherConn, updated);
-      }
-    }
-    if (this.isKingOfTheHillRoomType(roomType)) {
-      this.broadcastKothQueueUpdate(roomId);
-    }
-    this.logger.info("Player left room", { connId: conn.id, roomId, remaining: updated.length, hadKothSelection });
+    delete conn.liveTournamentSpectator;
+    this.logger.info("Player left room", {
+      connId: conn.id,
+      roomId,
+      remaining,
+      hadKothSelection,
+      removedRooms,
+    });
     conn.roomId = null;
   }
 
@@ -2662,6 +2728,11 @@ export class TcpServer {
       this.sendMessage(conn, `"ac", "${spectate ? "HTSPECTATE" : "HTJOIN"}", "s", 0`);
       return;
     }
+
+    this.removePlayerFromRooms(playerId, {
+      connId: conn.id,
+      clearConnections: true,
+    });
 
     const currentRoom = this.rooms.get(roomId) || [];
     const filtered = currentRoom.filter((player) => Number(player.playerId) !== playerId && player.connId !== conn.id);

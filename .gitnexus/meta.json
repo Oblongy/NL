@@ -1,12 +1,12 @@
 {
   "repoPath": "C:\\Users\\Dilldo\\Music\\Library\\1320L\\backend",
-  "lastCommit": "34d1fa7b7a61d60a15f8d2362048eaac3e652c04",
-  "indexedAt": "2026-04-24T22:32:22.171Z",
+  "lastCommit": "d5dfeca1ac82aa09ee6a64d174fe2c0755b871dd",
+  "indexedAt": "2026-04-24T23:47:35.735Z",
   "stats": {
     "files": 140,
-    "nodes": 3748,
-    "edges": 7972,
-    "communities": 131,
+    "nodes": 3631,
+    "edges": 7742,
+    "communities": 128,
     "processes": 300,
     "embeddings": 0
   }

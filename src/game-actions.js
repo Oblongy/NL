@@ -6543,9 +6543,9 @@ const handlers = {
     // Leave current race room
     const { services, supabase } = context;
     const raceRoomRegistry = services?.raceRoomRegistry;
-    const tcpNotify = services?.tcpNotify;
+    const tcpServer = services?.tcpServer;
 
-    if (!raceRoomRegistry) {
+    if (!raceRoomRegistry && !tcpServer?.removePlayerFromRooms) {
       return { body: wrapSuccessData("<leave s='0'/>"), source: "leaveroom:no-registry" };
     }
 
@@ -6555,16 +6555,13 @@ const handlers = {
       return { body: wrapSuccessData("<leave s='0'/>"), source: "leaveroom:bad-session" };
     }
 
-    // Get rooms player was in before removing
-    const affectedRooms = [];
-    for (const room of raceRoomRegistry.list()) {
-      if (room.players?.some(p => p.id === caller.playerId)) {
-        affectedRooms.push(room.roomId);
-      }
-    }
-
-    // Remove player from all rooms
-    const removedFrom = raceRoomRegistry.removePlayerFromAllRooms(caller.playerId);
+    const removedLiveRooms = tcpServer?.removePlayerFromRooms
+      ? tcpServer.removePlayerFromRooms(caller.playerId, { clearConnections: true })
+      : [];
+    const removedRegistryRooms = raceRoomRegistry?.removePlayerFromAllRooms
+      ? raceRoomRegistry.removePlayerFromAllRooms(caller.playerId)
+      : [];
+    const removedFrom = [...new Set([...removedLiveRooms, ...removedRegistryRooms])];
 
     return {
       body: wrapSuccessData(`<leave s='1' rooms='${removedFrom.length}'/>`),
