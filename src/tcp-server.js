@@ -1573,6 +1573,22 @@ export class TcpServer {
     return Boolean(race?.rivalsReadyAcks instanceof Map) && race.rivalsReadyAcks.size >= race.players.length;
   }
 
+  hasRaceStartEvidenceFromBothPlayers(race) {
+    if (!race?.players?.length) {
+      return false;
+    }
+
+    const playerCount = race.players.length;
+    const telemetryReady =
+      race.telemetryCountsByPlayer instanceof Map &&
+      race.telemetryCountsByPlayer.size >= playerCount;
+    const metaReady =
+      race.metaByPlayer instanceof Map &&
+      race.metaByPlayer.size >= playerCount;
+
+    return telemetryReady || metaReady;
+  }
+
   clearRaceStageSettleTimer(race) {
     if (!race?.stageSettleTimer) {
       return;
@@ -1649,6 +1665,22 @@ export class TcpServer {
       this.clearRaceStageSettleTimer(race);
       race.allStagedSince = 0;
       if (!allowUnstagedFallback) {
+        return;
+      }
+      if (!this.hasRaceStartEvidenceFromBothPlayers(race)) {
+        this.logger.info("TCP rivals-ready fallback deferred until both racers send prelaunch state", {
+          raceId: race.id,
+          telemetryCount: race.telemetryCountsByPlayer instanceof Map ? race.telemetryCountsByPlayer.size : 0,
+          metaCount: race.metaByPlayer instanceof Map ? race.metaByPlayer.size : 0,
+          playerCount: race.players.length,
+          trigger: trigger || null,
+        });
+        this.recordRaceDebugEvent(race, "rivals-ready-fallback-deferred", {
+          telemetryCount: race.telemetryCountsByPlayer instanceof Map ? race.telemetryCountsByPlayer.size : 0,
+          metaCount: race.metaByPlayer instanceof Map ? race.metaByPlayer.size : 0,
+          playerCount: race.players.length,
+          trigger: trigger || null,
+        });
         return;
       }
     }
@@ -3009,39 +3041,67 @@ export class TcpServer {
     });
   }
 
-  findConnectionByPlayerId(playerId, excludeRaceChannels = false) {
-    if (!playerId) return null;
-    const normalizedPlayerId = Number(playerId);
+  isRaceChannelConnection(conn) {
+    return Boolean(conn?.raceId) && !conn?.roomId;
+  }
 
-    const cachedConnId = this.connIdByPlayerId.get(normalizedPlayerId);
-    if (cachedConnId) {
-      const cachedConn = this.connections.get(cachedConnId);
-      if (cachedConn && Number(cachedConn.playerId || 0) === normalizedPlayerId) {
-        if (!excludeRaceChannels || cachedConn.roomId) {
-          return cachedConn;
-        }
-      }
+  getConnectionsByPlayerId(playerId) {
+    if (!playerId) {
+      return [];
     }
 
+    const normalizedPlayerId = Number(playerId);
     const matches = [];
     for (const [, candidate] of this.connections) {
       if (Number(candidate.playerId || 0) === normalizedPlayerId) {
         matches.push(candidate);
       }
     }
-    
-    if (matches.length === 0) return null;
-    
-    // If we have multiple connections for the same player, prefer the lobby connection
-    // (the one that has roomId set) unless the caller is explicitly filtering.
-    if (matches.length === 1) return matches[0];
-    const lobbyConn = matches.find(c => c.roomId);
-    
-    if (excludeRaceChannels) {
-      return lobbyConn || matches[0];
+    return matches;
+  }
+
+  selectConnectionByPlayer(matches, { excludeRaceChannels = false, preferRaceChannels = false } = {}) {
+    if (!Array.isArray(matches) || matches.length === 0) {
+      return null;
     }
-    
-    return lobbyConn || matches[matches.length - 1];
+
+    const lobbyMatches = matches.filter((candidate) => !this.isRaceChannelConnection(candidate));
+    const raceMatches = matches.filter((candidate) => this.isRaceChannelConnection(candidate));
+
+    if (preferRaceChannels && !excludeRaceChannels) {
+      return raceMatches[raceMatches.length - 1] || lobbyMatches[0] || null;
+    }
+
+    if (excludeRaceChannels) {
+      return lobbyMatches[0] || null;
+    }
+
+    return lobbyMatches[0] || raceMatches[raceMatches.length - 1] || null;
+  }
+
+  findConnectionByPlayerId(playerId, excludeRaceChannels = false) {
+    if (!playerId) return null;
+    const normalizedPlayerId = Number(playerId);
+    const lookupOptions =
+      typeof excludeRaceChannels === "boolean"
+        ? { excludeRaceChannels, preferRaceChannels: false }
+        : {
+            excludeRaceChannels: Boolean(excludeRaceChannels?.excludeRaceChannels),
+            preferRaceChannels: Boolean(excludeRaceChannels?.preferRaceChannels),
+          };
+
+    const matches = this.getConnectionsByPlayerId(normalizedPlayerId);
+    const selectedConn = this.selectConnectionByPlayer(matches, lookupOptions);
+
+    if (!lookupOptions.excludeRaceChannels && !lookupOptions.preferRaceChannels) {
+      if (selectedConn) {
+        this.connIdByPlayerId.set(normalizedPlayerId, selectedConn.id);
+      } else {
+        this.connIdByPlayerId.delete(normalizedPlayerId);
+      }
+    }
+
+    return selectedConn;
   }
 
   escapeXml(value) {
@@ -3106,6 +3166,32 @@ export class TcpServer {
       `b1='${challengerBracketTime}' b2='${challengedBracketTime}' bt='${betType}' ` +
       `sc1='${Number(sc1)}' sc2='${Number(sc2)}' t='${Number(trackId)}'/>`
     );
+  }
+
+  sendInitialIoFrames(conn) {
+    const frames = [
+      { d: "-13", v: "0", a: "0", t: "0" },
+      { d: "-12.863", v: "0.698", a: "36.072", t: "0" },
+      { d: "-12.709", v: "1.213", a: "31.555", t: "0" },
+    ];
+
+    for (const frame of frames) {
+      this.sendMessage(
+        conn,
+        `"ac", "IO", "d", ${frame.d}, "v", ${frame.v}, "a", ${frame.a}, "t", ${frame.t}`,
+      );
+    }
+  }
+
+  sendRaceLobbyBootstrap(conn, { rnXml, rraXml, trackId = 32 }) {
+    if (!conn) {
+      return;
+    }
+
+    this.sendMessage(conn, `"ac", "RN", "d", "${this.escapeForTcp(rnXml)}"`);
+    this.sendMessage(conn, `"ac", "RRA", "d", "${this.escapeForTcp(rraXml)}"`);
+    this.sendMessage(conn, `"ac", "RO", "t", ${Number(trackId || 32)}`);
+    this.sendInitialIoFrames(conn);
   }
 
   async createRaceSession(requestA, requestB) {
@@ -3532,9 +3618,11 @@ export class TcpServer {
     });
 
     for (const participantConn of [challengerConn, challengedConn]) {
-      this.sendMessage(participantConn, `"ac", "RN", "d", "${this.escapeForTcp(rnXml)}"`);
-      this.sendMessage(participantConn, `"ac", "RRA", "d", "${this.escapeForTcp(rraXml)}"`);
-      // RO and IO frames are sent on the SRC (race channel) connection, not here.
+      this.sendRaceLobbyBootstrap(participantConn, {
+        rnXml,
+        rraXml,
+        trackId: race.trackId,
+      });
     }
 
     this.logger.info("TCP race started from pending challenge", {

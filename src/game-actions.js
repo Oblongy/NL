@@ -32,6 +32,7 @@ import {
   escapeXml,
   failureBody,
   renderOwnedGarageCar,
+  renderOwnedGarageCarsWithTournamentLanePlaceholder,
   renderOwnedGarageCarsWrapper,
   renderRacerCars,
   renderShowroomCarBody,
@@ -2884,7 +2885,11 @@ async function handleGetAllCars(context) {
   });
 
   return {
-    body: wrapSuccessData(renderOwnedGarageCarsWrapper(garageCars, { ownerPublicId: caller.publicId })),
+    body: wrapSuccessData(
+      `<cars i='${escapeXml(caller.publicId)}' dc='${escapeXml(
+        garageCars.find((car) => car.selected)?.game_car_id ?? garageCars[0]?.game_car_id ?? "",
+      )}'>${renderOwnedGarageCarsWithTournamentLanePlaceholder(garageCars)}</cars>`,
+    ),
     source: "supabase:getallcars",
   };
 }
@@ -3414,7 +3419,7 @@ async function handleBuyCar(context) {
   await updatePlayerMoney(supabase, caller.playerId, newBalance);
 
   return {
-    body: `"s", 2, "m", ${newBalance}, "d", "<r i='${createdCar.game_car_id}' ai='${createdCar.game_car_id}' ci='${catalogCarId}'/>"`,
+    body: `"s", 2, "m", ${newBalance}, "d", "${renderOwnedGarageCar(createdCar)}"`,
     source: "supabase:buycar",
   };
 }
@@ -4970,6 +4975,10 @@ function buildComputerTournamentSessionKey(playerId) {
   return `player:${Number(playerId || 0)}`;
 }
 
+function isLegacyDialTournamentKey(tournamentKey) {
+  return /^\d{1,4}$/.test(String(tournamentKey || "").trim());
+}
+
 function bindComputerTournamentSession(session) {
   if (!session?.sessionKey) {
     return session;
@@ -4985,8 +4994,11 @@ function bindComputerTournamentSession(session) {
 }
 
 function getBoundComputerTournamentSession({ tournamentKey, playerId }) {
-  if (tournamentKey && computerTournamentSessions.has(tournamentKey)) {
-    return computerTournamentSessions.get(tournamentKey);
+  const normalizedTournamentKey = String(tournamentKey || "").trim();
+  const legacyDialKey = isLegacyDialTournamentKey(normalizedTournamentKey);
+
+  if (normalizedTournamentKey && !legacyDialKey && computerTournamentSessions.has(normalizedTournamentKey)) {
+    return computerTournamentSessions.get(normalizedTournamentKey);
   }
 
   const numericPlayerId = Number(playerId || 0);
@@ -4995,6 +5007,10 @@ function getBoundComputerTournamentSession({ tournamentKey, playerId }) {
     if (computerTournamentSessions.has(playerSessionKey)) {
       return computerTournamentSessions.get(playerSessionKey);
     }
+  }
+
+  if (normalizedTournamentKey && computerTournamentSessions.has(normalizedTournamentKey)) {
+    return computerTournamentSessions.get(normalizedTournamentKey);
   }
 
   return null;
@@ -5210,12 +5226,12 @@ function buildComputerTournamentQualifySeedXml(session) {
     ? formatMetric(bracketTime)
     : "0";
 
-  // Mirror the player's own lane into the neutral RN-style queue payload so
-  // the native computer-tournament callback can hydrate raceObj without
-  // forcing the rivals-specific post-fetch flow.
+  // Match native RN queue seed shape used by the TCP flow.
+  // Keep lane-2 neutral (0) so ctct does not hijack tournament opponent state
+  // before the dedicated ctrt callback provides the real opponent.
   return (
     `<q><r i='${publicId}' icid='${activeCarId}' ` +
-    `ci='${publicId}' cicid='${activeCarId}' bt='${formattedBracketTime}' b='0'/></q>`
+    `ci='0' cicid='0' bt='${formattedBracketTime}' b='0'/></q>`
   );
 }
 
@@ -6239,6 +6255,7 @@ const handlers = {
   ctct: async (context) => {
     const { params, logger } = context;
     const tournamentKey = params.get("k") || "";
+    const legacyDialKey = isLegacyDialTournamentKey(tournamentKey);
     const bracketTime = Number(params.get("bt") || 0);
     const activeCarId = Number(params.get("acid") || 0) || null;
     const caller = await resolveCallerSession(context, "generated:ctct");
@@ -6252,7 +6269,9 @@ const handlers = {
       tournamentKey,
       playerId: caller.playerId,
     }) || {
-      sessionKey: tournamentKey || buildComputerTournamentSessionKey(caller.playerId),
+      sessionKey: legacyDialKey
+        ? buildComputerTournamentSessionKey(caller.playerId)
+        : (tournamentKey || buildComputerTournamentSessionKey(caller.playerId)),
       tournamentId: 1,
       createdAt: Date.now(),
       wins: 0,
@@ -6270,7 +6289,14 @@ const handlers = {
     bindComputerTournamentSession(session);
 
     const qualifySeedXml = buildComputerTournamentQualifySeedXml(session);
-    const responseBody = `"s", 1, "d", "${qualifySeedXml}"`;
+    const responseTournamentKey = String(tournamentKey || session.sessionKey || "").replace(/"/g, "");
+    const isLegacyDialKey = isLegacyDialTournamentKey(responseTournamentKey);
+    const responseParts = [`"s", 1`];
+    if (responseTournamentKey) {
+      responseParts.push(`"k", "${responseTournamentKey}"`);
+    }
+    responseParts.push(`"d", "${qualifySeedXml}"`);
+    const responseBody = responseParts.join(", ");
 
     logger.info("ctct called - saved computer tournament qualifying pass", {
       tournamentKey: session.sessionKey,
@@ -6278,7 +6304,9 @@ const handlers = {
       activeCarId,
       playerId: session.playerId,
       publicId: session.publicId,
+      responseTournamentKey,
       qualifySeeded: Boolean(qualifySeedXml),
+      qualifySeedSuppressedForLegacyDialKey: isLegacyDialKey,
     });
     logTournamentPayload(logger, "ctct", responseBody, {
       tournamentKey: session.sessionKey,
@@ -6286,7 +6314,9 @@ const handlers = {
       activeCarId,
       playerId: session.playerId,
       publicId: session.publicId,
+      responseTournamentKey,
       qualifySeeded: Boolean(qualifySeedXml),
+      qualifySeedSuppressedForLegacyDialKey: isLegacyDialKey,
     });
 
     return {

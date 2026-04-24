@@ -208,6 +208,14 @@ export function renderOwnedGarageCars(cars) {
   return cars.map(renderOwnedGarageCar).join("");
 }
 
+export function renderTournamentLanePlaceholderCar() {
+  return `<empty i=''/>`;
+}
+
+export function renderOwnedGarageCarsWithTournamentLanePlaceholder(cars) {
+  return `${renderOwnedGarageCars(cars)}${renderTournamentLanePlaceholderCar()}`;
+}
+
 export function renderOwnedGarageCarsWrapper(cars, options = {}) {
   const selectedCar = cars.find((car) => car.selected);
   const defaultCarId = selectedCar ? selectedCar.game_car_id : (cars[0]?.game_car_id ?? "");

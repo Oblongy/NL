@@ -17,6 +17,8 @@ function createServer() {
     proxy: null,
     supabase: null,
   });
+  clearInterval(server.challengeCleanupInterval);
+  server.challengeCleanupInterval = null;
 
   server.sendMessage = (conn, message) => {
     conn.messages.push(message);
@@ -46,6 +48,8 @@ function createRace(id = "race-stage-test") {
       },
     ],
     allStagedSince: 0,
+    stagedCount: 2,
+    rivalsReadyAcks: new Map(),
     rivalsReadyBroadcasted: false,
     resultBroadcasted: false,
     sequenceStarted: false,
@@ -89,4 +93,37 @@ test("cancels staged settle timer when a racer leaves the staged state", async (
   assert.equal(race.sequenceStarted, false);
   assert.equal(race.stageSettleTimer, null);
   assert.deepEqual(race.players.map((player) => player.mockConn.messages), [[], []]);
+});
+
+test("defers RO fallback until both racers send telemetry or meta", () => {
+  const server = createServer();
+  const race = createRace("race-open-fallback-deferred");
+  race.players.forEach((player) => {
+    player.isStaged = false;
+  });
+
+  server.maybeBroadcastRivalsReady(race, {
+    allowUnstagedFallback: true,
+    trigger: "race-open-fallback",
+  });
+
+  assert.equal(race.rivalsReadyBroadcasted, false);
+  assert.equal(race.phase, "LOADED");
+
+  race.telemetryCountsByPlayer = new Map([
+    [1, 1],
+    [2, 1],
+  ]);
+
+  server.maybeBroadcastRivalsReady(race, {
+    allowUnstagedFallback: true,
+    trigger: "race-open-fallback",
+  });
+
+  assert.equal(race.rivalsReadyBroadcasted, true);
+  assert.equal(race.phase, "TREE_ARMED");
+  assert.deepEqual(race.players.map((player) => player.mockConn.messages), [
+    ['"ac", "RIVRDY", "s", 1'],
+    ['"ac", "RIVRDY", "s", 1'],
+  ]);
 });
