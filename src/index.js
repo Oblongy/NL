@@ -31,13 +31,12 @@ if (config.supabaseUrl) {
 }
 logShowroomSpecCoverage(logger);
 const raceRoomRegistry = new RaceRoomRegistry();
-const raceManager = new RaceManager();
 const rivalsState = new RivalsState();
 const teamState = new TeamState();
 const homePollState = createHomePollState({ logger });
 const tcpProxy = new TcpProxy({ logger });
 
-// Create TCP server first (without notify)
+// Create TCP server first
 const tcpServer = new TcpServer({ 
   logger, 
   notify: null, // Will be set after tcpNotify is created
@@ -47,6 +46,9 @@ const tcpServer = new TcpServer({
   port: config.tcpPort,
   host: config.tcpHost,
 });
+
+// Create race manager with tcpServer reference
+const raceManager = new RaceManager(tcpServer);
 
 // Create tcpNotify with reference to tcpServer
 const tcpNotify = new TcpNotify({ logger, tcpServer });

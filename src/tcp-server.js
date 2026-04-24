@@ -1137,14 +1137,26 @@ export class TcpServer {
             });
             return;
           }
-          // Acknowledge the race channel only. The client opens the tree
-          // sequence with a later RO message; sending RO/IO early leaves both
-          // racers stuck staged.
+          // Acknowledge the race channel and send race bootstrap
           this.sendMessage(conn, '"ac", "SRC", "s", 1');
-          this.logger.info("TCP SRC race initialized", { 
-            connId: conn.id, 
+
+          // Send RRA + RO + IO frames (per protocol flow)
+          this.sendMessage(conn, this.buildRraMessage(srcRace));
+          const trackId = srcRace.trackId || 32;
+          this.sendMessage(conn, `"ac", "RO", "t", ${trackId}`);
+          this.sendInitialIoFrames(conn);
+
+          // Mark player as opened since we sent RO proactively
+          if (racePlayer) {
+            racePlayer.opened = true;
+          }
+
+          this.logger.info("TCP SRC race bootstrap sent", {
+            connId: conn.id,
             raceId: srcRace.id,
-            trackId: srcRace.trackId || 32,
+            trackId,
+            playerOpened: racePlayer?.opened || false,
+            openedCount: srcRace.players.filter((entry) => entry.opened).length,
             players: srcRace.players.map(p => ({ playerId: p.playerId, connId: p.connId, lane: p.lane }))
           });
         } else {
@@ -1651,6 +1663,10 @@ export class TcpServer {
     return payload ? `"ac", "MO", ${payload}` : '"ac", "MO"';
   }
 
+  buildIoRelayMessage({ distance, velocity, acceleration, tick = "0" }) {
+    return `"ac", "IO", "d", ${distance}, "v", ${velocity}, "a", ${acceleration}, "t", ${tick}`;
+  }
+
   maybeBroadcastRivalsReady(race, options = {}) {
     if (!race) return;
     if (!race.players.every((entry) => entry.opened)) return;
@@ -1830,8 +1846,9 @@ export class TcpServer {
       return;
     }
 
-    // Parse the decoded fields for server-side staging/state tracking, but relay
-    // the original race packet bytes to the opponent unchanged.
+    // Parse the decoded fields for server-side staging/state tracking, then
+    // relay the sender state back out in the canonical IO envelope the client
+    // actually receives from the live server.
     const rawDistance = String(parts[1] ?? "").trim();
     const rawVelocity = String(parts[2] ?? "").trim();
     const rawAcceleration = String(parts[3] ?? "").trim();
@@ -1953,7 +1970,7 @@ export class TcpServer {
     this.maybeBroadcastRivalsReady(race);
     this.maybeStartRaceSequence(race, "staging-complete");
 
-    if (!race.sequenceStarted) {
+    if (!race.sequenceStarted && !isPrelaunchTelemetry) {
       if (!isPrelaunchTelemetry) {
         this.logger.warn("TCP telemetry ignored before race sequence start", {
           connId: conn.id,
@@ -1975,36 +1992,29 @@ export class TcpServer {
       }
       return;
     }
-
-    const rawTelemetryFrame =
-      typeof conn._lastRaw === "string" && conn._lastRaw.length > 0
-        ? conn._lastRaw + MESSAGE_DELIMITER
-        : null;
+    const telemetryRelayMessage = this.buildIoRelayMessage({
+      distance,
+      velocity,
+      acceleration,
+      tick,
+    });
 
     for (const participant of race.players) {
       if (Number(participant.playerId) === Number(sender.playerId)) continue;
       const participantConn = this.getRaceParticipantConnection(participant);
-      if (participantConn && participantConn.socket && !participantConn.socket.destroyed) {
+      if (participantConn) {
         try {
-          if (rawTelemetryFrame) {
-            participantConn.socket.write(Buffer.from(rawTelemetryFrame, "latin1"));
-          } else {
-            // Defensive fallback: keep the race moving even if the raw frame is unavailable.
-            this.sendMessage(
-              participantConn,
-              `${messageType}${FIELD_DELIMITER}${distance}${FIELD_DELIMITER}${velocity}${FIELD_DELIMITER}${acceleration}${FIELD_DELIMITER}${tick}`,
-            );
-          }
-          
-          // Debug logging (can be disabled in production for performance)
+          this.sendMessage(participantConn, telemetryRelayMessage);
+
           if (this.debugTelemetry) {
-            this.logger.info("TCP forwarded telemetry raw", {
+            this.logger.info("TCP relayed telemetry as IO", {
               fromConnId: conn.id,
               toConnId: participantConn.id,
               messageType,
               raceId: race.id,
               distance,
-              velocity
+              velocity,
+              tick,
             });
           }
         } catch (error) {
@@ -2028,6 +2038,10 @@ export class TcpServer {
           socketDestroyed: participantConn?.socket?.destroyed
         });
       }
+    }
+
+    if (!race.sequenceStarted) {
+      return;
     }
 
     // Send periodic race state updates to keep connection alive
