@@ -1,67 +1,79 @@
-// Wheels and Tires Catalog
-// Based on wheel-lookup.json data and the legacy 10.0.03 catalog shape
+import { getStaticWheelsCatalogData } from "./catalog-data-source.js";
 
-// Tires catalog (pi=13)
-const TIRES = [
-  { i: 1300, n: 'Nitto NT450 Street Tire', p: 300, pp: 3, g: 'C', l: 100, ps: 0 },
-  { i: 1301, n: 'Nitto NT555 Performance Tire', p: 650, pp: 6, g: 'C', l: 100, ps: 5 },
-  { i: 1302, n: 'Nitto NT555R Drag Radial', p: 1400, pp: 14, g: 'C', l: 200, ps: 8 },
-  { i: 1303, n: 'Nitto NT05 Competition Tire', p: 2800, pp: 28, g: 'B', l: 300, ps: 10 },
-  { i: 1304, n: 'Nitto NT01 Track Tire', p: 5200, pp: 52, g: 'B', l: 400, ps: 12 },
-  { i: 1305, n: 'Nitto Invo Max Performance Tire', p: 9000, pp: 90, g: 'A', l: 500, ps: 15 },
+const PART_XML_FIELD_ORDER = [
+  "i",
+  "pi",
+  "t",
+  "n",
+  "p",
+  "pp",
+  "g",
+  "di",
+  "pdi",
+  "b",
+  "bn",
+  "mn",
+  "l",
+  "mo",
+  "hp",
+  "tq",
+  "wt",
+  "cc",
+  "ps",
 ];
 
-export const WHEEL_BRANDS = [
-  { id: 1, name: "Konig", slug: "konig" },
-  { id: 2, name: "Enkei", slug: "enkei" },
-  { id: 3, name: "BBS", slug: "bbs" },
-  { id: 4, name: "Volk Racing", slug: "volkracing" },
-  { id: 5, name: "Work Wheels", slug: "workwheels" },
-  { id: 6, name: "Rotiform", slug: "rotiform" },
-  { id: 7, name: "HRE", slug: "hre" },
-  { id: 8, name: "OZ Racing", slug: "ozracing" },
-];
+function buildPartXmlNode(part) {
+  const attrs = PART_XML_FIELD_ORDER.map((field) => `${field}='${part[field]}'`).join(" ");
+  return `<p ${attrs}/>`;
+}
 
 // Generate wheel catalog matching the legacy client XML shape
 function generateWheelCatalog() {
+  const { wheelBrands, wheelGeneration, wheelPartOverrides } = getStaticWheelsCatalogData();
   const wheels = [];
-  const sizes = [15, 16, 17, 18, 19, 20];
-  const grades = ["C", "B", "A", "S"];
-  
-  let partId = 1000;
-  let designId = 1;
-  
-  for (const brand of WHEEL_BRANDS) {
-    for (let i = 0; i < 5; i++) {
-      for (const size of sizes) {
-        const gradeIndex = Math.min(Math.floor(i / 2), grades.length - 1);
-        const grade = grades[gradeIndex];
-        const level = 100 + i * 100;
-        const basePrice = 500 + (size - 15) * 200 + i * 1000;
-        const weightDelta = -(size - 15) * 2;
-        
-        wheels.push({
+  const smallestSize = wheelGeneration.sizes[0];
+  let partId = wheelGeneration.basePartId;
+  let designId = wheelGeneration.baseDesignId;
+
+  for (const brand of wheelBrands) {
+    for (let modelIndex = 0; modelIndex < wheelGeneration.modelsPerBrand; modelIndex++) {
+      for (const size of wheelGeneration.sizes) {
+        const gradeIndex = Math.min(Math.floor(modelIndex / 2), wheelGeneration.grades.length - 1);
+        const sizeOffset = size - smallestSize;
+        const basePrice =
+          wheelGeneration.priceBase +
+          sizeOffset * wheelGeneration.priceSizeStep +
+          modelIndex * wheelGeneration.priceModelStep;
+
+        const wheel = {
           i: partId,
           pi: 14,
-          t: 'c',
+          t: "c",
           n: `${brand.name} ${size}&quot;`,
           p: basePrice,
           pp: Math.floor(basePrice / 100),
-          g: grade,
+          g: wheelGeneration.grades[gradeIndex],
           di: designId,
           pdi: designId,
           b: brand.slug,
           bn: brand.name,
           mn: String(partId),
-          l: level,
+          l: wheelGeneration.levelBase + modelIndex * wheelGeneration.levelStep,
           mo: 0,
           hp: 0,
           tq: 0,
-          wt: weightDelta,
+          wt: sizeOffset * wheelGeneration.weightSizeStep,
           cc: 0,
           ps: size,
-        });
-        
+        };
+
+        const override = wheelPartOverrides[String(partId)];
+        if (override) {
+          Object.assign(wheel, override);
+        }
+
+        wheels.push(wheel);
+
         partId++;
       }
       designId++;
@@ -73,19 +85,9 @@ function generateWheelCatalog() {
 
 // Build XML for wheels and tires catalog matching the legacy client XML shape
 export function buildWheelsTiresCatalogXml() {
-  // Start with tires (pi=13)
-  const tiresXml = TIRES.map(t => 
-    `<p i='${t.i}' pi='13' t='c' n='${t.n}' p='${t.p}' pp='${t.pp}' g='${t.g}' di='${t.i - 1299}' pdi='${t.i - 1299}' ` +
-    `b='nitto' bn='Nitto' mn='NT${t.i - 1299}' l='${t.l}' mo='0' hp='0' tq='0' wt='0' cc='0' ps='${t.ps}'/>`
-  ).join("");
-  
-  // Then add wheels (pi=14)
-  const wheels = generateWheelCatalog();
-  const wheelsXml = wheels.map(w => 
-    `<p i='${w.i}' pi='${w.pi}' t='${w.t}' n='${w.n}' p='${w.p}' pp='${w.pp}' g='${w.g}' ` +
-    `di='${w.di}' pdi='${w.pdi}' b='${w.b}' bn='${w.bn}' mn='${w.mn}' l='${w.l}' mo='${w.mo}' ` +
-    `hp='${w.hp}' tq='${w.tq}' wt='${w.wt}' cc='${w.cc}' ps='${w.ps}'/>`
-  ).join("");
-  
+  const { tires } = getStaticWheelsCatalogData();
+  const tiresXml = tires.map(buildPartXmlNode).join("");
+  const wheelsXml = generateWheelCatalog().map(buildPartXmlNode).join("");
+
   return `<p>${tiresXml}${wheelsXml}</p>`;
 }
