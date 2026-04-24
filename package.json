@@ -9,6 +9,8 @@
     "check": "node --check src/index.js",
     "analyze:capture": "node tools/analyze_capture_bundle.js",
     "check:showroom-specs": "python tools/check_showroom_specs.py"
+    ,
+    "test:cpu-tournaments": "node tests/cpu-tournaments-smoke-test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.101.1",

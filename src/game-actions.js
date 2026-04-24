@@ -5198,6 +5198,27 @@ function buildComputerTournamentFieldXml(tournamentId) {
   return `<n2>${competitorsXml}</n2>`;
 }
 
+function buildComputerTournamentQualifySeedXml(session) {
+  const publicId = Number(session?.publicId || session?.playerId || 0);
+  const activeCarId = Number(session?.activeCarId || 0);
+  if (publicId <= 0 || activeCarId <= 0) {
+    return "";
+  }
+
+  const bracketTime = Number(session?.bracketTime || 0);
+  const formattedBracketTime = Number.isFinite(bracketTime) && bracketTime > 0
+    ? formatMetric(bracketTime)
+    : "0";
+
+  // Mirror the player's own lane into the neutral RN-style queue payload so
+  // the native computer-tournament callback can hydrate raceObj without
+  // forcing the rivals-specific post-fetch flow.
+  return (
+    `<q><r i='${publicId}' icid='${activeCarId}' ` +
+    `ci='${publicId}' cicid='${activeCarId}' bt='${formattedBracketTime}' b='0'/></q>`
+  );
+}
+
 function buildComputerTournamentOpponentXml(session, requestedOpponentId) {
   const opponent = getComputerTournamentOpponentProfile(session, requestedOpponentId);
   const baseBracketTime = Number(session?.bracketTime || 0);
@@ -5209,10 +5230,12 @@ function buildComputerTournamentOpponentXml(session, requestedOpponentId) {
     ...opponent,
     bkDiff,
     xml:
-      `<r cid='${opponent.competitorId}' cacid='${opponent.virtualCarId}' ` +
+      `<r id='${opponent.competitorId}' i='${opponent.competitorId}' cid='${opponent.competitorId}' ` +
+      `caid='${opponent.competitorCarId}' cacid='${opponent.virtualCarId}' ` +
+      `n='${escapeXml(opponent.username)}' u='${escapeXml(opponent.username)}' ` +
       `bt='${formatMetric(opponent.bracketTime)}' rt='${formatMetric(opponent.reactionTime)}' ` +
       `et='${formatMetric(opponent.elapsedTime)}' ts='${formatMetric(opponent.trapSpeed, 2)}' p='${opponent.purse}' ` +
-      `pp='${opponent.pp}'/>`,
+      `pp='${opponent.pp}' hp='${opponent.horsepower}' w='${opponent.weight}' type='C'/>`,
   };
 }
 
@@ -6141,7 +6164,28 @@ const handlers = {
   leavepractice: async (context) => handlePracticeLifecycleAck(context, "leavepractice"),
   exitpractice: async (context) => handlePracticeLifecycleAck(context, "exitpractice"),
   practiceend: async (context) => handlePracticeLifecycleAck(context, "practiceend"),
-  // --- Computer Tournaments (10.0.03 source of truth) ---
+  // --- Computer Tournaments (CPU) (10.0.03 source of truth) ---
+  // CPU Tournament action contracts (decoded from encrypted payload)
+  // - ctgr: fetches computer tournament field xml
+  //   Params: ctid or tid -> tournamentId (default 1)
+  //   Response: wrapSuccessData(xml)
+  //   Source: generated:ctgr:tournament=${tournamentId}
+  // - ctjt: join computer tournament, returns tournament key
+  //   Params: ctid -> tournamentId (default 1)
+  //   Response: "s", 1, "k", "<tournamentKey>"
+  //   Source: generated:ctjt:tournament=${tournamentId}
+  // - ctct: save computer tournament qualifying pass
+  //   Params: k (tournamentKey), bt (bracketTime), acid (activeCarId)
+  //   Response: "s", 1, "d", "<q>...</q>" (neutral self-paired race seed)
+  //   Source: generated:ctct
+  // - ctrt: return computer tournament opponent
+  //   Params: k (tournamentKey), caid (requestedOpponentId)
+  //   Response: "s", 1, "d", "<opponent.xml>", "b", bkDiff
+  //   Source: generated:ctrt
+  // - ctst: save computer tournament race result
+  //   Params: k (tournamentKey), w (win flag), b (payout)
+  //   Response: "s", 1, "d", "<n2 w='X' b='Y'/>"
+  //   Source: generated:ctst
   ctgr: async (context) => {
     const { params, logger } = context;
     const tournamentId = Number(params.get("ctid") || params.get("tid") || 1);
@@ -6161,6 +6205,12 @@ const handlers = {
     const { params, logger } = context;
     const tournamentId = Number(params.get("ctid") || 1);
     const caller = await resolveCallerSession(context, "generated:ctjt");
+    if (!caller?.ok) {
+      return {
+        body: caller?.body || failureBody(),
+        source: caller?.source || "supabase:ctjt:bad-session",
+      };
+    }
     const tournamentKey = randomUUID();
     const session = {
       sessionKey: tournamentKey,
@@ -6169,8 +6219,8 @@ const handlers = {
       bracketTime: null,
       qualifyingComplete: false,
       wins: 0,
-      playerId: caller?.ok ? caller.playerId : null,
-      publicId: caller?.ok ? caller.publicId : null,
+      playerId: caller.playerId,
+      publicId: caller.publicId,
       activeCarId: null,
     };
     bindComputerTournamentSession(session);
@@ -6192,16 +6242,22 @@ const handlers = {
     const bracketTime = Number(params.get("bt") || 0);
     const activeCarId = Number(params.get("acid") || 0) || null;
     const caller = await resolveCallerSession(context, "generated:ctct");
+    if (!caller?.ok) {
+      return {
+        body: caller?.body || failureBody(),
+        source: caller?.source || "supabase:ctct:bad-session",
+      };
+    }
     const session = getBoundComputerTournamentSession({
       tournamentKey,
-      playerId: caller?.ok ? caller.playerId : null,
+      playerId: caller.playerId,
     }) || {
-      sessionKey: tournamentKey || buildComputerTournamentSessionKey(caller?.ok ? caller.playerId : 0),
+      sessionKey: tournamentKey || buildComputerTournamentSessionKey(caller.playerId),
       tournamentId: 1,
       createdAt: Date.now(),
       wins: 0,
-      playerId: caller?.ok ? caller.playerId : null,
-      publicId: caller?.ok ? caller.publicId : null,
+      playerId: caller.playerId,
+      publicId: caller.publicId,
       activeCarId: null,
     };
 
@@ -6213,19 +6269,24 @@ const handlers = {
     }
     bindComputerTournamentSession(session);
 
-    const responseBody = `"s", 1, "d", ""`;
+    const qualifySeedXml = buildComputerTournamentQualifySeedXml(session);
+    const responseBody = `"s", 1, "d", "${qualifySeedXml}"`;
 
     logger.info("ctct called - saved computer tournament qualifying pass", {
       tournamentKey: session.sessionKey,
       bracketTime,
       activeCarId,
       playerId: session.playerId,
+      publicId: session.publicId,
+      qualifySeeded: Boolean(qualifySeedXml),
     });
     logTournamentPayload(logger, "ctct", responseBody, {
       tournamentKey: session.sessionKey,
       bracketTime,
       activeCarId,
       playerId: session.playerId,
+      publicId: session.publicId,
+      qualifySeeded: Boolean(qualifySeedXml),
     });
 
     return {
@@ -6236,17 +6297,23 @@ const handlers = {
   ctrt: async (context) => {
     const { params, logger } = context;
     const caller = await resolveCallerSession(context, "generated:ctrt");
+    if (!caller?.ok) {
+      return {
+        body: caller?.body || failureBody(),
+        source: caller?.source || "supabase:ctrt:bad-session",
+      };
+    }
     const requestedOpponentId = Number(params.get("caid") || 0) || null;
     const session = getBoundComputerTournamentSession({
       tournamentKey: params.get("k") || "",
-      playerId: caller?.ok ? caller.playerId : null,
+      playerId: caller.playerId,
     }) || {
-      sessionKey: buildComputerTournamentSessionKey(caller?.ok ? caller.playerId : 0),
+      sessionKey: buildComputerTournamentSessionKey(caller.playerId),
       tournamentId: 1,
       createdAt: Date.now(),
       wins: 0,
-      playerId: caller?.ok ? caller.playerId : null,
-      publicId: caller?.ok ? caller.publicId : null,
+      playerId: caller.playerId,
+      publicId: caller.publicId,
       activeCarId: null,
     };
     bindComputerTournamentSession(session);
@@ -6277,6 +6344,8 @@ const handlers = {
       opponentCompetitorId: opponent.competitorId,
       opponentCompetitorCarId: opponent.competitorCarId,
       opponentVirtualCarId: opponent.virtualCarId,
+      activeCarId: session.activeCarId,
+      playerPublicId: session.publicId,
     });
 
     return {
@@ -6287,17 +6356,23 @@ const handlers = {
   ctst: async (context) => {
     const { params, logger } = context;
     const caller = await resolveCallerSession(context, "generated:ctst");
+    if (!caller?.ok) {
+      return {
+        body: caller?.body || failureBody(),
+        source: caller?.source || "supabase:ctst:bad-session",
+      };
+    }
     const tournamentKey = params.get("k") || "";
     const session = getBoundComputerTournamentSession({
       tournamentKey,
-      playerId: caller?.ok ? caller.playerId : null,
+      playerId: caller.playerId,
     }) || {
-      sessionKey: tournamentKey || buildComputerTournamentSessionKey(caller?.ok ? caller.playerId : 0),
+      sessionKey: tournamentKey || buildComputerTournamentSessionKey(caller.playerId),
       tournamentId: 1,
       createdAt: Date.now(),
       wins: 0,
-      playerId: caller?.ok ? caller.playerId : null,
-      publicId: caller?.ok ? caller.publicId : null,
+      playerId: caller.playerId,
+      publicId: caller.publicId,
       activeCarId: null,
     };
     const rawWinState = Number(params.get("w") || 1);

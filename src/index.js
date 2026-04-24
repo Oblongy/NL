@@ -1,6 +1,7 @@
 import { config } from "./config.js";
 import { logger } from "./logger.js";
 import { createGameSupabase } from "./supabase-client.js";
+import { checkSupabaseHealth } from "./supabase-health.js";
 import { purgeExpiredSessions } from "./session.js";
 import { createHttpServer } from "./http-server.js";
 import { RaceRoomRegistry } from "./race-room-registry.js";
@@ -16,6 +17,18 @@ import { createApiRouter } from "./api-routes.js";
 import { createWsServer } from "./ws-server.js";
 
 const supabase = await createGameSupabase(config, logger);
+// Startup health check for Supabase when credentials are provided.
+if (config.supabaseUrl) {
+  const health = await checkSupabaseHealth({ supabase, logger });
+  if (!health.ok) {
+    logger.error("Critical Supabase health check failed; exiting.");
+    process.exit(1);
+  } else {
+    logger.info("Supabase health check passed");
+  }
+} else {
+  logger.info("Supabase not configured; running in local/fixture mode");
+}
 logShowroomSpecCoverage(logger);
 const raceRoomRegistry = new RaceRoomRegistry();
 const raceManager = new RaceManager();
