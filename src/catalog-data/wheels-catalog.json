@@ -151,6 +151,78 @@
     "weightSizeStep": -2
   },
   "wheelPartOverrides": {
+    "1132": {
+      "n": "Mazda Bergenholtz Rims 15&quot;",
+      "b": "mazda",
+      "bn": "Mazda",
+      "mn": "Bergenholtz Rims"
+    },
+    "1133": {
+      "n": "Mazda Bergenholtz Rims 16&quot;",
+      "b": "mazda",
+      "bn": "Mazda",
+      "mn": "Bergenholtz Rims"
+    },
+    "1134": {
+      "n": "Mazda Bergenholtz Rims 17&quot;",
+      "b": "mazda",
+      "bn": "Mazda",
+      "mn": "Bergenholtz Rims"
+    },
+    "1135": {
+      "n": "Mazda Bergenholtz Rims 18&quot;",
+      "b": "mazda",
+      "bn": "Mazda",
+      "mn": "Bergenholtz Rims"
+    },
+    "1136": {
+      "n": "Mazda Bergenholtz Rims 19&quot;",
+      "b": "mazda",
+      "bn": "Mazda",
+      "mn": "Bergenholtz Rims"
+    },
+    "1137": {
+      "n": "Mazda Bergenholtz Rims 20&quot;",
+      "b": "mazda",
+      "bn": "Mazda",
+      "mn": "Bergenholtz Rims"
+    },
+    "1036": {
+      "n": "OEM Corvette Rims 15&quot;",
+      "b": "oem",
+      "bn": "OEM",
+      "mn": "OEM Corvette Rims"
+    },
+    "1037": {
+      "n": "OEM Corvette Rims 16&quot;",
+      "b": "oem",
+      "bn": "OEM",
+      "mn": "OEM Corvette Rims"
+    },
+    "1038": {
+      "n": "OEM Corvette Rims 17&quot;",
+      "b": "oem",
+      "bn": "OEM",
+      "mn": "OEM Corvette Rims"
+    },
+    "1039": {
+      "n": "OEM Corvette Rims 18&quot;",
+      "b": "oem",
+      "bn": "OEM",
+      "mn": "OEM Corvette Rims"
+    },
+    "1040": {
+      "n": "OEM Corvette Rims 19&quot;",
+      "b": "oem",
+      "bn": "OEM",
+      "mn": "OEM Corvette Rims"
+    },
+    "1041": {
+      "n": "OEM Corvette Rims 20&quot;",
+      "b": "oem",
+      "bn": "OEM",
+      "mn": "OEM Corvette Rims"
+    },
     "1168": {
       "n": "Stock OEM 15&quot;",
       "b": "oem",

@@ -4,6 +4,34 @@ import { buildWheelsTiresCatalogXml } from "./wheels-catalog.js";
 
 const EXPECTED_MAPPINGS = [
   {
+    label: "Mazda Bergenholtz Rims",
+    brandSlug: "mazda",
+    brandName: "Mazda",
+    modelName: "Bergenholtz Rims",
+    wheels: [
+      [1132, "15"],
+      [1133, "16"],
+      [1134, "17"],
+      [1135, "18"],
+      [1136, "19"],
+      [1137, "20"],
+    ],
+  },
+  {
+    label: "OEM Corvette Rims",
+    brandSlug: "oem",
+    brandName: "OEM",
+    modelName: "OEM Corvette Rims",
+    wheels: [
+      [1036, "15"],
+      [1037, "16"],
+      [1038, "17"],
+      [1039, "18"],
+      [1040, "19"],
+      [1041, "20"],
+    ],
+  },
+  {
     label: "Stock OEM",
     brandSlug: "oem",
     brandName: "OEM",
@@ -33,7 +61,7 @@ const EXPECTED_MAPPINGS = [
   },
 ];
 
-test("wheel catalog keeps the corrected wheel variants mapped to 1168-1179", () => {
+test("wheel catalog keeps the corrected wheel variants mapped to 1036-1179", () => {
   const xml = buildWheelsTiresCatalogXml();
 
   for (const mapping of EXPECTED_MAPPINGS) {
