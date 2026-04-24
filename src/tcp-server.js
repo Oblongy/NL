@@ -3247,6 +3247,7 @@ export class TcpServer {
           lane: requestA.lane,
           bet: requestA.bet,
           sc: scA,
+          bracketTime: Number(requestA.bracketTime ?? -1),
           ready: false,
           opened: false,
           isStaged: false,
@@ -3259,6 +3260,7 @@ export class TcpServer {
           lane: requestB.lane,
           bet: requestB.bet,
           sc: scB,
+          bracketTime: Number(requestB.bracketTime ?? -1),
           ready: false,
           opened: false,
           isStaged: false,
@@ -3685,8 +3687,15 @@ export class TcpServer {
 
   sendRaceCreate(race) {
     const [playerOne, playerTwo] = race.players;
-    const message =
-      `"ac", "RCLG", "s", 1, "i", "${race.id}", "r1id", "${playerOne.playerId}", "r2id", "${playerTwo.playerId}", "r1cid", "${playerOne.carId}", "r2cid", "${playerTwo.carId}"`;
+    const challengeXml = this.buildRclgXml({
+      challengerPlayerId: playerOne.playerId,
+      challengerCarId: playerOne.carId,
+      challengedPlayerId: playerTwo.playerId,
+      challengedCarId: playerTwo.carId,
+      bracketTime: Number(playerOne.bracketTime ?? -1),
+      raceGuid: race.id,
+    });
+    const message = `"ac", "RCLG", "d", "${this.escapeForTcp(challengeXml)}"`;
 
     for (const participant of race.players) {
       const participantConn = this.connections.get(participant.connId);

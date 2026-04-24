@@ -3090,14 +3090,50 @@ async function handleBuyDyno(context) {
   };
 }
 
+function resolvePartPurchaseCharge({
+  rawPaymentType = "",
+  requestedPrice = 0,
+  moneyPrice = 0,
+  pointsPrice = 0,
+  treatRawPAsCustomGraphic = false,
+} = {}) {
+  const normalizedPaymentType = String(rawPaymentType || "").trim().toLowerCase();
+  const explicitPointsPayment = normalizedPaymentType === "p" && !treatRawPAsCustomGraphic;
+  const explicitMoneyPayment = normalizedPaymentType === "m";
+  const requestedLooksLikePoints = requestedPrice > 0
+    && pointsPrice > 0
+    && requestedPrice === pointsPrice
+    && requestedPrice !== moneyPrice;
+  const requestedLooksLikeMoney = requestedPrice > 0 && requestedPrice === moneyPrice;
+  const pointsOnlyCatalogPrice = requestedPrice === 0 && moneyPrice === 0 && pointsPrice > 0;
+  const chargePoints = pointsPrice > 0
+    && !requestedLooksLikeMoney
+    && (explicitPointsPayment || requestedLooksLikePoints || (pointsOnlyCatalogPrice && !explicitMoneyPayment));
+
+  let price = requestedPrice;
+  if (price === 0) {
+    price = chargePoints ? pointsPrice : moneyPrice;
+  }
+
+  return {
+    chargePoints,
+    price,
+  };
+}
+
+function buildPartPurchaseResponseBody({ moneyBalance, pointsBalance, installId }) {
+  return `"s", 1, "d1", "<r s='2' b='${moneyBalance}' ai='${installId}'/>", "d", "<r s='1' b='${pointsBalance}'></r>"`;
+}
+
 async function handleBuyPart(context) {
   const { supabase, params, logger, remoteAddress } = context;
   const accountCarId = params.get("acid") || "";
   const partId = Number(params.get("pid") || 0);
   const decalId = params.get("did") || "";
   const decalFileExt = normalizeUserGraphicFileExt(params.get("fx") || "", "png");
-  const partType = params.get("pt") || "";
-  const partPrice = Number(params.get("pr") || 0);
+  const rawPartType = params.get("pt") || "";
+  const requestedPrice = Number(params.get("pr") || 0);
+  const isCustomGraphicRequest = rawPartType === "p" && Boolean(decalId);
 
   if (!accountCarId) {
     return { body: failureBody(), source: "buypart:missing-params" };
@@ -3127,17 +3163,25 @@ async function handleBuyPart(context) {
   let partName = "Part";
   let partSlotId = "";
   let partPs = "";
-  let price = partPrice;
+  const moneyPrice = Number(catalogPart?.p || 0);
+  const pointsPrice = Number(catalogPart?.pp || 0);
+  const purchase = resolvePartPurchaseCharge({
+    rawPaymentType: rawPartType,
+    requestedPrice,
+    moneyPrice,
+    pointsPrice,
+    treatRawPAsCustomGraphic: isCustomGraphicRequest,
+  });
+  let price = purchase.price;
 
   if (catalogPart) {
     partName = catalogPart.n || "Part";
     partSlotId = String(catalogPart.pi || "");
     partPs = catalogPart.ps || "";
-    if (price === 0) price = Number(catalogPart.p || 0);
   }
 
-  // For custom panel graphics (pt=p), price from catalog if not provided
-  if (price === 0 && partType === "p" && partId) {
+  // Legacy custom graphics can still arrive without a catalog wallet price.
+  if (price === 0 && isCustomGraphicRequest && partId && !purchase.chargePoints) {
     const panelPrices = {
       6000: 110,
       6001: 190,
@@ -3151,22 +3195,33 @@ async function handleBuyPart(context) {
     price = panelPrices[partId] || 0;
   }
 
-  if (!catalogPart && !(partType === "p" && decalId)) {
+  if (!catalogPart && !isCustomGraphicRequest) {
     return { body: failureBody(), source: "supabase:buypart:no-part" };
   }
 
-  const newBalance = Number(player.money) - price;
-  if (newBalance < 0) {
-    return { body: failureBody(), source: "supabase:buypart:insufficient-funds" };
+  const currentMoneyBalance = Number(player.money || 0);
+  const currentPointsBalance = Number(player.points || 0);
+  let newMoneyBalance = currentMoneyBalance;
+  let newPointsBalance = currentPointsBalance;
+  if (purchase.chargePoints) {
+    newPointsBalance -= price;
+    if (newPointsBalance < 0) {
+      return { body: failureBody(), source: "supabase:buypart:insufficient-points" };
+    }
+    await updatePlayerRecord(supabase, caller.playerId, { points: newPointsBalance });
+  } else {
+    newMoneyBalance -= price;
+    if (newMoneyBalance < 0) {
+      return { body: failureBody(), source: "supabase:buypart:insufficient-funds" };
+    }
+    await updatePlayerMoney(supabase, caller.playerId, newMoneyBalance);
   }
-
-  await updatePlayerMoney(supabase, caller.playerId, newBalance);
 
   let installId = createInstalledPartId();
 
   // Save part to the owned car's parts_xml
   if (accountCarId && partId) {
-    if (partType === "p" && decalId) {
+    if (isCustomGraphicRequest) {
       const partSlotMap = {
         6000: "160",
         6001: "161",
@@ -3277,7 +3332,7 @@ async function handleBuyPart(context) {
         await saveCarPartsXml(supabase, accountCarId, partsXml);
       } else {
         const installedPartXml = buildInstalledCatalogPartXml(catalogPart, installId, {
-          t: catalogPart.t || partType || "",
+          t: catalogPart.t || rawPartType || "",
           ps: partPs,
         });
         const partsXml = upsertInstalledPartXml(car.parts_xml || "", partSlotId, installedPartXml);
@@ -3292,7 +3347,11 @@ async function handleBuyPart(context) {
   }
 
   return {
-    body: `"s", 1, "d1", "<r s='2' b='${newBalance}' ai='${installId}'/>", "d", "<r s='1' b='0'></r>"`,
+    body: buildPartPurchaseResponseBody({
+      moneyBalance: newMoneyBalance,
+      pointsBalance: newPointsBalance,
+      installId,
+    }),
     source: "supabase:buypart",
   };
 }
@@ -3301,7 +3360,8 @@ async function handleBuyEnginePart(context) {
   const { supabase, params, logger } = context;
   const accountCarId = params.get("acid") || "";
   const partId = Number(params.get("epid") || 0);
-  const partPrice = Number(params.get("pr") || 0);
+  const rawPaymentType = params.get("pt") || "";
+  const requestedPrice = Number(params.get("pr") || 0);
 
   if (!accountCarId) {
     return { body: failureBody(), source: "buyenginepart:missing-params" };
@@ -3338,13 +3398,29 @@ async function handleBuyEnginePart(context) {
     return { body: failureBody(), source: "supabase:buyenginepart:no-part" };
   }
 
-  const price = partPrice || Number(catalogPart.p || 0);
-  const newBalance = Number(player.money) - price;
-  if (newBalance < 0) {
-    return { body: failureBody(), source: "supabase:buyenginepart:insufficient-funds" };
+  const purchase = resolvePartPurchaseCharge({
+    rawPaymentType,
+    requestedPrice,
+    moneyPrice: Number(catalogPart.p || 0),
+    pointsPrice: Number(catalogPart.pp || 0),
+  });
+  const currentMoneyBalance = Number(player.money || 0);
+  const currentPointsBalance = Number(player.points || 0);
+  let newMoneyBalance = currentMoneyBalance;
+  let newPointsBalance = currentPointsBalance;
+  if (purchase.chargePoints) {
+    newPointsBalance -= purchase.price;
+    if (newPointsBalance < 0) {
+      return { body: failureBody(), source: "supabase:buyenginepart:insufficient-points" };
+    }
+    await updatePlayerRecord(supabase, caller.playerId, { points: newPointsBalance });
+  } else {
+    newMoneyBalance -= purchase.price;
+    if (newMoneyBalance < 0) {
+      return { body: failureBody(), source: "supabase:buyenginepart:insufficient-funds" };
+    }
+    await updatePlayerMoney(supabase, caller.playerId, newMoneyBalance);
   }
-
-  await updatePlayerMoney(supabase, caller.playerId, newBalance);
 
   const installId = createInstalledPartId();
   const slotId = String(catalogPart.pi || "");
@@ -3361,7 +3437,11 @@ async function handleBuyEnginePart(context) {
   }
 
   return {
-    body: `"s", 1, "d1", "<r s='2' b='${newBalance}' ai='${installId}'/>", "d", "<r s='1' b='0'></r>"`,
+    body: buildPartPurchaseResponseBody({
+      moneyBalance: newMoneyBalance,
+      pointsBalance: newPointsBalance,
+      installId,
+    }),
     source: "supabase:buyenginepart",
   };
 }
