@@ -151,6 +151,42 @@
     "weightSizeStep": -2
   },
   "wheelPartOverrides": {
+    "1168": {
+      "n": "Stock OEM 15&quot;",
+      "b": "oem",
+      "bn": "OEM",
+      "mn": "Stock OEM"
+    },
+    "1169": {
+      "n": "Stock OEM 16&quot;",
+      "b": "oem",
+      "bn": "OEM",
+      "mn": "Stock OEM"
+    },
+    "1170": {
+      "n": "Stock OEM 17&quot;",
+      "b": "oem",
+      "bn": "OEM",
+      "mn": "Stock OEM"
+    },
+    "1171": {
+      "n": "Stock OEM 18&quot;",
+      "b": "oem",
+      "bn": "OEM",
+      "mn": "Stock OEM"
+    },
+    "1172": {
+      "n": "Stock OEM 19&quot;",
+      "b": "oem",
+      "bn": "OEM",
+      "mn": "Stock OEM"
+    },
+    "1173": {
+      "n": "Stock OEM 20&quot;",
+      "b": "oem",
+      "bn": "OEM",
+      "mn": "Stock OEM"
+    },
     "1174": {
       "n": "HRE 895R Carbon Fiber 15&quot;",
       "b": "hre",
