@@ -1,0 +1,50 @@
+[2026-04-04T12:56:06.600Z] [info] TCP server scaffold ready
+[2026-04-04T12:56:06.633Z] [info] Backend listening {"host":"127.0.0.1","port":8082,"supabase":true}
+[2026-04-04T12:56:44.224Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T12:56:44.279Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T12:56:45.167Z] [info] Loaded fixture records {"keys":257,"files":3}
+[2026-04-04T12:56:45.319Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=2088325493AuthenticAMD151&nid=D8-43-AE-4E-0A-D9&prid=NoProductId&cna=JUICEBOX&dt=&fbl=0&p=123456&u=Oblong"}
+[2026-04-04T12:56:45.357Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T12:56:45.365Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=2088325493AuthenticAMD151&nid=D8-43-AE-4E-0A-D9&prid=NoProductId&cna=JUICEBOX&dt=&fbl=0&p=123456&u=Oblong"}
+[2026-04-04T12:56:45.406Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T12:56:45.850Z] [info] Game action served {"action":"teaminfo","source":"supabase:teaminfo:none","decodedQuery":"action=teaminfo&aid=3&sk=84b0fcd1-b972-4410-ad82-fcdc5a0f99bb&tids=0"}
+[2026-04-04T12:56:46.250Z] [info] Game action served {"action":"getuser","source":"supabase:getuser","decodedQuery":"action=getuser&aid=3&sk=0dca4ed6-16e8-49f4-ac52-a6e7fe726f50&tid=3"}
+[2026-04-04T12:57:42.114Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T12:57:42.388Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T12:57:42.901Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=2088325493AuthenticAMD151&nid=D8-43-AE-4E-0A-D9&prid=NoProductId&cna=JUICEBOX&dt=&fbl=0&p=123456&u=Oblong"}
+[2026-04-04T12:57:42.979Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=2088325493AuthenticAMD151&nid=D8-43-AE-4E-0A-D9&prid=NoProductId&cna=JUICEBOX&dt=&fbl=0&p=123456&u=Oblong"}
+[2026-04-04T13:14:13.920Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T13:14:14.954Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=2088325493AuthenticAMD151&nid=D8-43-AE-4E-0A-D9&prid=NoProductId&cna=JUICEBOX&dt=&fbl=0&p=test123&u=Tester1"}
+[2026-04-04T13:14:50.713Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T13:14:51.557Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=2088325493AuthenticAMD151&nid=D8-43-AE-4E-0A-D9&prid=NoProductId&cna=JUICEBOX&dt=&fbl=0&p=test123&u=Tester1"}
+[2026-04-04T13:14:54.313Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T13:14:55.131Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=1&sk=8fc4f8b6-bfab-4f1c-b8e8-d3bacd07b1c2"}
+[2026-04-04T13:14:56.104Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T13:14:56.958Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=1&sk=8fc4f8b6-bfab-4f1c-b8e8-d3bacd07b1c2"}
+[2026-04-04T13:15:08.384Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T13:15:09.261Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=1&sk=8fc4f8b6-bfab-4f1c-b8e8-d3bacd07b1c2"}
+[2026-04-04T13:15:10.466Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T13:15:11.232Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=1&sk=8fc4f8b6-bfab-4f1c-b8e8-d3bacd07b1c2"}
+[2026-04-04T13:15:19.272Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T13:15:19.288Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T13:15:19.938Z] [info] Game action served {"action":"teaminfo","source":"supabase:teaminfo:none","decodedQuery":"action=teaminfo&aid=1&sk=8fc4f8b6-bfab-4f1c-b8e8-d3bacd07b1c2&tids=0"}
+[2026-04-04T13:15:20.234Z] [info] Game action served {"action":"getuser","source":"supabase:getuser","decodedQuery":"action=getuser&aid=1&sk=8fc4f8b6-bfab-4f1c-b8e8-d3bacd07b1c2&tid=1"}
+[2026-04-04T13:16:15.550Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T13:16:15.565Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T13:16:16.549Z] [info] Game action served {"action":"teaminfo","source":"supabase:teaminfo:none","decodedQuery":"action=teaminfo&aid=1&sk=8fc4f8b6-bfab-4f1c-b8e8-d3bacd07b1c2&tids=0"}
+[2026-04-04T13:16:17.000Z] [info] Game action served {"action":"getuser","source":"supabase:getuser","decodedQuery":"action=getuser&aid=1&sk=8fc4f8b6-bfab-4f1c-b8e8-d3bacd07b1c2&tid=1"}
+[2026-04-04T13:18:35.987Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T13:18:36.484Z] [info] Game action served {"action":"login","source":"supabase:login:invalid","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=1684346743GenuineIntel65&nid=08-97-98-B5-F7-A9&prid=NoProductId&cna=PC&dt=&fbl=0&p=123456&u=Oblong"}
+[2026-04-04T13:18:41.498Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T13:18:41.859Z] [info] Game action served {"action":"login","source":"supabase:login:invalid","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=1684346743GenuineIntel65&nid=08-97-98-B5-F7-A9&prid=NoProductId&cna=PC&dt=&fbl=0&p=123456&u=Oblong"}
+[2026-04-04T13:20:09.596Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T13:20:09.938Z] [info] Game action served {"action":"login","source":"supabase:login:invalid","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=2088325493AuthenticAMD151&nid=D8-43-AE-4E-0A-D9&prid=NoProductId&cna=JUICEBOX&dt=&fbl=0&p=123456&u=Oblong"}
+[2026-04-04T13:21:20.077Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T13:21:20.093Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T13:21:20.945Z] [info] Game action served {"action":"teaminfo","source":"supabase:teaminfo:none","decodedQuery":"action=teaminfo&aid=1&sk=8fc4f8b6-bfab-4f1c-b8e8-d3bacd07b1c2&tids=0"}
+[2026-04-04T13:21:20.953Z] [error] Unhandled request error [object Object]
+[2026-04-04T13:24:30.448Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T13:24:30.922Z] [info] Game action served {"action":"login","source":"supabase:login:invalid","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=1684346743GenuineIntel65&nid=08-97-98-B5-F7-A9&prid=NoProductId&cna=PC&dt=&fbl=0&p=123456&u=Oblong"}
+[2026-04-04T13:24:33.452Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T13:24:33.453Z] [warn] No handler or fixture for action {"action":"getstartershowroom","decodedQuery":"action=getstartershowroom&aid=0&sk=undefined"}
+[2026-04-04T13:24:33.453Z] [info] Game action served {"action":"getstartershowroom","source":"unimplemented","decodedQuery":"action=getstartershowroom&aid=0&sk=undefined"}

@@ -1,0 +1,151 @@
+[2026-04-04T17:23:11.162Z] [info] TCP server scaffold ready
+[2026-04-04T17:23:11.184Z] [info] Backend listening {"host":"127.0.0.1","port":8083,"supabase":true}
+[2026-04-04T17:23:12.170Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:23:13.336Z] [info] Game action served {"action":"updatedefaultcar","source":"supabase:updatedefaultcar:invalid-car","decodedQuery":"action=updatedefaultcar&aid=6&sk=f8d661b4-bc05-4394-89c1-1829d66c3ff6&acid=44"}
+[2026-04-04T17:23:14.714Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:23:15.503Z] [info] Game action served {"action":"updatedefaultcar","source":"supabase:updatedefaultcar:invalid-car","decodedQuery":"action=updatedefaultcar&aid=6&sk=f8d661b4-bc05-4394-89c1-1829d66c3ff6&acid=41"}
+[2026-04-04T17:23:23.276Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:23:24.238Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=6&sk=f8d661b4-bc05-4394-89c1-1829d66c3ff6"}
+[2026-04-04T17:23:24.761Z] [info] HTTP request {"method":"GET","path":"/healthz","bytes":0}
+[2026-04-04T17:23:25.106Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:23:25.821Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=6&sk=f8d661b4-bc05-4394-89c1-1829d66c3ff6"}
+[2026-04-04T17:24:23.416Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:24:24.489Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=1&sk=2c9773ff-2d27-41cd-937f-cd75d0694118"}
+[2026-04-04T17:24:39.854Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:24:40.601Z] [info] Loaded fixture records {"keys":257,"files":3}
+[2026-04-04T17:24:40.602Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=4236889102AuthenticAMD151&nid=BC-FC-E7-71-AA-7D&prid=NoProductId&cna=DESKTOP-5CJ3E80&dt=&fbl=0&p=123456&u=nerf"}
+[2026-04-04T17:24:42.504Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:24:43.329Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=6&sk=89062d38-2cec-43c1-b46f-ddaed7f7bce5"}
+[2026-04-04T17:24:43.672Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:24:44.387Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=6&sk=89062d38-2cec-43c1-b46f-ddaed7f7bce5"}
+[2026-04-04T17:25:01.749Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:25:01.751Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:25:02.525Z] [info] Game action served {"action":"teaminfo","source":"supabase:teaminfo:none","decodedQuery":"action=teaminfo&aid=6&sk=89062d38-2cec-43c1-b46f-ddaed7f7bce5&tids=0"}
+[2026-04-04T17:25:02.916Z] [info] Game action served {"action":"getuser","source":"supabase:getuser","decodedQuery":"action=getuser&aid=6&sk=89062d38-2cec-43c1-b46f-ddaed7f7bce5&tid=6"}
+[2026-04-04T17:25:08.126Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:25:09.440Z] [info] Game action served {"action":"getuser","source":"supabase:getuser","decodedQuery":"action=getuser&aid=6&sk=89062d38-2cec-43c1-b46f-ddaed7f7bce5&tid=6"}
+[2026-04-04T17:25:40.276Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:25:40.277Z] [warn] No handler or fixture for action {"action":"movelocation","decodedQuery":"action=movelocation&aid=6&sk=89062d38-2cec-43c1-b46f-ddaed7f7bce5&lid=200&pt=m"}
+[2026-04-04T17:25:40.277Z] [info] Game action served {"action":"movelocation","source":"unimplemented","decodedQuery":"action=movelocation&aid=6&sk=89062d38-2cec-43c1-b46f-ddaed7f7bce5&lid=200&pt=m"}
+[2026-04-04T17:25:43.869Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:25:43.870Z] [warn] No handler or fixture for action {"action":"listclassified","decodedQuery":"action=listclassified&aid=6&sk=89062d38-2cec-43c1-b46f-ddaed7f7bce5&cid=0&et=0&p=1"}
+[2026-04-04T17:25:43.870Z] [info] Game action served {"action":"listclassified","source":"unimplemented","decodedQuery":"action=listclassified&aid=6&sk=89062d38-2cec-43c1-b46f-ddaed7f7bce5&cid=0&et=0&p=1"}
+[2026-04-04T17:26:00.903Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:26:01.486Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=1684346743GenuineIntel65&nid=08-97-98-B5-F7-A9&prid=NoProductId&cna=PC&dt=&fbl=0&p=123456&u=Oblong"}
+[2026-04-04T17:26:03.672Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:26:04.453Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=2&sk=5acb029d-465d-49a3-8463-16e66fc03e9f"}
+[2026-04-04T17:26:04.576Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:26:05.303Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=2&sk=5acb029d-465d-49a3-8463-16e66fc03e9f"}
+[2026-04-04T17:26:17.382Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:26:18.777Z] [info] Game action served {"action":"getuser","source":"supabase:getuser","decodedQuery":"action=getuser&aid=2&sk=5acb029d-465d-49a3-8463-16e66fc03e9f&tid=2"}
+[2026-04-04T17:26:33.402Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:26:33.402Z] [warn] No handler or fixture for action {"action":"uploadrequest","decodedQuery":"action=uploadrequest&aid=2&sk=5acb029d-465d-49a3-8463-16e66fc03e9f&id=2&fn=PI%2Ejpg&t=avatars"}
+[2026-04-04T17:26:33.402Z] [info] Game action served {"action":"uploadrequest","source":"unimplemented","decodedQuery":"action=uploadrequest&aid=2&sk=5acb029d-465d-49a3-8463-16e66fc03e9f&id=2&fn=PI%2Ejpg&t=avatars"}
+[2026-04-04T17:26:41.065Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:26:42.006Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=2&sk=5acb029d-465d-49a3-8463-16e66fc03e9f"}
+[2026-04-04T17:26:42.706Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:26:43.404Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=2&sk=5acb029d-465d-49a3-8463-16e66fc03e9f"}
+[2026-04-04T17:26:51.900Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:26:52.562Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=4236889102AuthenticAMD151&nid=BC-FC-E7-71-AA-7D&prid=NoProductId&cna=DESKTOP-5CJ3E80&dt=&fbl=0&p=123456&u=nerf"}
+[2026-04-04T17:26:54.539Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:26:55.327Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=6&sk=7bb793c8-87bd-4c80-9bce-1b96ebb75c15"}
+[2026-04-04T17:26:55.731Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:26:56.504Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=6&sk=7bb793c8-87bd-4c80-9bce-1b96ebb75c15"}
+[2026-04-04T17:27:31.042Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:27:32.338Z] [info] Game action served {"action":"getuser","source":"supabase:getuser","decodedQuery":"action=getuser&aid=6&sk=7bb793c8-87bd-4c80-9bce-1b96ebb75c15&tid=6"}
+[2026-04-04T17:27:50.711Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:27:51.538Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=6&sk=7bb793c8-87bd-4c80-9bce-1b96ebb75c15"}
+[2026-04-04T17:27:52.328Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:27:52.958Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=6&sk=7bb793c8-87bd-4c80-9bce-1b96ebb75c15"}
+[2026-04-04T17:27:59.451Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:28:00.581Z] [info] Game action served {"action":"getallotherusercars","source":"supabase:getallotherusercars","decodedQuery":"action=getallotherusercars&aid=2&sk=5acb029d-465d-49a3-8463-16e66fc03e9f&tid=6"}
+[2026-04-04T17:28:03.132Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:28:04.239Z] [info] Game action served {"action":"updatedefaultcar","source":"supabase:updatedefaultcar","decodedQuery":"action=updatedefaultcar&aid=2&sk=5acb029d-465d-49a3-8463-16e66fc03e9f&acid=2"}
+[2026-04-04T17:28:05.474Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:28:06.151Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=2&sk=5acb029d-465d-49a3-8463-16e66fc03e9f"}
+[2026-04-04T17:28:06.678Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:28:07.335Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=6&sk=7bb793c8-87bd-4c80-9bce-1b96ebb75c15"}
+[2026-04-04T17:28:07.794Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:28:08.496Z] [info] Game action served {"action":"gettworacerscars","source":"supabase:gettworacerscars","decodedQuery":"action=gettworacerscars&aid=6&sk=7bb793c8-87bd-4c80-9bce-1b96ebb75c15&r1acid=2&r2acid=6"}
+[2026-04-04T17:28:14.150Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:28:14.180Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:28:14.444Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:28:15.111Z] [info] Game action served {"action":"gettworacerscars","source":"supabase:gettworacerscars","decodedQuery":"action=gettworacerscars&aid=2&sk=5acb029d-465d-49a3-8463-16e66fc03e9f&r1acid=2&r2acid=6"}
+[2026-04-04T17:28:15.242Z] [info] Game action served {"action":"getracerscars","source":"supabase:getracerscars","decodedQuery":"action=getracerscars&aid=6&sk=7bb793c8-87bd-4c80-9bce-1b96ebb75c15&acids=2,6"}
+[2026-04-04T17:28:15.249Z] [info] Game action served {"action":"getracerscars","source":"supabase:getracerscars","decodedQuery":"action=getracerscars&aid=2&sk=5acb029d-465d-49a3-8463-16e66fc03e9f&acids=2,6"}
+[2026-04-04T17:28:19.450Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:28:20.169Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:28:20.432Z] [info] Game action served {"action":"getusers","source":"supabase:getusers","decodedQuery":"action=getusers&aid=6&sk=7bb793c8-87bd-4c80-9bce-1b96ebb75c15&aids=2"}
+[2026-04-04T17:28:20.913Z] [info] Game action served {"action":"getusers","source":"supabase:getusers","decodedQuery":"action=getusers&aid=2&sk=5acb029d-465d-49a3-8463-16e66fc03e9f&aids=6"}
+[2026-04-04T17:28:28.483Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:28:28.499Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:28:29.611Z] [info] Game action served {"action":"getuser","source":"supabase:getuser","decodedQuery":"action=getuser&aid=6&sk=7bb793c8-87bd-4c80-9bce-1b96ebb75c15&tid=6"}
+[2026-04-04T17:28:29.634Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:28:29.636Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:28:29.691Z] [info] Game action served {"action":"getuser","source":"supabase:getuser","decodedQuery":"action=getuser&aid=6&sk=7bb793c8-87bd-4c80-9bce-1b96ebb75c15&tid=2"}
+[2026-04-04T17:28:30.424Z] [info] Game action served {"action":"getuser","source":"supabase:getuser","decodedQuery":"action=getuser&aid=2&sk=5acb029d-465d-49a3-8463-16e66fc03e9f&tid=6"}
+[2026-04-04T17:28:30.435Z] [info] Game action served {"action":"getuser","source":"supabase:getuser","decodedQuery":"action=getuser&aid=2&sk=5acb029d-465d-49a3-8463-16e66fc03e9f&tid=2"}
+[2026-04-04T17:30:28.872Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:30:29.782Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=6&sk=7bb793c8-87bd-4c80-9bce-1b96ebb75c15"}
+[2026-04-04T17:30:30.564Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:30:31.291Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=6&sk=7bb793c8-87bd-4c80-9bce-1b96ebb75c15"}
+[2026-04-04T17:41:04.946Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:41:05.877Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=6&sk=7bb793c8-87bd-4c80-9bce-1b96ebb75c15"}
+[2026-04-04T17:41:06.810Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T17:41:07.518Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=6&sk=7bb793c8-87bd-4c80-9bce-1b96ebb75c15"}
+[2026-04-04T19:46:45.759Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T19:46:47.293Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=1684346743GenuineIntel65&nid=08-97-98-B5-F7-A9&prid=NoProductId&cna=PC&dt=&fbl=0&p=123456&u=Oblong"}
+[2026-04-04T19:46:49.308Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T19:46:50.482Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=2&sk=0af8e888-ef99-4a3c-98ce-e533212ec351"}
+[2026-04-04T19:46:50.545Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T19:46:51.562Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=2&sk=0af8e888-ef99-4a3c-98ce-e533212ec351"}
+[2026-04-04T19:47:24.738Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T19:47:25.788Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=2&sk=0af8e888-ef99-4a3c-98ce-e533212ec351"}
+[2026-04-04T19:47:26.795Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T19:47:27.364Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=2&sk=0af8e888-ef99-4a3c-98ce-e533212ec351"}
+[2026-04-04T19:50:24.747Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T19:50:32.573Z] [info] Game action served {"action":"getuser","source":"supabase:getuser","decodedQuery":"action=getuser&aid=2&sk=0af8e888-ef99-4a3c-98ce-e533212ec351&tid=2"}
+[2026-04-04T20:05:54.199Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T20:05:56.083Z] [info] Game action served {"action":"login","source":"supabase:login:invalid","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=1684346743GenuineIntel65&nid=08-97-98-B5-F7-A9&prid=NoProductId&cna=PC&dt=&fbl=0&p=12345&u=Oblong"}
+[2026-04-04T20:05:59.228Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T20:05:59.935Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=1684346743GenuineIntel65&nid=08-97-98-B5-F7-A9&prid=NoProductId&cna=PC&dt=&fbl=0&p=123456&u=Oblong"}
+[2026-04-04T20:06:01.767Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T20:06:03.558Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=2&sk=970a3d0d-37bf-40de-9d5b-9e4978df7a74"}
+[2026-04-04T20:06:03.742Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T20:06:05.243Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=2&sk=970a3d0d-37bf-40de-9d5b-9e4978df7a74"}
+[2026-04-04T20:11:48.682Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T20:11:49.472Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=1684346743GenuineIntel65&nid=08-97-98-B5-F7-A9&prid=NoProductId&cna=PC&dt=&fbl=0&p=123456&u=Oblong"}
+[2026-04-04T20:11:51.293Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T20:11:52.040Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=2&sk=8c5dba5e-496a-4cc3-8816-4e13147fc459"}
+[2026-04-04T20:11:52.188Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T20:11:52.897Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=2&sk=8c5dba5e-496a-4cc3-8816-4e13147fc459"}
+[2026-04-04T21:37:00.324Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T21:37:01.436Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=1684346743GenuineIntel65&nid=08-97-98-B5-F7-A9&prid=NoProductId&cna=PC&dt=&fbl=0&p=123456&u=Oblong"}
+[2026-04-04T21:37:03.528Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T21:37:04.460Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=2&sk=a1f202b6-8879-4bba-8d79-2dd0c5ec8ff1"}
+[2026-04-04T21:37:04.606Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T21:37:05.358Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=2&sk=a1f202b6-8879-4bba-8d79-2dd0c5ec8ff1"}
+[2026-04-04T21:37:20.278Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T21:37:21.360Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=2&sk=a1f202b6-8879-4bba-8d79-2dd0c5ec8ff1"}
+[2026-04-04T21:37:22.307Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T21:37:23.045Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=2&sk=a1f202b6-8879-4bba-8d79-2dd0c5ec8ff1"}
+[2026-04-04T21:41:06.171Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T21:41:07.474Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=1684346743GenuineIntel65&nid=08-97-98-B5-F7-A9&prid=NoProductId&cna=PC&dt=&fbl=0&p=123456&u=Oblong"}
+[2026-04-04T21:41:09.268Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T21:41:10.215Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=2&sk=6abfcb2f-f54d-45d0-846e-fbc855d3c2e2"}
+[2026-04-04T21:41:10.350Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T21:41:11.146Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=2&sk=6abfcb2f-f54d-45d0-846e-fbc855d3c2e2"}
+[2026-04-04T21:41:21.887Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T21:41:23.162Z] [info] Game action served {"action":"getuser","source":"supabase:getuser","decodedQuery":"action=getuser&aid=2&sk=6abfcb2f-f54d-45d0-846e-fbc855d3c2e2&tid=2"}
+[2026-04-04T21:44:09.693Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T21:44:10.502Z] [info] Game action served {"action":"login","source":"supabase:login","decodedQuery":"action=login&aid=0&sk=undefined&fbt=&fbi=&md5=e1ca3ffb36442d366d27287885ef5920&mid=1684346743GenuineIntel65&nid=08-97-98-B5-F7-A9&prid=NoProductId&cna=PC&dt=&fbl=0&p=123456&u=Oblong"}
+[2026-04-04T21:44:12.407Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T21:44:13.141Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=2&sk=36563abf-ac83-4916-a432-0587e3af8dbb"}
+[2026-04-04T21:44:13.180Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T21:44:13.831Z] [info] Game action served {"action":"getallcars","source":"supabase:getallcars","decodedQuery":"action=getallcars&aid=2&sk=36563abf-ac83-4916-a432-0587e3af8dbb"}
+[2026-04-04T21:44:23.438Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T21:44:24.515Z] [info] Game action served {"action":"getuser","source":"supabase:getuser","decodedQuery":"action=getuser&aid=2&sk=36563abf-ac83-4916-a432-0587e3af8dbb&tid=2"}
+[2026-04-04T21:45:48.219Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T21:45:48.219Z] [error] Could not decode game query Error: Seed suffix did not decode to digits: ca
+[2026-04-04T21:51:03.258Z] [info] HTTP request {"method":"GET","path":"/gameCode1_00.aspx","bytes":0}
+[2026-04-04T21:51:04.598Z] [info] Game action served {"action":"registerswf","source":"supabase:createaccount:ok","decodedQuery":"action=registerswf&un=AuX&pw=123456&cpw=123456&g=M&ea=local%401320legends.dev&zc=00000&by=1985&clr=C0C0C0&gid=local-guid&gc=0000&fbc=0&cid=1&wid=1001"}
