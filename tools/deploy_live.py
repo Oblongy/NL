@@ -31,7 +31,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Sync backend changes to the live VPS and restart PM2."
     )
-    parser.add_argument("--host", default=os.getenv("NL_VPS_HOST", "3.93.35.32"))
+    parser.add_argument("--host", default=os.getenv("NL_VPS_HOST", "44.206.42.27"))
     parser.add_argument("--user", default=os.getenv("NL_VPS_USER", "ubuntu"))
     parser.add_argument("--password", default=os.getenv("NL_VPS_PASSWORD"))
     parser.add_argument("--key-file", default=os.getenv("NL_VPS_KEY_FILE"), help="Path to SSH private key file (e.g. B:\\LightsailDefaultKey-us-east-1.pem)")

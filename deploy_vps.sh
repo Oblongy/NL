@@ -6,7 +6,7 @@ BACKEND_DIR="$APP_DIR/backend"
 NGINX_SITE_NAME="nl"
 NGINX_AVAILABLE="/etc/nginx/sites-available/$NGINX_SITE_NAME"
 NGINX_ENABLED="/etc/nginx/sites-enabled/$NGINX_SITE_NAME"
-SERVER_IP="3.93.35.32"
+SERVER_IP="44.206.42.27"
 
 require_root() {
   if [[ "${EUID}" -ne 0 ]]; then
@@ -65,7 +65,7 @@ EOF
 
 configure_nginx() {
   cp "$BACKEND_DIR/nginx.nl.conf" "$NGINX_AVAILABLE"
-  sed -i "s/server_name 3.93.35.32;/server_name $SERVER_IP;/" "$NGINX_AVAILABLE"
+  sed -i "s/server_name 44.206.42.27;/server_name $SERVER_IP;/" "$NGINX_AVAILABLE"
   ln -sfn "$NGINX_AVAILABLE" "$NGINX_ENABLED"
   nginx -t
   systemctl reload nginx

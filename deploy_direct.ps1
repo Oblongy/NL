@@ -2,7 +2,7 @@
 # No Git required - uses SCP to copy files directly
 
 param(
-    [string]$VpsIp = "3.93.35.32",
+    [string]$VpsIp = "44.206.42.27",
     [string]$VpsUser = "ubuntu",
     [string]$IdentityFile,
     [string]$Password
