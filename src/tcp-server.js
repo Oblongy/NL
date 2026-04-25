@@ -1777,6 +1777,9 @@ export class TcpServer {
     if (!race || race.sequenceStarted) return;
     if (!race.players.every((entry) => entry.opened)) return;
     if (!race.rivalsReadyBroadcasted) return;
+    if (this.usesAuthoritativeNewbieRivalsSync(race) && !this.hasAllRivalsReadyAcks(race)) {
+      return;
+    }
 
     race.sequenceStarted = true;
     this.setRacePhase(race, "RACING", trigger || "both-opened");
@@ -2025,9 +2028,7 @@ export class TcpServer {
           acceleration: numericAcceleration,
         });
       }
-      if (!useAuthoritativeSync || !isPrelaunchTelemetry) {
-        return;
-      }
+      return;
     }
 
     if (useAuthoritativeSync) {
@@ -2077,10 +2078,6 @@ export class TcpServer {
             socketDestroyed: participantConn?.socket?.destroyed
           });
         }
-      }
-
-      if (!race.sequenceStarted) {
-        return;
       }
     } else {
       const rawTelemetryFrame =
@@ -2196,14 +2193,6 @@ export class TcpServer {
     race.metaByPlayer.set(Number(conn.playerId), metaParts);
     race.stagedCount = race.metaByPlayer.size;
 
-    for (const participant of race.players) {
-      if (Number(participant.playerId) === Number(sender.playerId)) continue;
-      const participantConn = this.getRaceParticipantConnection(participant);
-      if (participantConn) {
-        this.sendMessage(participantConn, this.buildRaceMetaRelayMessage(metaParts));
-      }
-    }
-
     if (this.hasAllRaceMeta(race) && !race.sequenceStarted) {
       this.setRacePhase(race, "STAGED", "meta-from-both");
     }
@@ -2213,6 +2202,18 @@ export class TcpServer {
     });
     this.maybeBroadcastRivalsReady(race);
     this.maybeStartRaceSequence(race, "meta-update");
+
+    if (!race.sequenceStarted) {
+      return;
+    }
+
+    for (const participant of race.players) {
+      if (Number(participant.playerId) === Number(sender.playerId)) continue;
+      const participantConn = this.getRaceParticipantConnection(participant);
+      if (participantConn) {
+        this.sendMessage(participantConn, this.buildRaceMetaRelayMessage(metaParts));
+      }
+    }
   }
 
   handleRivalsReady(conn) {

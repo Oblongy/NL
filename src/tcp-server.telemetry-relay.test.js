@@ -73,7 +73,7 @@ function bindRace(server, { sequenceStarted, lastStateUpdate, roomId = 5 } = {})
   return { race, senderConn, opponentConn };
 }
 
-test("handleRaceTelemetry relays prelaunch S frames as IO before the race sequence starts", () => {
+test("handleRaceTelemetry does not relay prelaunch S frames before the race sequence starts", () => {
   const server = createServer();
   const { opponentConn, senderConn, race } = bindRace(server, {
     sequenceStarted: false,
@@ -81,14 +81,12 @@ test("handleRaceTelemetry relays prelaunch S frames as IO before the race sequen
 
   server.handleRaceTelemetry(senderConn, "S", ["S", "-13", "0", "0"]);
 
-  assert.deepEqual(opponentConn.messages, [
-    '"ac", "IO", "d", -13, "v", 0, "a", 0, "t", 0',
-  ]);
+  assert.deepEqual(opponentConn.messages, []);
   assert.equal(opponentConn.socket.rawWrites, 0);
   assert.equal(race.players[0].isStaged, false);
 });
 
-test("handleRaceTelemetry relays prelaunch team rivals frames as IO before the race starts", () => {
+test("handleRaceTelemetry does not relay prelaunch team rivals frames before the race starts", () => {
   const server = createServer();
   const { opponentConn, senderConn, race } = bindRace(server, {
     sequenceStarted: false,
@@ -97,9 +95,7 @@ test("handleRaceTelemetry relays prelaunch team rivals frames as IO before the r
 
   server.handleRaceTelemetry(senderConn, "S", ["S", "-13", "0", "0"]);
 
-  assert.deepEqual(opponentConn.messages, [
-    '"ac", "IO", "d", -13, "v", 0, "a", 0, "t", 0',
-  ]);
+  assert.deepEqual(opponentConn.messages, []);
   assert.equal(opponentConn.socket.rawWrites, 0);
   assert.equal(race.players[0].isStaged, false);
 });
@@ -135,7 +131,7 @@ test("handleRaceTelemetry relays live team rivals frames as IO once the race sta
   assert.equal(opponentConn.socket.rawWrites, 0);
 });
 
-test("handleRaceTelemetry relays prelaunch koth frames as IO before the race starts", () => {
+test("handleRaceTelemetry does not relay prelaunch koth frames before the race starts", () => {
   const server = createServer();
   const { opponentConn, senderConn, race } = bindRace(server, {
     sequenceStarted: false,
@@ -144,9 +140,31 @@ test("handleRaceTelemetry relays prelaunch koth frames as IO before the race sta
 
   server.handleRaceTelemetry(senderConn, "S", ["S", "-13", "0", "0"]);
 
-  assert.deepEqual(opponentConn.messages, [
-    '"ac", "IO", "d", -13, "v", 0, "a", 0, "t", 0',
-  ]);
+  assert.deepEqual(opponentConn.messages, []);
   assert.equal(opponentConn.socket.rawWrites, 0);
   assert.equal(race.players[0].isStaged, false);
+});
+
+test("handleRaceMeta does not relay MO until the race sequence has started", () => {
+  const server = createServer();
+  const { opponentConn, senderConn } = bindRace(server, {
+    sequenceStarted: false,
+  });
+
+  server.handleRaceMeta(senderConn, ["MO", "1", "2", "3"]);
+
+  assert.deepEqual(opponentConn.messages, []);
+});
+
+test("handleRaceMeta relays MO after the race sequence has started", () => {
+  const server = createServer();
+  const { opponentConn, senderConn } = bindRace(server, {
+    sequenceStarted: true,
+  });
+
+  server.handleRaceMeta(senderConn, ["MO", "1", "2", "3"]);
+
+  assert.deepEqual(opponentConn.messages, [
+    '"ac", "MO", 1, 2, 3',
+  ]);
 });
