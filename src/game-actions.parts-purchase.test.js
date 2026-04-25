@@ -230,6 +230,38 @@ test("buypart keeps the existing points balance in the purchase response for cas
   assert.match(result.body, /<r s='1' b='25'>/);
 });
 
+test("buypart treats custom graphics as cash purchases even though they use pt=p", async () => {
+  const { supabase, state, sessionKey } = createPartPurchaseSupabaseStub({ money: 50000, points: 25 });
+
+  const result = await handleGameAction({
+    action: "buypart",
+    params: new Map([
+      ["aid", String(state.playerRow.id)],
+      ["sk", sessionKey],
+      ["acid", String(state.carRow.game_car_id)],
+      ["pid", "6000"],
+      ["pt", "p"],
+      ["pr", "110"],
+      ["did", "54321"],
+      ["fx", "png"],
+    ]),
+    rawQuery: "",
+    decodedQuery: "",
+    logger: createLogger(),
+    supabase,
+    services: {},
+  });
+
+  assert.equal(result?.source, "supabase:buypart");
+  assert.equal(state.playerRow.money, 49890);
+  assert.equal(state.playerRow.points, 25);
+  assert.match(result.body, /<r s='2' b='49890' ai='/);
+  assert.match(result.body, /<r s='1' b='25'>/);
+  assert.match(state.carRow.parts_xml, /i='6000'/);
+  assert.match(state.carRow.parts_xml, /pi='160'/);
+  assert.match(state.carRow.parts_xml, /pdi='54321'/);
+});
+
 test("buyenginepart charges points instead of money when the engine part is bought with points", async () => {
   const { supabase, state, sessionKey } = createPartPurchaseSupabaseStub({ money: 50000, points: 100 });
 

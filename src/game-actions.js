@@ -3501,6 +3501,12 @@ function resolvePartPurchaseCharge({
   const normalizedRequestedPrice = normalizePurchasePriceValue(requestedPrice);
   const normalizedMoneyPrice = Math.max(0, toFiniteNumber(moneyPrice, 0));
   const normalizedPointsPrice = Math.max(0, toFiniteNumber(pointsPrice, 0));
+  if (treatRawPAsCustomGraphic) {
+    return {
+      chargePoints: false,
+      price: normalizedRequestedPrice || normalizedMoneyPrice,
+    };
+  }
   const explicitPointsPayment = normalizedPaymentType === "p" && !treatRawPAsCustomGraphic;
   const explicitMoneyPayment = normalizedPaymentType === "m";
   const requestedLooksLikePoints = normalizedRequestedPrice > 0
