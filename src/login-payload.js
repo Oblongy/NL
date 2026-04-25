@@ -5,7 +5,7 @@ import {
   PAINT_CATEGORIES_XML as STATIC_PAINT_CATS_XML,
   PAINTS_XML as STATIC_PAINTS_XML,
   PAINT_CATS_FOR_LOC,
-  ALL_COLORS,
+  getPaintColorsForLocation,
 } from "./paint-catalog-source.js";
 import { getClientRoleForPlayer } from "./player-role.js";
 
@@ -217,7 +217,7 @@ export function buildLoginBody(player, cars, _templateBody, sessionKey, logger, 
   // Build paint data for the player's current location only (keeps login body small)
   const playerLid = Number(player.location_id || 100);
   const paintCatsXml = "<n id='getpaintcats'><s>" + PAINT_CATS_FOR_LOC(playerLid) + "</s></n>";
-  const paintColorsXml = "<n id='getpaints'><s>" + ALL_COLORS.replace(/LOC/g, String(playerLid)) + "</s></n>";
+  const paintColorsXml = "<n id='getpaints'><s>" + getPaintColorsForLocation(playerLid) + "</s></n>";
 
   const ini =
     "<ini>" +

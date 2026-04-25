@@ -262,6 +262,59 @@ test("buypart treats custom graphics as cash purchases even though they use pt=p
   assert.match(state.carRow.parts_xml, /pdi='54321'/);
 });
 
+test("buypart keeps custom graphics installed across multiple panel slots", async () => {
+  const { supabase, state, sessionKey } = createPartPurchaseSupabaseStub({ money: 50000, points: 25 });
+
+  const hoodPurchase = await handleGameAction({
+    action: "buypart",
+    params: new Map([
+      ["aid", String(state.playerRow.id)],
+      ["sk", sessionKey],
+      ["acid", String(state.carRow.game_car_id)],
+      ["pid", "6000"],
+      ["pt", "p"],
+      ["pr", "110"],
+      ["did", "11111"],
+      ["fx", "png"],
+    ]),
+    rawQuery: "",
+    decodedQuery: "",
+    logger: createLogger(),
+    supabase,
+    services: {},
+  });
+
+  const sidePurchase = await handleGameAction({
+    action: "buypart",
+    params: new Map([
+      ["aid", String(state.playerRow.id)],
+      ["sk", sessionKey],
+      ["acid", String(state.carRow.game_car_id)],
+      ["pid", "6001"],
+      ["pt", "p"],
+      ["pr", "190"],
+      ["did", "22222"],
+      ["fx", "png"],
+    ]),
+    rawQuery: "",
+    decodedQuery: "",
+    logger: createLogger(),
+    supabase,
+    services: {},
+  });
+
+  assert.equal(hoodPurchase?.source, "supabase:buypart");
+  assert.equal(sidePurchase?.source, "supabase:buypart");
+  assert.equal(state.playerRow.money, 49700);
+  assert.equal(state.playerRow.points, 25);
+  assert.match(state.carRow.parts_xml, /i='6000'/);
+  assert.match(state.carRow.parts_xml, /pi='160'/);
+  assert.match(state.carRow.parts_xml, /pdi='11111'/);
+  assert.match(state.carRow.parts_xml, /i='6001'/);
+  assert.match(state.carRow.parts_xml, /pi='161'/);
+  assert.match(state.carRow.parts_xml, /pdi='22222'/);
+});
+
 test("buyenginepart charges points instead of money when the engine part is bought with points", async () => {
   const { supabase, state, sessionKey } = createPartPurchaseSupabaseStub({ money: 50000, points: 100 });
 

@@ -1,7 +1,7 @@
 import { RaceManager } from "./race-manager.js";
 import { buildLoginBody } from "./login-payload.js";
 import { PARTS_CATALOG_XML, PARTS_CATEGORIES_BODY } from "./parts-catalog.js";
-import { ALL_COLORS, PAINT_CATS_FOR_LOC, getPaintIdForColorCode } from "./paint-catalog-source.js";
+import { PAINT_CATS_FOR_LOC, getPaintColorsForLocation, getPaintIdForColorCode } from "./paint-catalog-source.js";
 import { buildWheelsTiresCatalogXml } from "./wheels-catalog.js";
 import { buildStaticCarsXml, FULL_CAR_CATALOG, getCatalogCarPrice } from "./car-catalog.js";
 import { randomUUID, createHash } from "node:crypto";
@@ -1109,7 +1109,7 @@ async function handleGetPaints(context) {
 
   return {
     body: wrapSuccessData(
-      `<n id='getpaints'><s>${ALL_COLORS.replace(/LOC/g, String(resolved.locationId))}</s></n>`,
+      `<n id='getpaints'><s>${getPaintColorsForLocation(resolved.locationId)}</s></n>`,
     ),
     source: `generated:getpaints:location=${resolved.locationId}`,
   };

@@ -39,26 +39,58 @@ export function getPaintIdForColorCode(colorCode) {
   return COLOR_TO_PAINT_ID[normalized] || "5";
 }
 
+const PAINT_PRICE_BY_LOCATION = Object.freeze({
+  100: { price: 500, pointsPrice: 5 },
+  200: { price: 1000, pointsPrice: 10 },
+  300: { price: 1500, pointsPrice: 15 },
+  400: { price: 2500, pointsPrice: 25 },
+  500: { price: 5000, pointsPrice: 50 },
+});
+
+function normalizePaintLocationId(locationId) {
+  const numericLocationId = Number(locationId || 100);
+  if (numericLocationId >= 500) {
+    return 500;
+  }
+  if (numericLocationId >= 400) {
+    return 400;
+  }
+  if (numericLocationId >= 300) {
+    return 300;
+  }
+  if (numericLocationId >= 200) {
+    return 200;
+  }
+  return 100;
+}
+
+function getPaintPriceForLocation(locationId) {
+  return PAINT_PRICE_BY_LOCATION[normalizePaintLocationId(locationId)] || PAINT_PRICE_BY_LOCATION[100];
+}
+
 export const PAINT_CATS_FOR_LOC = (l) =>
-  `<c i='-2' l='${l}' p='500' pp='5'>Full car paint job</c><c i='-1' l='${l}' p='500' pp='5'>Body panel specific</c>` +
-  `<c i='65' l='${l}' p='500' pp='5'>Spoilers</c>` +
-  `<c i='68' l='${l}' p='500' pp='5'>Roof Effect</c>` +
-  `<c i='71' l='${l}' p='500' pp='5'>Hoods</c>` +
-  `<c i='72' l='${l}' p='500' pp='5'>Hood Center Effect</c>` +
-  `<c i='73' l='${l}' p='500' pp='5'>Side Effect</c>` +
-  `<c i='74' l='${l}' p='500' pp='5'>Hood Front Effect</c>` +
-  `<c i='75' l='${l}' p='500' pp='5'>Eyelids</c>` +
-  `<c i='76' l='${l}' p='500' pp='5'>Headlights</c>` +
-  `<c i='77' l='${l}' p='500' pp='5'>Tail Lights</c>` +
-  `<c i='128' l='${l}' p='500' pp='5'>Front Bumper</c>` +
-  `<c i='129' l='${l}' p='500' pp='5'>Side Skirts</c>` +
-  `<c i='130' l='${l}' p='500' pp='5'>Rear Bumper</c>` +
-  `<c i='140' l='${l}' p='500' pp='5'>Grille</c>` +
-  `<c i='141' l='${l}' p='500' pp='5'>C-Pillar Effect</c>` +
-  `<c i='142' l='${l}' p='500' pp='5'>Fender Effect</c>` +
-  `<c i='143' l='${l}' p='500' pp='5'>Door Effect</c>` +
-  `<c i='144' l='${l}' p='500' pp='5'>Trunk</c>` +
-  `<c i='174' l='${l}' p='500' pp='5'>Top</c>`;
+  (() => {
+    const { price, pointsPrice } = getPaintPriceForLocation(l);
+    return `<c i='-2' l='${l}' p='${price}' pp='${pointsPrice}'/><c i='-1' l='${l}' p='${price}' pp='${pointsPrice}'/>` +
+      `<c i='65' l='${l}' p='${price}' pp='${pointsPrice}'>Spoilers</c>` +
+      `<c i='68' l='${l}' p='${price}' pp='${pointsPrice}'>Roof Effect</c>` +
+      `<c i='71' l='${l}' p='${price}' pp='${pointsPrice}'>Hoods</c>` +
+      `<c i='72' l='${l}' p='${price}' pp='${pointsPrice}'>Hood Center Effect</c>` +
+      `<c i='73' l='${l}' p='${price}' pp='${pointsPrice}'>Side Effect</c>` +
+      `<c i='74' l='${l}' p='${price}' pp='${pointsPrice}'>Hood Front Effect</c>` +
+      `<c i='75' l='${l}' p='${price}' pp='${pointsPrice}'>Eyelids</c>` +
+      `<c i='76' l='${l}' p='${price}' pp='${pointsPrice}'>Headlights</c>` +
+      `<c i='77' l='${l}' p='${price}' pp='${pointsPrice}'>Tail Lights</c>` +
+      `<c i='128' l='${l}' p='${price}' pp='${pointsPrice}'>Front Bumper</c>` +
+      `<c i='129' l='${l}' p='${price}' pp='${pointsPrice}'>Side Skirts</c>` +
+      `<c i='130' l='${l}' p='${price}' pp='${pointsPrice}'>Rear Bumper</c>` +
+      `<c i='140' l='${l}' p='${price}' pp='${pointsPrice}'>Grille</c>` +
+      `<c i='141' l='${l}' p='${price}' pp='${pointsPrice}'>C-Pillar Effect</c>` +
+      `<c i='142' l='${l}' p='${price}' pp='${pointsPrice}'>Fender Effect</c>` +
+      `<c i='143' l='${l}' p='${price}' pp='${pointsPrice}'>Door Effect</c>` +
+      `<c i='144' l='${l}' p='${price}' pp='${pointsPrice}'>Trunk</c>` +
+      `<c i='174' l='${l}' p='${price}' pp='${pointsPrice}'>Top</c>`;
+  })();
 
 export const PAINT_CATEGORIES_XML = "<n id='getpaintcats'><s>" +
   PAINT_CATS_FOR_LOC(100) +
@@ -69,56 +101,49 @@ export const PAINT_CATEGORIES_XML = "<n id='getpaintcats'><s>" +
   "</s></n>";
 
 const PAINT_COLOR_DEFS = [
-  ["1", "Red", "FF0000"],
-  ["2", "Blue", "0000FF"],
-  ["3", "Black", "000000"],
-  ["4", "White", "FFFFFF"],
-  ["5", "Silver", "C0C0C0"],
-  ["6", "Yellow", "FFD700"],
-  ["7", "Green", "00AA00"],
-  ["8", "Orange", "FF6600"],
-  ["9", "Purple", "6600CC"],
-  ["10", "Pink", "FF69B4"],
-  ["11", "Midnight Blue", "191970"],
-  ["12", "Burgundy", "800020"],
-  ["13", "Gunmetal", "2C3539"],
-  ["14", "Lime Green", "32CD32"],
-  ["15", "Candy Red", "CC0000"],
-  ["16", "Electric Blue", "0033FF"],
-  ["17", "Matte Black", "1A1A1A"],
-  ["18", "Chrome", "CCCCCC"],
-  ["19", "Pearl White", "F5F5F5"],
-  ["20", "Teal", "008080"],
-  ["21", "Maroon", "800000"],
-  ["22", "Gold", "DAA520"],
-  ["23", "Burnt Orange", "CC5500"],
-  ["24", "Forest Green", "228B22"],
-  ["25", "Cobalt Blue", "0047AB"],
-  ["26", "Hot Pink", "FF1493"],
-  ["27", "Charcoal", "36454F"],
-  ["28", "Cream", "FFFDD0"],
-  ["29", "Copper", "B87333"],
-  ["30", "Violet", "7F00FF"],
+  ["1", "Red", "FF0000", 100],
+  ["2", "Blue", "0000FF", 100],
+  ["3", "Black", "000000", 100],
+  ["4", "White", "FFFFFF", 100],
+  ["5", "Silver", "C0C0C0", 100],
+  ["7", "Green", "00AA00", 100],
+  ["6", "Yellow", "FFD700", 200],
+  ["8", "Orange", "FF6600", 200],
+  ["9", "Purple", "6600CC", 200],
+  ["10", "Pink", "FF69B4", 200],
+  ["14", "Lime Green", "32CD32", 200],
+  ["11", "Midnight Blue", "191970", 300],
+  ["12", "Burgundy", "800020", 300],
+  ["13", "Gunmetal", "2C3539", 300],
+  ["19", "Pearl White", "F5F5F5", 400],
+  ["15", "Candy Red", "CC0000", 400],
+  ["16", "Electric Blue", "0033FF", 400],
+  ["17", "Matte Black", "1A1A1A", 500],
+  ["18", "Chrome", "CCCCCC", 500],
 ];
 
-function renderPaintColorsForCategory(categoryId) {
+function renderPaintColorsForCategory(categoryId, locationId) {
+  const normalizedLocationId = normalizePaintLocationId(locationId);
+  const { price } = getPaintPriceForLocation(normalizedLocationId);
   return PAINT_COLOR_DEFS
+    .filter(([, , , requiredLocationId]) => normalizedLocationId >= requiredLocationId)
     .map(
       ([id, name, colorCode]) =>
-        `<p i='${id}' pi='${categoryId}' ci='${categoryId}' n='${name}' c='${colorCode}' cd='${colorCode}' p='500' pp='5' l='LOC'/>`,
+        `<p i='${id}' ci='${categoryId}' n='${name}' c='${colorCode}' p='${price}' l='${normalizedLocationId}'/>`,
     )
     .join("");
 }
 
-export const ALL_COLORS =
-  renderPaintColorsForCategory("-2") +
-  renderPaintColorsForCategory("-1");
+export function getPaintColorsForLocation(locationId) {
+  const normalizedLocationId = normalizePaintLocationId(locationId);
+  return renderPaintColorsForCategory("-2", normalizedLocationId);
+}
 
 export const PAINTS_XML =
   "<n id='getpaints'><s>" +
-  ALL_COLORS.replace(/LOC/g, "100") +
-  ALL_COLORS.replace(/LOC/g, "200") +
-  ALL_COLORS.replace(/LOC/g, "300") +
-  ALL_COLORS.replace(/LOC/g, "400") +
-  ALL_COLORS.replace(/LOC/g, "500") +
+  getPaintColorsForLocation(100) +
+  getPaintColorsForLocation(200) +
+  getPaintColorsForLocation(300) +
+  getPaintColorsForLocation(400) +
+  getPaintColorsForLocation(500) +
   "</s></n>";
