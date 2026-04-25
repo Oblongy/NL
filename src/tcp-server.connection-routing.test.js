@@ -464,6 +464,30 @@ test("buildRraMessage preserves bracket times, scores, bet type, and track", () 
   );
 });
 
+test("buildRaceSummaryXml includes street-credit deltas for both racers", () => {
+  const server = createServer();
+  const race = {
+    players: [
+      { playerId: 51 },
+      { playerId: 52 },
+    ],
+    finishResults: new Map([
+      [51, { et: "9.501", ts: "151.1" }],
+      [52, { et: "9.744", ts: "149.2" }],
+    ]),
+    reactionTimes: new Map([
+      [51, "0.118"],
+      [52, "0.132"],
+    ]),
+  };
+
+  const summaryXml = server.buildRaceSummaryXml(race, 51);
+
+  assert.match(summaryXml, /wid='51'/);
+  assert.match(summaryXml, /c1='50'/);
+  assert.match(summaryXml, /c2='10'/);
+});
+
 test("handleLegacyTeamCreate rehydrates the TCP connection after a successful create", async () => {
   const playerId = 61;
   const sessionKey = "legacy-teamcreate-session";

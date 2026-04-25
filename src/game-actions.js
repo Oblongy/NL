@@ -1657,6 +1657,50 @@ function removeApplicationsForPlayer(teamMeta, playerId) {
   };
 }
 
+function listTeamMetaEntries(services) {
+  const teamState = services?.teamState;
+  if (!teamState) {
+    return [];
+  }
+  if (typeof teamState.list === "function") {
+    return teamState.list();
+  }
+  if (teamState instanceof Map) {
+    return [...teamState.values()];
+  }
+  if (teamState?.teams instanceof Map) {
+    return [...teamState.teams.values()];
+  }
+  return [];
+}
+
+function clearApplicationsForPlayerAcrossTeams(services, playerId, { excludeTeamId = 0 } = {}) {
+  const numericPlayerId = Number(playerId || 0);
+  const excludedTeamId = Number(excludeTeamId || 0);
+  if (!numericPlayerId) {
+    return 0;
+  }
+
+  let clearedTeamCount = 0;
+  for (const teamMetaEntry of listTeamMetaEntries(services)) {
+    const teamId = Number(teamMetaEntry?.teamId || teamMetaEntry?.team_id || teamMetaEntry?.id || 0);
+    if (!teamId || teamId === excludedTeamId) {
+      continue;
+    }
+
+    const currentTeamMeta = sanitizeTeamMeta(teamMetaEntry);
+    const nextTeamMeta = removeApplicationsForPlayer(currentTeamMeta, numericPlayerId);
+    if ((currentTeamMeta.applications || []).length === (nextTeamMeta.applications || []).length) {
+      continue;
+    }
+
+    saveTeamMeta(services, teamId, nextTeamMeta);
+    clearedTeamCount += 1;
+  }
+
+  return clearedTeamCount;
+}
+
 async function handleTeamCreate(context) {
   const { supabase, params, services } = context;
   if (!supabase) {
@@ -1692,6 +1736,7 @@ async function handleTeamCreate(context) {
   await updatePlayerTeamMembership(supabase, caller.playerId, createdTeam, {
     dbMemberRole: "owner",
   });
+  clearApplicationsForPlayerAcrossTeams(services, caller.playerId);
   saveTeamMeta(services, createdTeam.id, {
     leaderComments: "",
     rolesByPlayerId: { [String(caller.playerId)]: TEAM_ROLE.LEADER },
@@ -2140,7 +2185,7 @@ async function handleTeamAccept(context) {
   }
 
   if (Number(caller.player?.team_id || 0) > 0) {
-    return { body: `"s", -1`, source: "supabase:teamaccept:already-on-team" };
+    return { body: `"s", -2`, source: "supabase:teamaccept:already-on-team" };
   }
 
   const teamId = Number(params.get("tid") || parseActionNumbers(params)[0] || 0);
@@ -2176,6 +2221,9 @@ async function handleTeamAccept(context) {
       [String(caller.playerId)]: 0,
     },
   }, caller.playerId));
+  clearApplicationsForPlayerAcrossTeams(services, caller.playerId, {
+    excludeTeamId: teamContext.team.id,
+  });
   refreshTcpTeamMembership(services, {
     playerId: caller.playerId,
     teamId: teamContext.team.id,
@@ -2271,17 +2319,17 @@ async function handleTeamAddApplication(context) {
   if (!caller?.ok) {
     return { body: caller?.body || failureBody(), source: caller?.source || "supabase:addteamapp:bad-session" };
   }
+  if (Number(caller.player?.active || 0) <= 0) {
+    return { body: `"s", -60`, source: "supabase:addteamapp:inactive-account" };
+  }
   if (Number(caller.player?.team_id || 0) > 0) {
-    return { body: `"s", -1`, source: "supabase:addteamapp:already-on-team" };
+    return { body: `"s", -6`, source: "supabase:addteamapp:already-on-team" };
   }
 
   const teamId = Number(params.get("tid") || 0);
-  const comment = String(params.get("c") || "").trim();
+  const comment = String(params.get("c") || "").trim().slice(0, 280);
   if (!teamId) {
     return { body: `"s", 0`, source: "supabase:addteamapp:no-team" };
-  }
-  if (comment.length > 280) {
-    return { body: `"s", -5`, source: "supabase:addteamapp:comment-too-long" };
   }
 
   const teamContext = await loadTeamContextById({ supabase, services, teamId });
@@ -2289,12 +2337,12 @@ async function handleTeamAddApplication(context) {
     return { body: `"s", 0`, source: "supabase:addteamapp:unknown-team" };
   }
   if (String(teamContext.team.recruitment_type || "open").toLowerCase() === "closed") {
-    return { body: `"s", -3`, source: "supabase:addteamapp:closed" };
+    return { body: `"s", -1`, source: "supabase:addteamapp:closed" };
   }
   if ((teamContext.teamMeta.applications || []).some(
     (entry) => Number(entry.applicantPlayerId || 0) === Number(caller.playerId),
   )) {
-    return { body: `"s", -2`, source: "supabase:addteamapp:duplicate" };
+    return { body: `"s", -5`, source: "supabase:addteamapp:duplicate" };
   }
 
   const application = {

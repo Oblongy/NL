@@ -88,7 +88,7 @@ test("handleRaceTelemetry relays prelaunch S frames as IO before the race sequen
   assert.equal(race.players[0].isStaged, false);
 });
 
-test("handleRaceTelemetry keeps team rivals on the legacy pre-start behavior", () => {
+test("handleRaceTelemetry relays prelaunch team rivals frames as IO before the race starts", () => {
   const server = createServer();
   const { opponentConn, senderConn, race } = bindRace(server, {
     sequenceStarted: false,
@@ -97,7 +97,9 @@ test("handleRaceTelemetry keeps team rivals on the legacy pre-start behavior", (
 
   server.handleRaceTelemetry(senderConn, "S", ["S", "-13", "0", "0"]);
 
-  assert.deepEqual(opponentConn.messages, []);
+  assert.deepEqual(opponentConn.messages, [
+    '"ac", "IO", "d", -13, "v", 0, "a", 0, "t", 0',
+  ]);
   assert.equal(opponentConn.socket.rawWrites, 0);
   assert.equal(race.players[0].isStaged, false);
 });
@@ -117,20 +119,34 @@ test("handleRaceTelemetry relays live I frames as IO with the tick preserved", (
   assert.equal(opponentConn.socket.rawWrites, 0);
 });
 
-test("handleRaceTelemetry relays live team rivals frames unchanged once the race starts", () => {
+test("handleRaceTelemetry relays live team rivals frames as IO once the race starts", () => {
   const server = createServer();
   const { opponentConn, senderConn } = bindRace(server, {
     sequenceStarted: true,
     lastStateUpdate: Date.now(),
     roomId: 1,
   });
-  senderConn._lastRaw = "S\x1e12.345\x1e150.1\x1e4.2\x1e193";
 
   server.handleRaceTelemetry(senderConn, "S", ["S", "12.345", "150.1", "4.2", "193"]);
 
-  assert.deepEqual(opponentConn.messages, []);
-  assert.equal(opponentConn.socket.rawWrites, 1);
-  assert.deepEqual(opponentConn.socket.rawFrames, [
-    "S\x1e12.345\x1e150.1\x1e4.2\x1e193\x04",
+  assert.deepEqual(opponentConn.messages, [
+    '"ac", "IO", "d", 12.345, "v", 150.1, "a", 4.2, "t", 193',
   ]);
+  assert.equal(opponentConn.socket.rawWrites, 0);
+});
+
+test("handleRaceTelemetry relays prelaunch koth frames as IO before the race starts", () => {
+  const server = createServer();
+  const { opponentConn, senderConn, race } = bindRace(server, {
+    sequenceStarted: false,
+    roomId: 3,
+  });
+
+  server.handleRaceTelemetry(senderConn, "S", ["S", "-13", "0", "0"]);
+
+  assert.deepEqual(opponentConn.messages, [
+    '"ac", "IO", "d", -13, "v", 0, "a", 0, "t", 0',
+  ]);
+  assert.equal(opponentConn.socket.rawWrites, 0);
+  assert.equal(race.players[0].isStaged, false);
 });

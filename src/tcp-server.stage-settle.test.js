@@ -126,7 +126,7 @@ test("newbie rivals does not arm from RO fallback without actual staging", () =>
   assert.deepEqual(race.players.map((player) => player.mockConn.messages), [[], []]);
 });
 
-test("team rivals keeps the legacy unstaged fallback without telemetry evidence", () => {
+test("team rivals also waits for actual staging before arming the tree", () => {
   const server = createServer();
   const race = createRace("race-open-fallback-team", 1);
   race.players.forEach((player) => {
@@ -138,11 +138,26 @@ test("team rivals keeps the legacy unstaged fallback without telemetry evidence"
     trigger: "race-open-fallback",
   });
 
-  assert.equal(race.rivalsReadyBroadcasted, true);
-  assert.equal(race.phase, "TREE_ARMED");
+  assert.equal(race.rivalsReadyBroadcasted, false);
+  assert.equal(race.phase, "LOADED");
   assert.equal(race.stageSettleTimer, null);
-  assert.deepEqual(race.players.map((player) => player.mockConn.messages), [
-    ['"ac", "RIVRDY", "s", 1'],
-    ['"ac", "RIVRDY", "s", 1'],
-  ]);
+  assert.deepEqual(race.players.map((player) => player.mockConn.messages), [[], []]);
+});
+
+test("koth rooms do not arm from RO fallback without actual staging either", () => {
+  const server = createServer();
+  const race = createRace("race-open-fallback-koth", 3);
+  race.players.forEach((player) => {
+    player.isStaged = false;
+  });
+
+  server.maybeBroadcastRivalsReady(race, {
+    allowUnstagedFallback: true,
+    trigger: "race-open-fallback",
+  });
+
+  assert.equal(race.rivalsReadyBroadcasted, false);
+  assert.equal(race.phase, "LOADED");
+  assert.equal(race.stageSettleTimer, null);
+  assert.deepEqual(race.players.map((player) => player.mockConn.messages), [[], []]);
 });

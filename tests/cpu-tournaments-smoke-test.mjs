@@ -679,6 +679,10 @@ function createActionSupabaseStub({
       if (filter.type === "eq") {
         return String(row?.[filter.field] ?? "") === String(filter.value ?? "");
       }
+      if (filter.type === "ilike") {
+        const needle = String(filter.value ?? "").replace(/%/g, "").toLowerCase();
+        return String(row?.[filter.field] ?? "").toLowerCase().includes(needle);
+      }
       if (filter.type === "in") {
         return filter.values.map((value) => String(value)).includes(String(row?.[filter.field] ?? ""));
       }
@@ -1353,6 +1357,301 @@ async function testTeamCreateSurvivesMissingMemberCountTriggerColumn() {
   assert.strictEqual(supabase.tables.game_team_members.length, 0, 'teamcreate should tolerate the broken team member trigger without inserting rows');
 }
 
+async function testTeamApplicationsUseClientStatusCodesAndTrimLongComments() {
+  const playerId = 111;
+  const sessionKey = `team-app-status-${Date.now()}`;
+
+  const inactiveSupabase = createActionSupabaseStub({
+    playerId,
+    sessionKey,
+    player: { active: 0 },
+    teams: [{ id: 6, name: 'Open Crew' }],
+  });
+  const inactiveResult = await handleGameAction({
+    action: 'addteamapp',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['tid', '6'],
+      ['c', 'let me in'],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger: createLogger(),
+    supabase: inactiveSupabase,
+    services: { teamState: new Map([[6, { teamId: 6, applications: [] }]]) },
+  });
+  assert.strictEqual(inactiveResult.source, 'supabase:addteamapp:inactive-account');
+  assert.strictEqual(inactiveResult.body, `"s", -60`, 'inactive applicants should receive the legacy activation error code');
+
+  const alreadyOnTeamSupabase = createActionSupabaseStub({
+    playerId,
+    sessionKey,
+    player: { active: 1, team_id: 9, team_name: 'Existing Crew' },
+  });
+  const alreadyOnTeamResult = await handleGameAction({
+    action: 'addteamapp',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['tid', '6'],
+      ['c', 'let me in'],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger: createLogger(),
+    supabase: alreadyOnTeamSupabase,
+    services: { teamState: new Map([[6, { teamId: 6, applications: [] }]]) },
+  });
+  assert.strictEqual(alreadyOnTeamResult.source, 'supabase:addteamapp:already-on-team');
+  assert.strictEqual(alreadyOnTeamResult.body, `"s", -6`, 'already-on-team applicants should receive the client-compatible status');
+
+  const closedSupabase = createActionSupabaseStub({
+    playerId,
+    sessionKey,
+    player: { active: 1 },
+    teams: [{ id: 6, name: 'Closed Crew', recruitment_type: 'closed' }],
+  });
+  const closedResult = await handleGameAction({
+    action: 'addteamapp',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['tid', '6'],
+      ['c', 'let me in'],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger: createLogger(),
+    supabase: closedSupabase,
+    services: { teamState: new Map([[6, { teamId: 6, applications: [] }]]) },
+  });
+  assert.strictEqual(closedResult.source, 'supabase:addteamapp:closed');
+  assert.strictEqual(closedResult.body, `"s", -1`, 'closed teams should report the legacy closed-team status');
+
+  const duplicateTeamState = new Map([[
+    6,
+    {
+      teamId: 6,
+      applications: [{
+        applicantPlayerId: playerId,
+        applicantPublicId: playerId,
+        applicantName: 'WalletTester',
+        status: 'Pending',
+      }],
+    },
+  ]]);
+  const duplicateSupabase = createActionSupabaseStub({
+    playerId,
+    sessionKey,
+    player: { active: 1 },
+    teams: [{ id: 6, name: 'Open Crew' }],
+  });
+  const duplicateResult = await handleGameAction({
+    action: 'addteamapp',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['tid', '6'],
+      ['c', 'let me in'],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger: createLogger(),
+    supabase: duplicateSupabase,
+    services: { teamState: duplicateTeamState },
+  });
+  assert.strictEqual(duplicateResult.source, 'supabase:addteamapp:duplicate');
+  assert.strictEqual(duplicateResult.body, `"s", -5`, 'duplicate applications should return the duplicate status code the client expects');
+
+  const longComment = 'x'.repeat(320);
+  const successTeamState = new Map([[6, { teamId: 6, applications: [] }]]);
+  const successSupabase = createActionSupabaseStub({
+    playerId,
+    sessionKey,
+    player: { active: 1, score: 4321 },
+    teams: [{ id: 6, name: 'Open Crew' }],
+  });
+  const successResult = await handleGameAction({
+    action: 'addteamapp',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['tid', '6'],
+      ['c', longComment],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger: createLogger(),
+    supabase: successSupabase,
+    services: { teamState: successTeamState },
+  });
+  assert.strictEqual(successResult.source, 'supabase:addteamapp');
+  assert.strictEqual(successResult.body, `"s", 1`, 'valid applications should still succeed');
+  assert.strictEqual(
+    successTeamState.get(6).applications[0].comment.length,
+    280,
+    'overlong team application comments should be trimmed instead of being rejected as duplicates',
+  );
+}
+
+async function testTeamAcceptClearsOtherApplicationsAndUsesLegacyAlreadyOnTeamStatus() {
+  const playerId = 112;
+  const sessionKey = `team-accept-${Date.now()}`;
+  const services = {
+    teamState: new Map([
+      [6, {
+        teamId: 6,
+        applications: [{
+          applicantPlayerId: playerId,
+          applicantPublicId: playerId,
+          applicantName: 'WalletTester',
+          status: 'Accepted',
+        }],
+      }],
+      [7, {
+        teamId: 7,
+        applications: [
+          {
+            applicantPlayerId: playerId,
+            applicantPublicId: playerId,
+            applicantName: 'WalletTester',
+            status: 'Pending',
+          },
+          {
+            applicantPlayerId: 999,
+            applicantPublicId: 999,
+            applicantName: 'Other Applicant',
+            status: 'Pending',
+          },
+        ],
+      }],
+    ]),
+  };
+  const supabase = createActionSupabaseStub({
+    playerId,
+    sessionKey,
+    player: { active: 1, team_id: null, team_name: '' },
+    teams: [
+      { id: 6, name: 'Accepted Crew' },
+      { id: 7, name: 'Other Crew' },
+    ],
+  });
+
+  const result = await handleGameAction({
+    action: 'teamaccept',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['tid', '6'],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger: createLogger(),
+    supabase,
+    services,
+  });
+
+  assert.strictEqual(result.source, 'supabase:teamaccept');
+  assert.strictEqual(result.body, `"s", 1`, 'accepted applications should still let the player join');
+  assert.strictEqual(Number(supabase.tables.game_players[0]?.team_id || 0), 6, 'teamaccept should update the player team id');
+  assert.deepStrictEqual(
+    (services.teamState.get(6)?.applications || []).filter((entry) => Number(entry.applicantPlayerId || 0) === playerId),
+    [],
+    'teamaccept should consume the accepted application on the destination team',
+  );
+  assert.deepStrictEqual(
+    (services.teamState.get(7)?.applications || []).map((entry) => Number(entry.applicantPlayerId || 0)),
+    [999],
+    'teamaccept should clear the player from all other team application lists',
+  );
+
+  const alreadyOnTeamSupabase = createActionSupabaseStub({
+    playerId,
+    sessionKey,
+    player: { active: 1, team_id: 6, team_name: 'Accepted Crew' },
+    teams: [{ id: 6, name: 'Accepted Crew' }],
+  });
+  const alreadyOnTeamResult = await handleGameAction({
+    action: 'teamaccept',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['tid', '6'],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger: createLogger(),
+    supabase: alreadyOnTeamSupabase,
+    services: { teamState: new Map([[6, { teamId: 6, applications: [] }]]) },
+  });
+  assert.strictEqual(alreadyOnTeamResult.source, 'supabase:teamaccept:already-on-team');
+  assert.strictEqual(alreadyOnTeamResult.body, `"s", -2`, 'teamaccept should report the legacy already-on-team status');
+}
+
+async function testTeamCreateCancelsExistingApplicationsAcrossTeams() {
+  const playerId = 113;
+  const sessionKey = `team-create-clear-apps-${Date.now()}`;
+  const services = {
+    teamState: new Map([
+      [6, {
+        teamId: 6,
+        applications: [{
+          applicantPlayerId: playerId,
+          applicantPublicId: playerId,
+          applicantName: 'WalletTester',
+          status: 'Pending',
+        }],
+      }],
+      [8, {
+        teamId: 8,
+        applications: [{
+          applicantPlayerId: 999,
+          applicantPublicId: 999,
+          applicantName: 'Other Applicant',
+          status: 'Pending',
+        }],
+      }],
+    ]),
+  };
+  const supabase = createActionSupabaseStub({
+    playerId,
+    sessionKey,
+    player: { active: 1, team_id: null, team_name: '' },
+    teams: [
+      { id: 6, name: 'Open Crew' },
+      { id: 8, name: 'Other Crew' },
+    ],
+  });
+
+  const result = await handleGameAction({
+    action: 'teamcreate',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['n', 'Fresh Start Crew'],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger: createLogger(),
+    supabase,
+    services,
+  });
+
+  assert.strictEqual(result.source, 'supabase:teamcreate');
+  assert.match(result.body, /^"s", 1, "tid", \d+$/, 'teamcreate should still succeed');
+  assert.deepStrictEqual(
+    (services.teamState.get(6)?.applications || []).filter((entry) => Number(entry.applicantPlayerId || 0) === playerId),
+    [],
+    'teamcreate should cancel any pending applications the creator had with other teams',
+  );
+  assert.deepStrictEqual(
+    (services.teamState.get(8)?.applications || []).map((entry) => Number(entry.applicantPlayerId || 0)),
+    [999],
+    'teamcreate should leave unrelated team applications alone',
+  );
+}
+
 async function testGetUserIncludesTeamIdForTeamMembers() {
   const playerId = 99;
   const sessionKey = `getuser-team-${Date.now()}`;
@@ -1714,6 +2013,9 @@ const tests = [
   ['team transactions expose recorded fund entries', testTeamTransactionsExposeRecordedFundEntries],
   ['team balance falls back to member contribution when team_fund column is missing', testTeamBalanceFallsBackToMemberContributionWhenTeamFundColumnMissing],
   ['team create survives missing member_count trigger column', testTeamCreateSurvivesMissingMemberCountTriggerColumn],
+  ['team applications use client status codes and trim long comments', testTeamApplicationsUseClientStatusCodesAndTrimLongComments],
+  ['team accept clears other team applications and uses legacy already-on-team status', testTeamAcceptClearsOtherApplicationsAndUsesLegacyAlreadyOnTeamStatus],
+  ['team create cancels existing applications across teams', testTeamCreateCancelsExistingApplicationsAcrossTeams],
   ['getuser includes team id for team members', testGetUserIncludesTeamIdForTeamMembers],
   ['getinfo includes team id in legacy login field', testGetInfoIncludesTeamIdInLegacyLoginField],
   ['repairparts returns updated money balance', testRepairPartsReturnsUpdatedMoneyBalance],

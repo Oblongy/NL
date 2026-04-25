@@ -1315,7 +1315,9 @@ export class TcpServer {
       this.getRoomDefinition(race?.roomId)?.type ||
       getDefaultRaceRoom(race?.roomId)?.type ||
       "";
-    return roomType === "newbie";
+    // The exported race clients use the same near-line staging semantics across
+    // the interactive race rooms. Tournament races keep their separate flow.
+    return Boolean(roomType) && roomType !== "tournament";
   }
 
   isStagedDistance(distance, { includeIdleMarker = true } = {}) {
@@ -1464,13 +1466,38 @@ export class TcpServer {
     return left.playerId < right.playerId ? left.playerId : right.playerId;
   }
 
+  getRaceScoreAwards(race, winnerPlayerId) {
+    const awards = new Map();
+    if (!winnerPlayerId || !race?.players?.length) {
+      return awards;
+    }
+
+    const numericWinnerPlayerId = Number(winnerPlayerId || 0);
+    const scWin = 50;
+    const scLoss = 10;
+    for (const participant of race.players) {
+      const playerId = Number(participant?.playerId || 0);
+      if (!playerId) {
+        continue;
+      }
+      awards.set(playerId, playerId === numericWinnerPlayerId ? scWin : scLoss);
+    }
+    return awards;
+  }
+
   buildRaceSummaryXml(race, winnerPlayerId) {
     const [p1, p2] = race.players;
     const p1Result = race.finishResults?.get(Number(p1?.playerId)) || null;
     const p2Result = race.finishResults?.get(Number(p2?.playerId)) || null;
     const p1ReactionTime = this.getRaceReactionTime(race, p1?.playerId);
     const p2ReactionTime = this.getRaceReactionTime(race, p2?.playerId);
-    return `<r r1id='${p1?.playerId || 0}' r2id='${p2?.playerId || 0}' wid='${winnerPlayerId || 0}' rt1='${p1ReactionTime}' et1='${p1Result?.et ?? "-1"}' ts1='${p1Result?.ts ?? "-1"}' rt2='${p2ReactionTime}' et2='${p2Result?.et ?? "-1"}' ts2='${p2Result?.ts ?? "-1"}' m1='0' m2='0' c1='0' c2='0' h1='0' h2='0'/>`;
+    const scoreAwards =
+      race?.scoreAwardsByPlayer instanceof Map
+        ? race.scoreAwardsByPlayer
+        : this.getRaceScoreAwards(race, winnerPlayerId);
+    const p1ScoreAward = Number(scoreAwards.get(Number(p1?.playerId || 0)) || 0);
+    const p2ScoreAward = Number(scoreAwards.get(Number(p2?.playerId || 0)) || 0);
+    return `<r r1id='${p1?.playerId || 0}' r2id='${p2?.playerId || 0}' wid='${winnerPlayerId || 0}' rt1='${p1ReactionTime}' et1='${p1Result?.et ?? "-1"}' ts1='${p1Result?.ts ?? "-1"}' rt2='${p2ReactionTime}' et2='${p2Result?.et ?? "-1"}' ts2='${p2Result?.ts ?? "-1"}' m1='0' m2='0' c1='${p1ScoreAward}' c2='${p2ScoreAward}' h1='0' h2='0'/>`;
   }
 
   buildRaceDoneXml(playerId, result) {
@@ -1482,13 +1509,14 @@ export class TcpServer {
       return;
     }
 
-    const scWin = 50;
-    const scLoss = 10;
+    const scoreAwards = this.getRaceScoreAwards(race, winnerPlayerId);
+    race.scoreAwardsByPlayer = scoreAwards;
     race.scAwarded = true;
 
     for (const participant of race.players) {
-      const isWinner = Number(participant.playerId) === Number(winnerPlayerId);
-      const scGain = isWinner ? scWin : scLoss;
+      const playerId = Number(participant.playerId || 0);
+      const isWinner = playerId === Number(winnerPlayerId);
+      const scGain = Number(scoreAwards.get(playerId) || 0);
       applyPlayerRaceResult(this.supabase, participant.playerId, {
         scoreDelta: scGain,
         won: isWinner,
@@ -1504,8 +1532,7 @@ export class TcpServer {
     this.logger.info("TCP race SC awarded", {
       raceId: race.id,
       winnerPlayerId,
-      scWin,
-      scLoss,
+      awards: Object.fromEntries(scoreAwards),
     });
   }
 
