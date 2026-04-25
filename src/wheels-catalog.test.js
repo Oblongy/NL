@@ -32,15 +32,37 @@ const EXPECTED_MAPPINGS = [
     ],
   },
   {
-    label: "Stock OEM",
+    label: "BBS sport LM",
+    brandSlug: "bbs",
+    brandName: "BBS",
+    modelName: "sport LM",
+    wheels: [
+      [1060, "15"],
+      [1061, "16"],
+      [1062, "17"],
+      [1063, "18"],
+      [1064, "19"],
+      [1065, "20"],
+    ],
+  },
+  {
+    label: "OEM Optional 5-spoke Alloy Wheels",
     brandSlug: "oem",
     brandName: "OEM",
-    modelName: "Stock OEM",
+    modelName: "OEM Optional 5-spoke Alloy Wheels",
     wheels: [
       [1168, "15"],
       [1169, "16"],
       [1170, "17"],
       [1171, "18"],
+    ],
+  },
+  {
+    label: "Stock OEM",
+    brandSlug: "oem",
+    brandName: "OEM",
+    modelName: "Stock OEM",
+    wheels: [
       [1172, "19"],
       [1173, "20"],
     ],
@@ -59,9 +81,51 @@ const EXPECTED_MAPPINGS = [
       [1179, "20"],
     ],
   },
+  {
+    label: "HRE 441R",
+    brandSlug: "hre",
+    brandName: "HRE",
+    modelName: "441R",
+    wheels: [
+      [1180, "15"],
+      [1181, "16"],
+      [1182, "17"],
+      [1183, "18"],
+      [1184, "19"],
+      [1185, "20"],
+    ],
+  },
+  {
+    label: "HRE C22",
+    brandSlug: "hre",
+    brandName: "HRE",
+    modelName: "C22",
+    wheels: [
+      [1186, "15"],
+      [1187, "16"],
+      [1188, "17"],
+      [1189, "18"],
+      [1190, "19"],
+      [1191, "20"],
+    ],
+  },
+  {
+    label: "HRE 547R",
+    brandSlug: "hre",
+    brandName: "HRE",
+    modelName: "547R",
+    wheels: [
+      [1192, "15"],
+      [1193, "16"],
+      [1194, "17"],
+      [1195, "18"],
+      [1196, "19"],
+      [1197, "20"],
+    ],
+  },
 ];
 
-test("wheel catalog keeps the corrected wheel variants mapped to 1036-1179", () => {
+test("wheel catalog keeps the corrected wheel variants mapped to 1036-1197", () => {
   const xml = buildWheelsTiresCatalogXml();
 
   for (const mapping of EXPECTED_MAPPINGS) {

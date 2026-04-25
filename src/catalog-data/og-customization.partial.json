@@ -1,0 +1,241 @@
+{
+  "meta": {
+    "status": "partial",
+    "provenance": "user-supplied OG server screenshots and notes",
+    "notes": [
+      "This file is intentionally partial and only contains customization/shop data confirmed in this thread.",
+      "Cash price is only omitted when the screenshot did not clearly expose it; otherwise the visible price is recorded.",
+      "Color selections are approximate when inferred from screenshots."
+    ]
+  },
+  "graphics": {
+    "sidePanels": [
+      {
+        "name": "Ride Grafik Double Arrow",
+        "variant": "Standard",
+        "locationName": "Toreno Graphics",
+        "colorable": true,
+        "selectedColorApprox": "black",
+        "pricing": {
+          "cash": 950,
+          "points": 139
+        },
+        "source": {
+          "type": "og_server_screenshot"
+        }
+      }
+    ],
+    "gaugeFaces": [
+      {
+        "name": "Graf Designs Carbon Fiber",
+        "locationName": "Toreno Graphics",
+        "membersOnly": true,
+        "pricing": {
+          "cash": 129,
+          "points": 30
+        },
+        "description": "Carbon Fiber gauge graphics for carbon fiber lovers.",
+        "source": {
+          "type": "og_server_screenshot"
+        }
+      },
+      {
+        "name": "Ride Grafix Pure White",
+        "locationName": "Toreno Graphics",
+        "membersOnly": false,
+        "pricing": {
+          "cash": 129,
+          "points": 30
+        },
+        "description": "Pure white gauge graphics for users who are looking for that simple design.",
+        "source": {
+          "type": "og_server_screenshot"
+        }
+      }
+    ]
+  },
+  "paint": {
+    "fullCarPaintJob": [
+      {
+        "locationName": "Vista Heights Paint",
+        "pricing": {
+          "cash": 3000,
+          "points": 254
+        },
+        "paletteVisible": true,
+        "notes": [
+          "Screenshot shows a large multi-row paint swatch palette for full car paint jobs.",
+          "Exact swatch-by-swatch color names are not enumerated here because the screenshot is too low resolution to identify each color reliably."
+        ],
+        "source": {
+          "type": "og_server_screenshot"
+        }
+      }
+    ],
+    "bodyPanelSpecific": {
+      "locationName": "Toreno Paint",
+      "panelPrices": {
+        "side": 160,
+        "back": 135,
+        "front": 130,
+        "hood": 95
+      },
+      "selectedPanelExample": {
+        "name": "Trunk/Rear Panel",
+        "cash": 300
+      },
+      "source": {
+        "type": "og_server_screenshot"
+      }
+    }
+  },
+  "evidenceOnly": [
+    {
+      "name": "Tire Buyer Nissan GT-R",
+      "catalogCarId": "40",
+      "source": {
+        "type": "og_server_image_reference"
+      },
+      "notes": [
+        "Visual reference only in this batch; no structured showroom spec screen was provided."
+      ]
+    },
+    {
+      "name": "SEMA Series Challenger",
+      "catalogCarId": "104",
+      "source": {
+        "type": "og_server_image_reference"
+      },
+      "notes": [
+        "Visual reference only in this batch; no structured showroom spec screen was provided."
+      ]
+    }
+  ],
+  "systems": {
+    "dailyChallenge": [
+      {
+        "title": "The Daily Challenge",
+        "objective": "Win 75 races with the featured car",
+        "rewardCash": 2000,
+        "badgeAward": "Gold Bunny",
+        "timeLeftVisible": true,
+        "featuredCarVisible": true,
+        "source": {
+          "type": "og_server_screenshot"
+        }
+      }
+    ],
+    "activationWidget": [
+      {
+        "title": "Activate Your Purchase!",
+        "fields": [
+          "Activation Code"
+        ],
+        "source": {
+          "type": "og_server_screenshot"
+        }
+      }
+    ],
+    "mapUi": [
+      {
+        "areasVisible": [
+          "Diamond Point Shop",
+          "Vista Heights",
+          "Creek Side",
+          "Newburge"
+        ],
+        "buttonsVisible": [
+          "Home",
+          "Dealership",
+          "Used Cars",
+          "Team HQ",
+          "LeaderBoard",
+          "The Daily Challenge"
+        ],
+        "source": {
+          "type": "og_server_screenshot"
+        }
+      }
+    ],
+    "dealershipBrowser": [
+      {
+        "locationName": "Vista Heights Dealership",
+        "navigationLevels": [
+          "category",
+          "make",
+          "model"
+        ],
+        "categoriesVisible": [
+          "OE Cars",
+          "Premium Cars",
+          "Trophy Cars"
+        ],
+        "selectedExample": {
+          "category": "OE Cars",
+          "make": "Ford",
+          "modelsVisible": [
+            "GT",
+            "Shelby GT500 Coupe"
+          ]
+        },
+        "notes": [
+          "The dealership UI uses a three-column browser: category on the left, make in the middle, model on the right.",
+          "The selected model then drives the stats panel, price panel, year, and paint swatches for the previewed car."
+        ],
+        "source": {
+          "type": "og_server_screenshot"
+        }
+      }
+    ],
+    "teamRivals": [
+      {
+        "title": "Team Rivals",
+        "membersOnly": true,
+        "modeLabel": "Ranked Match",
+        "purse": 100000,
+        "elementsVisible": [
+          "team-versus-team header",
+          "team scores",
+          "match pairings",
+          "dial-in times",
+          "next challenge panel",
+          "teams roster panel",
+          "individuals roster panel",
+          "team chat panel",
+          "Create Challenge button",
+          "Challenges button"
+        ],
+        "source": {
+          "type": "og_server_screenshot"
+        }
+      }
+    ],
+    "adminTools": [
+      {
+        "title": "Nitto V2 Administration",
+        "surface": "browser-based admin panel",
+        "accountProfileVisible": true,
+        "toolsVisible": [
+          {
+            "name": "Race Track Ban",
+            "purpose": "Prevents players from entering race track rooms and racing.",
+            "reasonFieldVisible": true
+          },
+          {
+            "name": "Log In Ban",
+            "purpose": "Prevents players from logging in and blocks password-protected game features.",
+            "reasonFieldVisible": true
+          }
+        ],
+        "userFieldsVisible": [
+          "member status",
+          "account created timestamp",
+          "last logged in timestamp"
+        ],
+        "source": {
+          "type": "og_server_screenshot"
+        }
+      }
+    ]
+  }
+}

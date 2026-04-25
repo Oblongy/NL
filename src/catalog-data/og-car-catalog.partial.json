@@ -1,0 +1,902 @@
+{
+  "meta": {
+    "status": "partial",
+    "provenance": "user-supplied OG server screenshots and notes",
+    "notes": [
+      "This file is intentionally partial and only contains cars confirmed in this thread.",
+      "Where the current repo contains duplicate or aliased car entries, confidence is marked explicitly.",
+      "Paint swatches are approximate, in left-to-right screenshot order.",
+      "Cash price is only recorded when the screenshot explicitly showed N/A.",
+      "OG game rule: when a supercharger is installed, it takes the place of the intake manifold, so a separate intake manifold is not used with a supercharger."
+    ]
+  },
+  "cars": [
+    {
+      "catalogCarId": "1",
+      "catalogCarIdConfidence": "high",
+      "name": "Acura Integra GS-R",
+      "year": "1997",
+      "locationId": "100",
+      "starterCar": true,
+      "layout": "Front engine, FWD, 4-pass, 2 door, coupe",
+      "engine": {
+        "stock": "B18C1",
+        "allowed": ["B18C1", "B18C5", "K20A2", "K24A2"]
+      },
+      "transmission": "5 speed manual",
+      "curbWeightLb": 2668,
+      "zeroToSixtySec": 7.2,
+      "stockRatios": {
+        "first": 3.23,
+        "second": 1.9,
+        "third": 1.269,
+        "fourth": 0.966,
+        "fifth": 0.714,
+        "sixth": 0.0,
+        "final": 4.4
+      },
+      "pricing": {
+        "cash": "N/A",
+        "points": 575
+      },
+      "paintSwatchesApprox": ["white", "dark blue", "black", "silver", "red"],
+      "source": {
+        "type": "og_server_screenshot_and_user_note"
+      }
+    },
+    {
+      "catalogCarId": "13",
+      "catalogCarIdConfidence": "medium",
+      "catalogCarIdCandidates": ["13", "95"],
+      "name": "Scion tC",
+      "year": "2007",
+      "locationId": "100",
+      "layout": "Front engine, FWD, 4-pass, 2 door, coupe",
+      "engine": {
+        "stock": "2AZ-FE",
+        "allowed": ["2AZ-FE"]
+      },
+      "transmission": "5 speed manual",
+      "curbWeightLb": 2873,
+      "zeroToSixtySec": 7.4,
+      "stockRatios": {
+        "first": 3.538,
+        "second": 2.045,
+        "third": 1.333,
+        "fourth": 0.972,
+        "fifth": 0.775,
+        "sixth": 0.0,
+        "final": 4.235
+      },
+      "pricing": {
+        "points": 575
+      },
+      "paintSwatchesApprox": ["white", "dark blue", "black", "silver", "gray", "burgundy"],
+      "source": {
+        "type": "og_server_screenshot_and_user_note"
+      }
+    },
+    {
+      "catalogCarId": "3",
+      "catalogCarIdConfidence": "high",
+      "name": "Ford Mustang GT",
+      "year": "2007",
+      "locationId": "300",
+      "layout": "Front engine, RWD, 4-pass, 2 door, coupe",
+      "engine": {
+        "stock": "99H",
+        "allowed": ["99H"]
+      },
+      "transmission": "5 speed manual",
+      "curbWeightLb": 3450,
+      "zeroToSixtySec": 5.1,
+      "stockRatios": {
+        "first": 3.22,
+        "second": 2.29,
+        "third": 1.54,
+        "fourth": 1.0,
+        "fifth": 0.71,
+        "sixth": 0.0,
+        "final": 3.31
+      },
+      "pricing": {
+        "points": 575
+      },
+      "paintSwatchesApprox": ["silver", "light blue", "dark gray", "red", "gray", "white", "black", "gold", "blue"],
+      "source": {
+        "type": "og_server_screenshot_and_user_note"
+      }
+    },
+    {
+      "catalogCarId": "47",
+      "catalogCarIdConfidence": "high",
+      "name": "Nissan Sentra SE-R",
+      "year": "2008",
+      "locationId": "100",
+      "layout": "Front engine, FWD, 4-pass, 4 door, sedan",
+      "engine": {
+        "stock": "QR25DE",
+        "allowed": ["QR25DE"]
+      },
+      "transmission": "6 speed manual",
+      "curbWeightLb": 3075,
+      "zeroToSixtySec": 6.6,
+      "pricing": {
+        "points": 625
+      },
+      "paintSwatchesApprox": ["black", "yellow", "light blue", "red", "silver", "white"],
+      "source": {
+        "type": "og_server_screenshot_and_user_note"
+      }
+    },
+    {
+      "catalogCarId": "37",
+      "catalogCarIdConfidence": "medium",
+      "catalogCarIdCandidates": ["31", "37"],
+      "name": "Honda Civic Si",
+      "year": "1992",
+      "locationId": "100",
+      "layout": "Front engine, FWD, 4-pass, 2 door, hatchback",
+      "engine": {
+        "stock": "D16Z6",
+        "allowed": ["D16Z6", "K20A2"]
+      },
+      "transmission": "5 speed manual",
+      "curbWeightLb": 2270,
+      "zeroToSixtySec": 8.5,
+      "pricing": {
+        "cash": "N/A",
+        "points": 550
+      },
+      "paintSwatchesApprox": ["blue", "teal", "red", "white", "black"],
+      "source": {
+        "type": "og_server_screenshot_and_user_note"
+      }
+    },
+    {
+      "catalogCarId": "76",
+      "catalogCarIdConfidence": "high",
+      "name": "Honda Civic Si",
+      "year": "2000",
+      "locationId": "200",
+      "layout": "Front engine, FWD, 4-pass, 2 door, coupe",
+      "engine": {
+        "stock": "B16A2",
+        "allowed": ["B16A2"]
+      },
+      "transmission": "5 speed manual",
+      "curbWeightLb": 2612,
+      "zeroToSixtySec": 7.2,
+      "pricing": {
+        "cash": "N/A",
+        "points": 550
+      },
+      "paintSwatchesApprox": ["red", "black", "silver", "blue"],
+      "source": {
+        "type": "og_server_screenshot_and_user_note"
+      }
+    },
+    {
+      "catalogCarId": "74",
+      "catalogCarIdConfidence": "high",
+      "name": "Honda CR-X Si",
+      "year": "1991",
+      "locationId": "100",
+      "layout": "Front engine, FWD, 2-pass, 2 door, hatchback",
+      "engine": {
+        "stock": "D16A6",
+        "allowed": ["D16A6"]
+      },
+      "transmission": "5 speed manual",
+      "curbWeightLb": 2174,
+      "zeroToSixtySec": 14.5,
+      "membersOnly": true,
+      "pricing": {
+        "cash": "N/A",
+        "points": 500
+      },
+      "paintSwatchesApprox": ["silver", "red", "teal", "black", "gray", "yellow"],
+      "source": {
+        "type": "og_server_screenshot_and_user_note"
+      }
+    },
+    {
+      "catalogCarId": null,
+      "catalogCarIdConfidence": "low",
+      "repoCatalogMatch": false,
+      "name": "Honda Civic S",
+      "year": "2008",
+      "layout": "Front engine, FWD, 5-pass, 4 door, sedan",
+      "engine": {
+        "stock": "R18",
+        "allowed": ["R18"]
+      },
+      "transmission": "5 speed manual",
+      "curbWeightLb": 2946,
+      "zeroToSixtySec": 8.4,
+      "membersOnly": true,
+      "pricing": {
+        "cash": "N/A",
+        "points": 550
+      },
+      "paintSwatchesApprox": ["blue", "silver", "black", "red", "white"],
+      "source": {
+        "type": "og_server_screenshot_and_user_note"
+      },
+      "notes": [
+        "No matching Honda Civic S entry was found in the current repo catalog sources.",
+        "This appears to be an OG-server car missing from the reconstructed backend catalog."
+      ]
+    },
+    {
+      "catalogCarId": "72",
+      "catalogCarIdConfidence": "high",
+      "name": "Buick Grand National",
+      "year": "1987",
+      "locationId": "400",
+      "layout": "Front engine, RWD, 4-pass, 2 door, sedan",
+      "engine": {
+        "stock": "LC2",
+        "allowed": ["LC2"]
+      },
+      "transmission": "4 speed",
+      "curbWeightLb": 3472,
+      "zeroToSixtySec": 4.3,
+      "membersOnly": true,
+      "pricing": {
+        "cash": "N/A",
+        "points": 2250
+      },
+      "paintSwatchesApprox": ["silver", "red", "teal", "black", "gray", "yellow"],
+      "limitedEdition": {
+        "shown": true,
+        "available": 173,
+        "totalSold": 827
+      },
+      "source": {
+        "type": "og_server_screenshot"
+      }
+    },
+    {
+      "catalogCarId": "4",
+      "catalogCarIdConfidence": "high",
+      "name": "Infiniti G35 Coupe",
+      "year": "2004",
+      "locationId": "300",
+      "layout": "Front engine, RWD, 2-pass, 2 door, coupe",
+      "engine": {
+        "stock": "VQ35DE",
+        "allowed": ["VQ35DE"]
+      },
+      "transmission": "6 speed manual",
+      "curbWeightLb": 3435,
+      "zeroToSixtySec": 6.35,
+      "pricing": {
+        "cash": "N/A"
+      },
+      "paintSwatchesApprox": ["beige", "white", "blue-gray", "red", "black", "silver"],
+      "source": {
+        "type": "og_server_screenshot"
+      }
+    },
+    {
+      "catalogCarId": null,
+      "catalogCarIdConfidence": "low",
+      "repoCatalogMatch": false,
+      "name": "Ford Mustang Boss 429",
+      "screenTitle": "Ford",
+      "year": "1970",
+      "layout": "Front engine, RWD, 4-pass, 2 door, coupe",
+      "engine": {
+        "stock": "429",
+        "allowed": ["429"]
+      },
+      "transmission": "4 speed manual",
+      "curbWeightLb": 3300,
+      "zeroToSixtySec": 6.6,
+      "pricing": {
+        "points": 2250
+      },
+      "paintSwatchesApprox": ["orange", "yellow", "teal", "blue", "green"],
+      "limitedEdition": {
+        "shown": true,
+        "available": 0,
+        "totalSold": 1500
+      },
+      "source": {
+        "type": "og_server_screenshot"
+      },
+      "notes": [
+        "Name inferred from the 1970 Mustang body style and 429 engine shown on screen.",
+        "No exact matching repo catalog entry was found."
+      ]
+    },
+    {
+      "catalogCarId": "126",
+      "catalogCarIdConfidence": "high",
+      "name": "Ford Mustang Beast",
+      "year": "1993",
+      "locationId": "100",
+      "layout": "Front engine, RWD, 5-pass, 2 door, coupe",
+      "engine": {
+        "stock": "Windsor-V8",
+        "allowed": ["Windsor-V8"]
+      },
+      "transmission": "5 speed manual",
+      "curbWeightLb": 4285,
+      "zeroToSixtySec": 4.5,
+      "membersOnly": true,
+      "pricing": {
+        "cash": "N/A"
+      },
+      "paintSwatchesApprox": ["white"],
+      "source": {
+        "type": "og_server_screenshot"
+      }
+    },
+    {
+      "catalogCarId": null,
+      "catalogCarIdConfidence": "low",
+      "catalogCarIdCandidates": ["101", "102", "110", "118"],
+      "name": "McLaren",
+      "screenTitle": "McLaren",
+      "year": "2009",
+      "layout": "Middle engine, RWD, 2-pass, 2 door, coupe",
+      "engine": {
+        "stock": "M155 MLG",
+        "allowed": ["M155 MLG"]
+      },
+      "transmission": "5 speed manual",
+      "curbWeightLb": 3387,
+      "zeroToSixtySec": 3.75,
+      "membersOnly": true,
+      "pricing": {
+        "cash": "N/A",
+        "points": 2200
+      },
+      "paintSwatchesApprox": ["black"],
+      "availabilityCounters": {
+        "available": 0,
+        "totalSold": 300
+      },
+      "source": {
+        "type": "og_server_screenshot"
+      },
+      "notes": [
+        "The current repo has SLR McLaren variants but no clean exact match for this 2009 screen."
+      ]
+    },
+    {
+      "catalogCarId": null,
+      "catalogCarIdConfidence": "medium",
+      "catalogCarIdCandidates": ["64", "67"],
+      "name": "VW Golf GTI",
+      "year": "2010",
+      "layout": "Front engine, 5-pass, 2 door, hatchback",
+      "engine": {
+        "stock": "CCZA",
+        "allowed": ["CCZA"]
+      },
+      "transmission": "6 speed manual",
+      "curbWeightLb": 3213,
+      "zeroToSixtySec": 6.25,
+      "pricing": {
+        "cash": "N/A"
+      },
+      "paintSwatchesApprox": ["dark blue", "red", "white", "silver", "black"],
+      "source": {
+        "type": "og_server_screenshot"
+      },
+      "notes": [
+        "The repo has duplicate Golf GTI entries but does not distinguish this 2010 screen cleanly."
+      ]
+    },
+    {
+      "catalogCarId": "2",
+      "catalogCarIdConfidence": "high",
+      "name": "Mitsubishi Lancer Evolution VIII",
+      "catalogNameInRepo": "Mitsubishi Lancer Evo VIII",
+      "year": "2004",
+      "locationId": "400",
+      "layout": "Front engine, 4-pass, 4 door, sedan",
+      "engine": {
+        "stock": "4G63",
+        "allowed": ["4G63"]
+      },
+      "transmission": "5 speed manual",
+      "curbWeightLb": 3276,
+      "zeroToSixtySec": 4.8,
+      "pricing": {
+        "points": 750
+      },
+      "paintSwatchesApprox": ["silver", "white", "red", "black"],
+      "source": {
+        "type": "og_server_screenshot"
+      }
+    },
+    {
+      "catalogCarId": "58",
+      "catalogCarIdConfidence": "high",
+      "name": "VW Golf R32",
+      "year": "2004",
+      "locationId": "300",
+      "layout": "Front engine, 5-pass, 2 door, hatchback",
+      "engine": {
+        "stock": "BJS",
+        "allowed": ["BJS"]
+      },
+      "transmission": "6 speed manual",
+      "curbWeightLb": 3439,
+      "zeroToSixtySec": 6.0,
+      "pricing": {
+        "points": 750
+      },
+      "paintSwatchesApprox": ["red", "blue", "silver", "black"],
+      "source": {
+        "type": "og_server_screenshot"
+      }
+    },
+    {
+      "catalogCarId": "84",
+      "catalogCarIdConfidence": "high",
+      "name": "VW Jetta GLI",
+      "year": "2006",
+      "locationId": "200",
+      "layout": "Front engine, 5-pass, 4 door, sedan",
+      "engine": {
+        "stock": "BVWA",
+        "allowed": ["BVWA"]
+      },
+      "transmission": "6 speed manual",
+      "curbWeightLb": 3363,
+      "zeroToSixtySec": 6.35,
+      "pricing": {
+        "points": 500
+      },
+      "paintSwatchesApprox": ["red", "blue", "silver", "black"],
+      "source": {
+        "type": "og_server_screenshot"
+      }
+    },
+    {
+      "catalogCarId": "35",
+      "catalogCarIdConfidence": "high",
+      "name": "Nissan 300ZX",
+      "year": "1993",
+      "locationId": "300",
+      "layout": "Front engine, RWD, 2-pass, 2 door, hatchback",
+      "engine": {
+        "stock": "VG30DETT",
+        "allowed": ["VG30DETT"]
+      },
+      "transmission": "5 speed manual",
+      "curbWeightLb": 3299,
+      "zeroToSixtySec": 6.0,
+      "pricing": {
+        "points": 800
+      },
+      "paintSwatchesApprox": ["white", "black", "yellow", "blue", "silver", "red"],
+      "source": {
+        "type": "og_server_screenshot"
+      }
+    },
+    {
+      "catalogCarId": "41",
+      "catalogCarIdConfidence": "high",
+      "name": "Nissan 240SX",
+      "year": "1998",
+      "locationId": "100",
+      "layout": "Front engine, RWD, 2-pass, 2 door, coupe",
+      "engine": {
+        "stock": "KA24DE",
+        "allowed": ["KA24DE"]
+      },
+      "transmission": "5 speed manual",
+      "curbWeightLb": 2730,
+      "zeroToSixtySec": 8.4,
+      "pricing": {
+        "points": 625
+      },
+      "paintSwatchesApprox": ["red", "teal", "silver", "white", "gray"],
+      "source": {
+        "type": "og_server_screenshot"
+      }
+    },
+    {
+      "catalogCarId": "127",
+      "catalogCarIdConfidence": "medium",
+      "name": "Ford Focus RS 500",
+      "year": "2011",
+      "locationId": "300",
+      "layout": "Front engine, FWD, 5-pass, 3 door, hatchback",
+      "engine": {
+        "stock": "2.5L RS",
+        "allowed": ["2.5L RS"]
+      },
+      "transmission": "6 speed manual",
+      "curbWeightLb": 3136,
+      "zeroToSixtySec": 6.4,
+      "membersOnly": true,
+      "pricing": {
+        "cash": "N/A",
+        "points": 1050
+      },
+      "paintSwatchesApprox": ["black"],
+      "limitedEdition": {
+        "shown": true,
+        "available": 0,
+        "totalSold": 500
+      },
+      "source": {
+        "type": "og_server_screenshot"
+      }
+    },
+    {
+      "catalogCarId": "24",
+      "catalogCarIdConfidence": "high",
+      "name": "Mazda RX-8",
+      "year": "2009",
+      "locationId": "300",
+      "layout": "Front engine, RWD, 4-pass, 4 door, coupe",
+      "engine": {
+        "stock": "13B-MSP",
+        "allowed": ["13B-MSP"]
+      },
+      "transmission": "6 speed manual",
+      "curbWeightLb": 3209,
+      "zeroToSixtySec": 6.4,
+      "pricing": {
+        "cash": "N/A"
+      },
+      "paintSwatchesApprox": ["red", "black", "silver", "white"],
+      "source": {
+        "type": "og_server_screenshot"
+      }
+    },
+    {
+      "catalogCarId": "115",
+      "catalogCarIdConfidence": "high",
+      "name": "Toyota MR2 Spyder",
+      "year": "2005",
+      "locationId": "200",
+      "layout": "Middle engine, RWD, 2-pass, 2 door, convertible",
+      "engine": {
+        "stock": "1ZZ-FED",
+        "allowed": ["1ZZ-FED"]
+      },
+      "transmission": "5 speed manual",
+      "curbWeightLb": 2215,
+      "zeroToSixtySec": 6.4,
+      "membersOnly": true,
+      "pricing": {
+        "cash": "N/A"
+      },
+      "paintSwatchesApprox": ["blue", "white", "yellow", "silver", "red"],
+      "source": {
+        "type": "og_server_screenshot"
+      }
+    },
+    {
+      "catalogCarId": "118",
+      "catalogCarIdConfidence": "high",
+      "name": "SLR 722 GT",
+      "screenTitle": "722",
+      "year": "2009",
+      "locationId": "200",
+      "layout": "Front engine, RWD, 2-pass, 2 door, coupe",
+      "engine": {
+        "stock": "AMG",
+        "allowed": ["AMG"]
+      },
+      "transmission": "5 speed manual",
+      "curbWeightLb": 3700,
+      "zeroToSixtySec": 4.0,
+      "membersOnly": true,
+      "pricing": {
+        "cash": "N/A",
+        "points": 2800
+      },
+      "paintSwatchesApprox": ["white"],
+      "limitedEdition": {
+        "shown": true,
+        "available": 0,
+        "totalSold": 200
+      },
+      "source": {
+        "type": "og_server_screenshot"
+      }
+    },
+    {
+      "catalogCarId": "75",
+      "catalogCarIdConfidence": "high",
+      "name": "Dodge Charger R/T",
+      "screenTitle": "Charger",
+      "year": "2009",
+      "locationId": "300",
+      "layout": "Front engine, RWD, 5-pass, 4 door, sedan",
+      "engine": {
+        "stock": "370 HEMI",
+        "allowed": ["370 HEMI"]
+      },
+      "transmission": "5 speed automatic",
+      "curbWeightLb": 4108,
+      "zeroToSixtySec": 6.4,
+      "pricing": {
+        "cash": "N/A"
+      },
+      "paintSwatchesApprox": ["blue", "black", "silver", "red"],
+      "source": {
+        "type": "og_server_screenshot"
+      }
+    },
+    {
+      "catalogCarId": "70",
+      "catalogCarIdConfidence": "medium",
+      "name": "Nissan 240SX Fastback",
+      "screenTitle": "240SX",
+      "year": "1993",
+      "layout": "Front engine, RWD, 4-pass, 2 door, hatchback",
+      "engine": {
+        "stock": "KA24DE",
+        "allowed": ["KA24DE"]
+      },
+      "transmission": "5 speed manual",
+      "curbWeightLb": 2809,
+      "zeroToSixtySec": 7.8,
+      "pricing": {
+        "cash": "N/A"
+      },
+      "paintSwatchesApprox": ["cream", "green", "blue", "silver", "red", "white", "blue-violet"],
+      "source": {
+        "type": "og_server_screenshot"
+      },
+      "notes": [
+        "Screen title is shown generically as 240SX; hatchback body and the alternate catalog naming resolve this line as the fastback variant."
+      ]
+    },
+    {
+      "catalogCarId": "116",
+      "catalogCarIdConfidence": "medium",
+      "name": "Dodge 1320",
+      "screenTitle": "1320",
+      "year": "2012",
+      "layout": "Front engine, RWD, 5-pass, 2 door, coupe",
+      "engine": {
+        "stock": "Mopar 426",
+        "allowed": ["Mopar 426"]
+      },
+      "transmission": "6 speed manual",
+      "curbWeightLb": 3770,
+      "zeroToSixtySec": 3.8,
+      "pricing": {
+        "cash": "N/A"
+      },
+      "paintSwatchesApprox": ["yellow"],
+      "source": {
+        "type": "og_server_screenshot"
+      },
+      "notes": [
+        "Screen title is shown as 1320; catalog name normalized to Dodge 1320."
+      ]
+    },
+    {
+      "catalogCarId": "38",
+      "catalogCarIdConfidence": "medium",
+      "catalogCarIdCandidates": ["38", "125"],
+      "name": "Nissan Skyline GT-R",
+      "screenTitle": "GT-R",
+      "year": "1998",
+      "locationId": "400",
+      "layout": "Front engine, RWD, 2-pass, 2 door, coupe",
+      "engine": {
+        "stock": "RB26DETT-R33",
+        "allowed": ["RB26DETT-R33"]
+      },
+      "transmission": "5 speed manual",
+      "curbWeightLb": 3738,
+      "zeroToSixtySec": 4.9,
+      "membersOnly": true,
+      "pricing": {
+        "cash": "N/A",
+        "points": 1250
+      },
+      "paintSwatchesApprox": ["blue", "white", "silver"],
+      "source": {
+        "type": "og_server_screenshot"
+      },
+      "notes": [
+        "The current repo contains multiple Nissan Skyline GT-R entries without OG year-specific labeling."
+      ]
+    },
+    {
+      "catalogCarId": "55",
+      "catalogCarIdConfidence": "high",
+      "name": "Nissan 370Z",
+      "year": "2009",
+      "locationId": "400",
+      "layout": "Front engine, RWD, 2-pass, 2 door, coupe",
+      "engine": {
+        "stock": "VQ37VHR",
+        "allowed": ["VQ37VHR"]
+      },
+      "transmission": "6 speed manual",
+      "curbWeightLb": 3322,
+      "zeroToSixtySec": 4.9,
+      "pricing": {
+        "cash": "N/A",
+        "points": 800
+      },
+      "paintSwatchesApprox": ["black", "blue", "white", "red", "yellow", "silver"],
+      "source": {
+        "type": "og_server_screenshot"
+      }
+    },
+    {
+      "catalogCarId": "25",
+      "catalogCarIdConfidence": "high",
+      "name": "Nissan 350Z",
+      "year": "2005",
+      "locationId": "300",
+      "layout": "Front engine, RWD, 2-pass, 2 door, coupe",
+      "engine": {
+        "stock": "VQ35DE",
+        "allowed": ["VQ35DE"]
+      },
+      "transmission": "6 speed manual",
+      "curbWeightLb": 3393,
+      "zeroToSixtySec": 5.0,
+      "pricing": {
+        "points": 792
+      },
+      "paintSwatchesApprox": ["blue", "yellow", "silver", "black", "red", "bronze"],
+      "source": {
+        "type": "og_server_screenshot"
+      }
+    },
+    {
+      "catalogCarId": "125",
+      "catalogCarIdConfidence": "medium",
+      "name": "Nissan GT-R",
+      "year": "2002",
+      "locationId": "400",
+      "layout": "Front engine, AWD, 4-pass, 2 door, coupe",
+      "engine": {
+        "stock": "RB26DETT",
+        "allowed": ["RB26DETT"]
+      },
+      "transmission": "6 speed manual",
+      "curbWeightLb": 3369,
+      "zeroToSixtySec": 4.8,
+      "pricing": {
+        "cash": "N/A",
+        "points": 1200
+      },
+      "paintSwatchesApprox": ["white", "black", "purple", "blue", "silver", "red", "yellow"],
+      "source": {
+        "type": "og_server_screenshot"
+      }
+    },
+    {
+      "catalogCarId": "21",
+      "catalogCarIdConfidence": "high",
+      "name": "Nissan GT-R",
+      "year": "2009",
+      "locationId": "400",
+      "layout": "Front engine, AWD, 4-pass, 2 door, coupe",
+      "engine": {
+        "stock": "VR38DETT",
+        "allowed": ["VR38DETT"]
+      },
+      "transmission": "6 speed dual clutch",
+      "curbWeightLb": 3836,
+      "zeroToSixtySec": 3.8,
+      "membersOnly": true,
+      "pricing": {
+        "cash": "N/A",
+        "points": 2000
+      },
+      "paintSwatchesApprox": ["white", "black", "silver", "red"],
+      "source": {
+        "type": "og_server_screenshot"
+      }
+    },
+    {
+      "catalogCarId": "106",
+      "catalogCarIdConfidence": "high",
+      "name": "Nissan Cube",
+      "year": "2011",
+      "locationId": "100",
+      "layout": "Front engine, FWD, 5-pass, 5 door, wagon",
+      "engine": {
+        "stock": "MR18DE",
+        "allowed": ["MR18DE"]
+      },
+      "transmission": "6 speed manual",
+      "curbWeightLb": 2842,
+      "zeroToSixtySec": 6.4,
+      "membersOnly": true,
+      "pricing": {
+        "cash": "N/A",
+        "points": 475
+      },
+      "paintSwatchesApprox": ["black", "gray", "blue-gray", "burgundy", "light blue", "silver"],
+      "source": {
+        "type": "og_server_screenshot"
+      }
+    },
+    {
+      "catalogCarId": "149",
+      "catalogCarIdConfidence": "high",
+      "name": "Ford Taurus SHO",
+      "year": "2013",
+      "locationId": "400",
+      "layout": "Front engine, AWD, 5-pass, 4 door, sedan",
+      "engine": {
+        "stock": "3.5L EcoBoost V6",
+        "allowed": ["3.5L EcoBoost V6"]
+      },
+      "transmission": "6 speed manual",
+      "curbWeightLb": 4341,
+      "zeroToSixtySec": 5.2,
+      "pricing": {
+        "points": 750
+      },
+      "paintSwatchesApprox": ["red", "dark blue", "silver", "white", "black"],
+      "source": {
+        "type": "og_server_screenshot"
+      }
+    },
+    {
+      "catalogCarId": "5",
+      "catalogCarIdConfidence": "high",
+      "name": "Ford GT",
+      "year": "2006",
+      "locationId": "400",
+      "layout": "Middle engine, RWD, 2-pass, 2 door, coupe",
+      "engine": {
+        "stock": "MOD",
+        "allowed": ["MOD"]
+      },
+      "transmission": "6 speed manual",
+      "curbWeightLb": 3486,
+      "zeroToSixtySec": 3.8,
+      "pricing": {
+        "cash": 180000,
+        "points": 1425
+      },
+      "paintSwatchesApprox": ["black", "silver", "gold", "white", "blue", "red"],
+      "source": {
+        "type": "og_server_screenshot"
+      },
+      "notes": [
+        "Engine text is recorded exactly as shown on the OG screen."
+      ]
+    },
+    {
+      "catalogCarId": "30",
+      "catalogCarIdConfidence": "high",
+      "name": "Scion tC TRD Challenge",
+      "year": "2008",
+      "locationId": "100",
+      "layout": "Front engine, FWD, 4-pass, 2 door, coupe",
+      "engine": {
+        "stock": "2AZ-FE-TRD",
+        "allowed": ["2AZ-FE-TRD"]
+      },
+      "transmission": "5 speed manual",
+      "curbWeightLb": 2250,
+      "zeroToSixtySec": 1.19,
+      "pricing": {
+        "cash": "N/A"
+      },
+      "source": {
+        "type": "og_server_screenshot"
+      },
+      "notes": [
+        "This car is shown with Scion TRD OEM rims.",
+        "The screenshot breadcrumb text appears truncated/cropped, but the car branding on the screen identifies it as the Scion tC TRD Challenge.",
+        "The 0-60 value is recorded exactly as shown on the OG screen, even though it appears unusually low."
+      ]
+    }
+  ]
+}

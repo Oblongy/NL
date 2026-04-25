@@ -1,7 +1,7 @@
 [
   {
     "id": "1",
-    "name": "Acura Integra GSR",
+    "name": "Acura Integra GS-R",
     "locationId": "100"
   },
   {
@@ -141,7 +141,7 @@
   },
   {
     "id": "127",
-    "name": "Ford Focus RS",
+    "name": "Ford Focus RS 500",
     "locationId": "300"
   },
   {
@@ -261,7 +261,7 @@
   },
   {
     "id": "2",
-    "name": "Mitsubishi Lancer Evo VIII",
+    "name": "Mitsubishi Lancer Evolution VIII",
     "locationId": "400"
   },
   {
@@ -306,7 +306,7 @@
   },
   {
     "id": "125",
-    "name": "Nissan Skyline GT-R",
+    "name": "Nissan GT-R",
     "locationId": "400"
   },
   {
@@ -546,7 +546,7 @@
   },
   {
     "id": "70",
-    "name": "IvD Battle Challenger",
+    "name": "Nissan 240SX Fastback",
     "locationId": "200"
   },
   {
@@ -586,7 +586,7 @@
   },
   {
     "id": "116",
-    "name": "Challenger 1320",
+    "name": "Dodge 1320",
     "locationId": "100"
   },
   {

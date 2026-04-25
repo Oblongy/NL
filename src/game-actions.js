@@ -98,7 +98,7 @@ import { getDefaultPartsXmlForCar, getDefaultWheelFitmentForCar, getDefaultWheel
 import { summarizeInstalledEnginePartStats } from "./engine-part-stats.js";
 import { getShowroomCarSpec, hasShowroomCarSpec } from "./showroom-car-specs.js";
 
-const DEFAULT_STARTER_CATALOG_CAR_ID = 1; // Acura Integra GSR
+const DEFAULT_STARTER_CATALOG_CAR_ID = 1; // Acura Integra GS-R
 const DEFAULT_STOCK_PARTS_XML = "";
 const TEST_DRIVE_DURATION_HOURS = 12;
 const DEFAULT_DYNO_PURCHASE_STATE = Object.freeze({
@@ -3313,14 +3313,17 @@ async function handleGetOneCar(context) {
     return { body: failureBody(), source: "supabase:getonecar:no-car" };
   }
 
+  const renderedCarBody = wrapSuccessData(renderOwnedGarageCar(resolvedCar));
   logger?.info("GetOneCar returning car", {
     requestedCarId,
     returnedCarId: resolvedCar.game_car_id,
     partsXmlLength: resolvedCar.parts_xml?.length || 0,
+    renderedBodyLength: renderedCarBody.length,
+    renderedBody: Number(resolvedCar.game_car_id) === 260 ? renderedCarBody : undefined,
   });
 
   return {
-    body: wrapSuccessData(renderOwnedGarageCar(resolvedCar)),
+    body: renderedCarBody,
     source: "supabase:getonecar",
   };
 }
@@ -3650,15 +3653,7 @@ async function handleBuyPart(context) {
         16201: "162",
         16301: "163",
       };
-      const installedGraphicPartIdMap = {
-        6000: 16001,
-        6001: 16101,
-        6002: 16201,
-        6003: 16301,
-      };
       const slotId = partSlotMap[partId] || String(catalogPart?.pi || "161");
-      const installedGraphicPartId = installedGraphicPartIdMap[partId] || partId;
-      const installedGraphicCatalogPart = getPartsCatalogById().get(installedGraphicPartId) || catalogPart || null;
       let resolvedDecalFileExt = decalFileExt;
       let resolvedDecalId = String(decalId || "").replace(/[^0-9]/g, "") || "1";
 
@@ -3739,40 +3734,21 @@ async function handleBuyPart(context) {
         logger?.error("Failed to rename decal", { error: err.message });
       }
 
-      const installedPartAttrs = parsePartXmlAttributes(
-        buildInstalledCatalogPartXml(installedGraphicCatalogPart || {
-          i: String(installedGraphicPartId),
-          pi: slotId,
-          t: "c",
-          n: "Custom Graphic",
-          p: "0",
-          pp: "0",
-          g: "C",
-          di: "1",
-          pdi: "1",
-          b: "graphics",
-          bn: "Graphics",
-          mn: "Custom",
-          l: "100",
-          mo: "0",
-          hp: "0",
-          tq: "0",
-          wt: "0",
-          cc: "0",
-          ps: "",
-        }, installId, {
-          i: String(installedGraphicPartId),
-          pi: slotId,
-          t: "c",
-          di: String(installedGraphicCatalogPart?.di || "1"),
-          pdi: String(resolvedDecalId),
-        }),
-      );
-      installedPartAttrs.ci = slotId;
-      installedPartAttrs.pt = "c";
-      installedPartAttrs.fe = resolvedDecalFileExt;
-      installedPartAttrs.di = String(installedPartAttrs.di || "1");
-      installedPartAttrs.pdi = String(resolvedDecalId);
+      const installedPartAttrs = {
+        ai: installId,
+        i: String(partId),
+        ci: slotId,
+        pi: slotId,
+        pt: "c",
+        t: "c",
+        n: "Custom Graphic",
+        in: "1",
+        cc: "0",
+        pdi: String(resolvedDecalId),
+        di: String(resolvedDecalId),
+        fe: resolvedDecalFileExt,
+        ps: "",
+      };
       const installedPartXml = `<p ${serializePartXmlAttributes(installedPartAttrs)}/>`;
       const partsXml = upsertInstalledPartXml(car.parts_xml || "", slotId, installedPartXml);
       try {
@@ -3780,9 +3756,10 @@ async function handleBuyPart(context) {
         logger?.info("Saved custom graphic to car", {
           accountCarId,
           partId,
-          installedGraphicPartId,
           resolvedDecalId,
           slotId,
+          installedPartXml,
+          partsXml,
           partsXmlLength: partsXml.length,
         });
       } catch (error) {
@@ -6005,7 +5982,7 @@ async function handleGetNews(context) {
 async function handleGetSpotlightRacers(context) {
   return {
     body: wrapSuccessData(
-      `<spotlight><r u='Community' c='Acura Integra GSR' et='11.234' w='50' t='Apr 5th 2026' uid='1' ad='4/5/2026' aauid='0' aa='Server Admin' at='Community Spotlight'><b>Welcome to Nitto!!</b></r></spotlight>`,
+      `<spotlight><r u='Community' c='Acura Integra GS-R' et='11.234' w='50' t='Apr 5th 2026' uid='1' ad='4/5/2026' aauid='0' aa='Server Admin' at='Community Spotlight'><b>Welcome to Nitto!!</b></r></spotlight>`,
     ),
     source: "generated:getspotlightracers",
   };

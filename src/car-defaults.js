@@ -1,7 +1,7 @@
 import { getStaticPartsCatalogXml, getStaticStockWheelFitments } from "./catalog-data-source.js";
 import { getShowroomCarInduction } from "./showroom-car-specs.js";
 
-export const DEFAULT_STARTER_CATALOG_CAR_ID = 1; // Acura Integra GSR
+export const DEFAULT_STARTER_CATALOG_CAR_ID = 1; // Acura Integra GS-R
 export const DEFAULT_PAINT_INDEX = 4;
 export const DEFAULT_COLOR_CODE = "C0C0C0";
 export const DEFAULT_STOCK_PARTS_XML = "";

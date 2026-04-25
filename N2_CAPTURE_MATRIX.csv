@@ -1,0 +1,7 @@
+scenario,account_car_id,catalog_car_id,car_name,engine_label,engine_type_id,drivetrain,transmission,build_notes,source_file,source_stream,action,es,sl,sg,rc,tmp,r,v,a,n,o,s,b,p,c,e,d,f,g,h,i,j,k,l,q,m,t,u,w,x,y,z,aa,ab,ac,ad,ae,af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar,as,at,au,av,aw,ax,delta_focus,verification_notes
+stock,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,baseline values for untouched car,
+turbo,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,d and any boost-correlated fields,
+supercharged,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,d and any blower-correlated fields,
+nitrous,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,q m and any consumable-correlated fields,
+ecu-only,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,timing and any ECU-sensitive fields,
+cooling-only,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,u w and any thermal or durability fields,

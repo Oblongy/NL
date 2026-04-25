@@ -332,7 +332,7 @@ export function getUserGraphicUploadResponseAttrs(slotKey, decalId, extension, f
     case "side":
     case "s":
     case "161":
-      return { s: decalId, sx: normalizedExt };
+      return { si: decalId, sx: normalizedExt };
     case "front":
     case "f":
     case "162":
@@ -814,6 +814,12 @@ export function createHttpServer({ config, logger, supabase, services = {}, fixt
               );
               const serializedAttrs = Object.entries(attrs).map(([key, value]) => `${key}='${value}'`).join(" ");
               responseBody = `<r s='1' i='${decalId}' ${serializedAttrs}/>`;
+              logger.info("User decal upload response", {
+                remoteAddress,
+                fieldName,
+                decalId,
+                responseBody,
+              });
             }
 
             pendingUploadsByRemote.delete(remoteAddress);

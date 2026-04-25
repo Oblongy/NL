@@ -6,7 +6,7 @@ test("getUserGraphicUploadResponseAttrs infers side panel attrs from Upload.aspx
   const attrs = getUserGraphicUploadResponseAttrs("", "41144", "png", "sideImage");
 
   assert.deepEqual(attrs, {
-    s: "41144",
+    si: "41144",
     sx: "png",
   });
 });

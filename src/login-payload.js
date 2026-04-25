@@ -64,57 +64,6 @@ const STATIC_GEARS_XML = "<n id='gears' p='2500' pp='25'/>";
 const STATIC_BROADCAST_XML =
   "<n id='broadcast'><w><b i='1' m='Welcome to Nitto Legends!'/></w></n>";
 
-const STATIC_CARS_XML =
-  "<n id='cars'>" +
-  "<c id='1' c='Acura Integra GSR' l='100'/><c id='6' c='Acura RSX Type-S' l='200'/>" +
-  "<c id='28' c='Acura NSX' l='400'/><c id='117' c='AMC Javelin' l='300'/>" +
-  "<c id='72' c='Buick Grand National' l='400'/><c id='7' c='Chevy Corvette C6' l='400'/>" +
-  "<c id='18' c='Chevy Camaro' l='300'/><c id='52' c='Chevy Cobalt SS' l='200'/>" +
-  "<c id='82' c='Chevy C-10' l='200'/><c id='100' c='Chevy Impala SS' l='300'/>" +
-  "<c id='46' c='Chevy Camaro SS' l='300'/><c id='48' c='Chevy Camaro SS' l='400'/>" +
-  "<c id='83' c='Chevy S-10' l='100'/><c id='10' c='Dodge Viper SRT-10' l='500'/>" +
-  "<c id='15' c='Dodge Neon SRT-4' l='200'/><c id='59' c='Dodge Challenger SRT-8' l='400'/>" +
-  "<c id='60' c='Dodge Charger SRT-8' l='300'/><c id='63' c='Dodge Challenger R/T' l='300'/>" +
-  "<c id='75' c='Dodge Charger R/T' l='300'/><c id='81' c='Dodge Ram SRT-10' l='300'/>" +
-  "<c id='97' c='Dodge Charger SRT-8' l='400'/><c id='109' c='Dodge Viper ACR-X' l='500'/>" +
-  "<c id='124' c='Dodge Viper' l='500'/><c id='3' c='Ford Mustang GT' l='300'/>" +
-  "<c id='5' c='Ford GT' l='500'/><c id='78' c='Ford F-150 SVT Lightning' l='300'/>" +
-  "<c id='45' c='Ford SVT Cobra R' l='300'/><c id='68' c='Ford Shelby GT500' l='500'/>" +
-  "<c id='127' c='Ford Focus RS' l='300'/><c id='141' c='Ford RS200' l='500'/>" +
-  "<c id='143' c='Ford Falcon GT' l='300'/><c id='144' c='Ford Deuce Coupe' l='200'/>" +
-  "<c id='149' c='Ford Taurus SHO' l='400'/><c id='138' c='Ford Fiesta ST' l='200'/>" +
-  "<c id='8' c='Honda Integra Type R' l='200'/><c id='9' c='Honda S2000' l='300'/>" +
-  "<c id='31' c='Honda Civic Si' l='100'/><c id='37' c='Honda Civic Si' l='100'/>" +
-  "<c id='44' c='Honda Prelude DOHC VTEC' l='200'/><c id='74' c='Honda CR-X Si' l='100'/>" +
-  "<c id='76' c='Honda Civic Si' l='200'/><c id='105' c='Honda Civic Type R' l='200'/>" +
-  "<c id='4' c='Infiniti G35 Coupe' l='300'/><c id='51' c='Infiniti G37S' l='400'/>" +
-  "<c id='57' c='Mazda Furai' l='200'/><c id='19' c='Mazdaspeed 6 Bergenholtz' l='200'/>" +
-  "<c id='23' c='Mazdaspeed 3' l='300'/><c id='142' c='Mazdaspeed 3' l='300'/>" +
-  "<c id='24' c='Mazda RX-8' l='300'/><c id='16' c='Mazda RX-7' l='300'/>" +
-  "<c id='73' c='Mazda RX-3' l='100'/><c id='107' c='Mazda MX-5 Miata' l='100'/>" +
-  "<c id='2' c='Mitsubishi Lancer Evo VIII' l='400'/><c id='87' c='Mitsubishi Lancer Evo X' l='400'/>" +
-  "<c id='88' c='Mitsubishi Eclipse GSX' l='200'/><c id='55' c='Nissan 370Z' l='400'/>" +
-  "<c id='38' c='Nissan Skyline GT-R' l='400'/><c id='35' c='Nissan 300ZX' l='300'/>" +
-  "<c id='47' c='Nissan Sentra SE-R' l='100'/><c id='41' c='Nissan 240SX' l='100'/>" +
-  "<c id='25' c='Nissan 350Z' l='300'/><c id='125' c='Nissan Skyline GT-R' l='400'/>" +
-  "<c id='106' c='Nissan Cube' l='100'/><c id='21' c='Nissan GT-R' l='400'/>" +
-  "<c id='79' c='Plymouth &apos;Cuda' l='300'/><c id='80' c='Plymouth Road Runner' l='400'/>" +
-  "<c id='33' c='Pontiac Solstice GXP' l='200'/><c id='43' c='Pontiac GTO' l='300'/>" +
-  "<c id='49' c='Pontiac Trans Am' l='300'/><c id='50' c='Pontiac GTO' l='400'/>" +
-  "<c id='56' c='Pontiac GTO Judge' l='300'/><c id='85' c='Pontiac Firebird Trans Am' l='300'/>" +
-  "<c id='13' c='Scion tC' l='100'/><c id='22' c='Scion xB' l='100'/><c id='95' c='Scion tC' l='100'/>" +
-  "<c id='113' c='Scion FR-S' l='300'/><c id='89' c='Subaru Impreza WRX STI' l='400'/>" +
-  "<c id='92' c='Subaru Impreza WRX STI' l='400'/><c id='91' c='Subaru Impreza WRX STI' l='400'/>" +
-  "<c id='14' c='Toyota Supra' l='400'/><c id='145' c='Toyota Celica GT 2000' l='100'/>" +
-  "<c id='61' c='Toyota MR2' l='200'/><c id='65' c='Toyota Celica GT-S' l='200'/>" +
-  "<c id='99' c='Toyota Corolla GT-S' l='100'/><c id='122' c='Toyota Starlet' l='100'/>" +
-  "<c id='114' c='Toyota MR2 Spyder Widebody' l='200'/><c id='115' c='Toyota MR2 Spyder' l='200'/>" +
-  "<c id='58' c='VW Golf R32' l='300'/><c id='62' c='VW Beetle' l='100'/><c id='67' c='VW Golf GTI' l='100'/>" +
-  "<c id='64' c='VW Golf GTI' l='200'/><c id='77' c='VW Corrado' l='200'/><c id='84' c='VW Jetta GLI' l='200'/>" +
-  "<c id='128' c='Hyundai Genesis Coupe' l='300'/><c id='137' c='Hyundai Veloster Turbo' l='200'/>" +
-  "<c id='136' c='Porsche 911 GT3 RS' l='500'/><c id='140' c='Porsche Panamera Turbo' l='500'/>" +
-  "<c id='90' c='McLaren MP4-12C' l='500'/></n>";
-
 function renderTestDriveCarNode(testDriveCar) {
   if (!testDriveCar) {
     return "<n id='testdrivecar'/>";

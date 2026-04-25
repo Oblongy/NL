@@ -1225,7 +1225,7 @@ export async function handleGetNews() {
 export async function handleGetSpotlightRacers() {
   return {
     body: wrapSuccessData(
-      `<spotlight><r u='Community' c='Acura Integra GSR' et='11.234' w='50' t='Apr 5th 2026' uid='1' ad='4/5/2026' aauid='0' aa='Server Admin' at='Community Spotlight'><b>Welcome to Nitto!!</b></r></spotlight>`,
+      `<spotlight><r u='Community' c='Acura Integra GS-R' et='11.234' w='50' t='Apr 5th 2026' uid='1' ad='4/5/2026' aauid='0' aa='Server Admin' at='Community Spotlight'><b>Welcome to Nitto!!</b></r></spotlight>`,
     ),
     source: "generated:getspotlightracers",
   };
