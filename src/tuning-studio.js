@@ -11,6 +11,7 @@ import {
 } from "./catalog-data-source.js";
 import { getEngineTypeIdForCar, getEffectiveEngineString } from "./car-engine-state.js";
 import { buildCarRaceSpec, getRedLine } from "./engine-physics.js";
+import { summarizeInstalledEnginePartStats } from "./engine-part-stats.js";
 import { renderOwnedGarageCar } from "./game-xml.js";
 import { normalizeOwnedPartsXmlValue } from "./parts-xml.js";
 import { getShowroomCarSpec, hasShowroomCarSpec } from "./showroom-car-specs.js";
@@ -353,13 +354,13 @@ function getCapturedTimingCurveProfile(spec) {
   return { startFactor: 0.4, endFactor: 0.47, curvePower: 1.15, length: 102 };
 }
 
-function generateTimingArray(catalogCarId, engineTypeId) {
+function generateTimingArray(catalogCarId, engineTypeId, performanceStats = null) {
   const spec = getShowroomCarSpec(catalogCarId);
   if (!spec) {
     throw new Error(`Missing showroom spec for catalog car ${catalogCarId}`);
   }
 
-  const torque = getShowroomSpecTorque(spec, catalogCarId);
+  const torque = Number(performanceStats?.torque ?? getShowroomSpecTorque(spec, catalogCarId));
   const profile = getCapturedTimingCurveProfile({
     ...spec,
     eo: getEffectiveEngineString(spec.eo, engineTypeId),
@@ -379,14 +380,14 @@ function generateTimingArray(catalogCarId, engineTypeId) {
   return values;
 }
 
-function buildN2Fields(catalogCarId, gearRatioOverrides = null, engineTypeId = null) {
+function buildN2Fields(catalogCarId, gearRatioOverrides = null, engineTypeId = null, performanceStats = null) {
   const spec = getShowroomCarSpec(catalogCarId);
   if (!spec) {
     throw new Error(`Missing showroom spec for catalog car ${catalogCarId}`);
   }
 
-  const horsepower = getShowroomSpecHorsepower(spec, catalogCarId);
-  const weight = getShowroomSpecWeight(spec, catalogCarId);
+  const horsepower = Number(performanceStats?.horsepower ?? getShowroomSpecHorsepower(spec, catalogCarId));
+  const weight = Number(performanceStats?.weight ?? getShowroomSpecWeight(spec, catalogCarId));
   const effectiveEngineStr = getEffectiveEngineString(spec.eo, engineTypeId);
   const engineStr = effectiveEngineStr.toLowerCase();
 
@@ -437,8 +438,8 @@ function buildN2Fields(catalogCarId, gearRatioOverrides = null, engineTypeId = n
   return { x, y, z, r, aa, sl, a, n, o, f, g, h, i, j, l };
 }
 
-function buildDriveableEngineXml({ catalogCarId, gearRatios, engineTypeId }) {
-  const n2 = buildN2Fields(catalogCarId, gearRatios, engineTypeId);
+function buildDriveableEngineXml({ catalogCarId, gearRatios, engineTypeId, performanceStats = null }) {
+  const n2 = buildN2Fields(catalogCarId, gearRatios, engineTypeId, performanceStats);
   const valveCount = n2.aa * 4;
 
   return (

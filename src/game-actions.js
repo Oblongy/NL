@@ -95,6 +95,7 @@ import {
   deleteOwnedEngine,
 } from "./user-service.js";
 import { getDefaultPartsXmlForCar, getDefaultWheelFitmentForCar, getDefaultWheelXmlForCar } from "./car-defaults.js";
+import { summarizeInstalledEnginePartStats } from "./engine-part-stats.js";
 import { getShowroomCarSpec, hasShowroomCarSpec } from "./showroom-car-specs.js";
 
 const DEFAULT_STARTER_CATALOG_CAR_ID = 1; // Acura Integra GSR
@@ -3351,12 +3352,14 @@ function buildDriveableEnginePayloadForCar(car) {
     return null;
   }
 
-  const timing = generateTimingArray(catalogCarId, engineTypeId);
+  const performanceStats = getEffectiveCarPerformanceStats(catalogCarId, car);
+  const timing = generateTimingArray(catalogCarId, engineTypeId, performanceStats);
   const gearRatios = getPersistedGearRatios(car);
   const engineXml = buildDriveableEngineXml({
     catalogCarId,
     gearRatios,
     engineTypeId,
+    performanceStats,
   });
 
   return { engineXml, timing };
@@ -3414,12 +3417,14 @@ async function handleGetOneCarEngine(context) {
       source: "generated:getonecarengine:unsupported-car",
     };
   }
-  const timing = generateTimingArray(catalogCarId, engineTypeId);
+  const performanceStats = getEffectiveCarPerformanceStats(catalogCarId, car);
+  const timing = generateTimingArray(catalogCarId, engineTypeId, performanceStats);
   const gearRatios = getPersistedGearRatios(car);
   const engineXml = buildDriveableEngineXml({
     catalogCarId,
     gearRatios,
     engineTypeId,
+    performanceStats,
   });
 
   return {
@@ -4771,7 +4776,7 @@ function generateLegacyTimingArray() {
   return values;
 }
 
-function generateTimingArray(catalogCarId, engineTypeId = null) {
+function generateTimingArray(catalogCarId, engineTypeId = null, performanceStats = null) {
   // Temporary testing switch: use the exact legacy captured curve so we can
   // verify client behavior, then flip this back off to restore generated timing.
   if (TEMP_USE_LEGACY_CAPTURED_TIMING_FOR_TESTING) {
@@ -4783,7 +4788,7 @@ function generateTimingArray(catalogCarId, engineTypeId = null) {
     throw new Error(`Missing showroom spec for catalog car ${catalogCarId}`);
   }
 
-  const torque = getShowroomSpecTorque(spec, catalogCarId);
+  const torque = Number(performanceStats?.torque ?? getShowroomSpecTorque(spec, catalogCarId));
   const profile = getCapturedTimingCurveProfile({
     ...spec,
     eo: getEffectiveEngineString(spec.eo, engineTypeId ?? getEngineTypeIdForCatalogCar(catalogCarId)),
@@ -4827,14 +4832,14 @@ function getCarRedLine(catalogCarId, engineTypeId = null) {
  *   o = rev limiter (redline + 100-200)
  *   f/g/h/i/j/l = gear ratios from gearbox profile
  */
-function buildN2Fields(catalogCarId, gearRatioOverrides = null, engineTypeId = null) {
+function buildN2Fields(catalogCarId, gearRatioOverrides = null, engineTypeId = null, performanceStats = null) {
   const spec = getShowroomCarSpec(catalogCarId);
   if (!spec) {
     throw new Error(`Missing showroom spec for catalog car ${catalogCarId}`);
   }
 
-  const hp = getShowroomSpecHorsepower(spec, catalogCarId);
-  const weight = getShowroomSpecWeight(spec, catalogCarId);
+  const hp = Number(performanceStats?.horsepower ?? getShowroomSpecHorsepower(spec, catalogCarId));
+  const weight = Number(performanceStats?.weight ?? getShowroomSpecWeight(spec, catalogCarId));
   const effectiveEngineStr = getEffectiveEngineString(spec.eo, engineTypeId);
   const engineStr = effectiveEngineStr.toLowerCase();
   const drivetrainStr = spec.dt.toUpperCase();
@@ -4946,6 +4951,31 @@ function getShowroomSpecTorque(spec, catalogCarId) {
   return Math.max(100, Math.round(hp * 0.92));
 }
 
+function getEnginePartsXmlForCar(car) {
+  return String(car?.engine_parts_xml || car?.owned_engine?.parts_xml || car?.parts_xml || "");
+}
+
+function getEffectiveCarPerformanceStats(catalogCarId, car = null) {
+  const spec = getShowroomCarSpec(catalogCarId);
+  if (!spec) {
+    throw new Error(`Missing showroom spec for catalog car ${catalogCarId}`);
+  }
+
+  const baseHorsepower = getShowroomSpecHorsepower(spec, catalogCarId);
+  const baseTorque = getShowroomSpecTorque(spec, catalogCarId);
+  const baseWeight = getShowroomSpecWeight(spec, catalogCarId);
+  const partDelta = summarizeInstalledEnginePartStats(getEnginePartsXmlForCar(car));
+
+  return {
+    horsepower: Math.max(1, Math.round(baseHorsepower + partDelta.horsepower)),
+    torque: Math.max(1, Math.round(baseTorque + partDelta.torque)),
+    weight: Math.max(1200, Math.round(baseWeight + partDelta.weight)),
+    partHorsepowerDelta: partDelta.horsepower,
+    partTorqueDelta: partDelta.torque,
+    partWeightDelta: partDelta.weight,
+  };
+}
+
 function getCarBuildFlags(car) {
   const xml = String(car?.parts_xml || "");
   const engineTypeId = getEngineTypeIdForCar(car);
@@ -4972,13 +5002,13 @@ function getDriveableBoostField(boostType) {
   return Number.isFinite(numericBoost) ? numericBoost : 0;
 }
 
-function buildDriveableEngineXml({ catalogCarId, gearRatios = null, engineTypeId = null }) {
+function buildDriveableEngineXml({ catalogCarId, gearRatios = null, engineTypeId = null, performanceStats = null }) {
   const spec = getShowroomCarSpec(catalogCarId);
   if (!spec) {
     throw new Error(`Missing showroom spec for catalog car ${catalogCarId}`);
   }
 
-  const n2 = buildN2Fields(catalogCarId, gearRatios, engineTypeId);
+  const n2 = buildN2Fields(catalogCarId, gearRatios, engineTypeId, performanceStats);
   const valveCount = n2.aa * 4;
 
   return (
