@@ -369,3 +369,37 @@ test("handleLegacyTeamCreate rehydrates the TCP connection after a successful cr
     [{ team_id: 1, player_id: 61, role: "owner" }],
   );
 });
+
+test("TC creates the team and responds on the TC channel", async () => {
+  const playerId = 62;
+  const sessionKey = "tc-teamcreate-session";
+  const supabase = createTeamCreateSupabaseStub({ playerId, sessionKey, username: "TcTester" });
+  const server = new TcpServer({
+    logger: createLogger(),
+    notify() {},
+    proxy: null,
+    supabase,
+  });
+  clearInterval(server.challengeCleanupInterval);
+  server.challengeCleanupInterval = null;
+  server.sendMessage = (conn, message) => {
+    conn.messages.push(message);
+  };
+
+  const conn = {
+    id: 902,
+    playerId,
+    sessionKey,
+    username: "TcTester",
+    messages: [],
+  };
+  server.connections.set(conn.id, conn);
+
+  await server.handleMessage(conn, "TC\x1ePure Insanity");
+
+  assert.match(conn.messages[0], /^"ac", "TC", "s", 1, "tid", \d+$/);
+  assert.equal(conn.teamId, 1);
+  assert.equal(conn.teamRole, "owner");
+  assert.equal(supabase.tables.game_players[0].team_id, 1);
+  assert.equal(supabase.tables.game_players[0].team_name, "Pure Insanity");
+});

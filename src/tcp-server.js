@@ -923,13 +923,9 @@ export class TcpServer {
           this.sendRoomSnapshot(conn, roomPlayers);
         }
 
-      // --- TC: Team / title channel selection ---
+      // --- TC: Create a team from the Team Status screen ---
       } else if (messageType === "TC") {
-        this.logger.info("TCP TC received", {
-          connId: conn.id,
-          channelName: parts[1] || "",
-        });
-        this.sendMessage(conn, '"ac", "TC", "s", 1');
+        await this.handleLegacyTeamCreate(conn, parts, { responseType: "TC" });
 
       // --- TEAMCREATE: Legacy Director team create command ---
       } else if (messageType === "TEAMCREATE") {
@@ -3820,7 +3816,7 @@ export class TcpServer {
     };
   }
 
-  async handleLegacyTeamCreate(conn, parts) {
+  async handleLegacyTeamCreate(conn, parts, { responseType = "TEAMCREATE" } = {}) {
     const sessionKey = String(conn.sessionKey || "");
     const playerId = Number(conn.playerId || 0);
     const decodedTeamName = this.decodeLegacyTcpValue(parts[1] || "");
@@ -3834,11 +3830,12 @@ export class TcpServer {
       params.set("sk", sessionKey);
     }
 
-    this.logger.info("TCP TEAMCREATE received", {
+    this.logger.info("TCP team create received", {
       connId: conn.id,
       playerId: conn.playerId || 0,
       hasSessionKey: Boolean(sessionKey),
       teamName: decodedTeamName,
+      responseType,
     });
 
     try {
@@ -3857,20 +3854,22 @@ export class TcpServer {
       }
 
       const responseBody = result?.body || '"s", 0';
-      this.sendMessage(conn, `"ac", "TEAMCREATE", ${responseBody}`);
-      this.logger.info("TCP TEAMCREATE handled", {
+      this.sendMessage(conn, `"ac", "${responseType}", ${responseBody}`);
+      this.logger.info("TCP team create handled", {
         connId: conn.id,
         playerId: conn.playerId || 0,
         source: result?.source || "tcp:TEAMCREATE:unknown",
         responseBody,
+        responseType,
       });
     } catch (error) {
-      this.logger.error("TCP TEAMCREATE error", {
+      this.logger.error("TCP team create error", {
         connId: conn.id,
         playerId: conn.playerId || 0,
         error: error?.message || String(error),
+        responseType,
       });
-      this.sendMessage(conn, '"ac", "TEAMCREATE", "s", 0');
+      this.sendMessage(conn, `"ac", "${responseType}", "s", 0`);
     }
   }
 
