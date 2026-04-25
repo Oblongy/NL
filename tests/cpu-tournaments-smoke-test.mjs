@@ -1275,6 +1275,40 @@ async function testGetUserIncludesTeamIdForTeamMembers() {
   assert.ok(result.body.includes(`tid='810'`), 'getuser should expose the player team id');
 }
 
+async function testGetInfoIncludesTeamIdInLegacyLoginField() {
+  const playerId = 99;
+  const sessionKey = `getinfo-team-${Date.now()}`;
+  const supabase = createActionSupabaseStub({
+    playerId,
+    sessionKey,
+    player: {
+      money: 1000,
+      points: 50,
+      team_id: 810,
+      team_name: "Pure Insanity",
+      title_id: 1,
+    },
+  });
+
+  const result = await handleGameAction({
+    action: 'getinfo',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger: createLogger(),
+    supabase,
+    services: {},
+  });
+
+  assert.strictEqual(result.source, 'supabase:getinfo');
+  assert.ok(result.body.includes(`tn='Pure Insanity'`), 'getinfo should expose the team name');
+  assert.ok(result.body.includes(`ti='810'`), 'getinfo should expose the player team id in the legacy login field');
+  assert.ok(result.body.includes(`tid='810'`), 'getinfo should expose the player team id');
+}
+
 async function testRepairPartsReturnsUpdatedMoneyBalance() {
   const playerId = 95;
   const sessionKey = `repairparts-${Date.now()}`;
@@ -1566,6 +1600,7 @@ const tests = [
   ['team balance falls back to member contribution when team_fund column is missing', testTeamBalanceFallsBackToMemberContributionWhenTeamFundColumnMissing],
   ['team create survives missing member_count trigger column', testTeamCreateSurvivesMissingMemberCountTriggerColumn],
   ['getuser includes team id for team members', testGetUserIncludesTeamIdForTeamMembers],
+  ['getinfo includes team id in legacy login field', testGetInfoIncludesTeamIdInLegacyLoginField],
   ['repairparts returns updated money balance', testRepairPartsReturnsUpdatedMoneyBalance],
   ['ctst returns updated money balance with payout', testCtstReturnsUpdatedMoneyBalanceWithPayout],
   ['ctrt legacy dial key prefers player session', testCtrtLegacyDialKeyPrefersPlayerSession],

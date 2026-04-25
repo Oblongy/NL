@@ -190,7 +190,7 @@ function renderLoginNode(player) {
     `fbc='${player.facebook_connected ? 1 : 0}' alr='1' bpr='1' ` +
     `sr='${player.sponsor_rating}' dt='${escapeXml(player.driver_text || "")}' tn='${escapeXml(player.team_name || "")}' ` +
     `em='' me='' g='${genderValue}' rl='${player.respect_level}' mb='${player.vip ? 1 : 0}' ` +
-    `ti='${player.title_id}' tid='${teamId}' tr='${player.track_rank}' lid='${player.location_id}' ` +
+    `ti='${teamId}' tid='${teamId}' tr='${player.track_rank}' lid='${player.location_id}' ` +
     `bg='${player.background_id}' dc='${player.default_car_game_id || 0}'/>` +
     "</n>"
   );

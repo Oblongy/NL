@@ -295,7 +295,7 @@ test("login payload normalizes invalid money and points instead of emitting NaN"
   assert.doesNotMatch(body, /NaN|undefined/);
 });
 
-test("login payload includes team id without overwriting title id", () => {
+test("login payload exposes the player's team id in the legacy team field", () => {
   const body = buildLoginBody({
     id: 99,
     username: "BalanceTester",
@@ -320,7 +320,7 @@ test("login payload includes team id without overwriting title id", () => {
   }, [], null, "test-session", createLogger());
 
   assert.match(body, /tn='Pure Insanity'/);
-  assert.match(body, /ti='1'/);
+  assert.match(body, /ti='6'/);
   assert.match(body, /tid='6'/);
 });
 
