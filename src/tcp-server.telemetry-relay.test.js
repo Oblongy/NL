@@ -75,7 +75,7 @@ function bindRace(server, { sequenceStarted, lastStateUpdate, roomId = 5 } = {})
 
 test("handleRaceTelemetry relays prelaunch S frames as IO before the race sequence starts", () => {
   const server = createServer();
-  const { opponentConn, senderConn } = bindRace(server, {
+  const { opponentConn, senderConn, race } = bindRace(server, {
     sequenceStarted: false,
   });
 
@@ -85,6 +85,7 @@ test("handleRaceTelemetry relays prelaunch S frames as IO before the race sequen
     '"ac", "IO", "d", -13, "v", 0, "a", 0, "t", 0',
   ]);
   assert.equal(opponentConn.socket.rawWrites, 0);
+  assert.equal(race.players[0].isStaged, false);
 });
 
 test("handleRaceTelemetry keeps team rivals on the legacy pre-start behavior", () => {

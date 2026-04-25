@@ -1324,16 +1324,10 @@ export class TcpServer {
       return false;
     }
 
-    const isLaunchWindow = numericDistance > -2.5 && numericDistance < 1;
-    if (!includeIdleMarker) {
-      return isLaunchWindow;
-    }
-
-    // Newbie Rivals clients can idle at a stable prelaunch marker around -13 ft
-    // before they creep into the launch window. Keep that broader staging band
-    // isolated to the desync-hardened newbie flow.
-    const isIdleStageMarker = Math.abs(numericDistance + 13) <= 0.75;
-    return isIdleStageMarker || isLaunchWindow;
+    // The client only considers the car staged once it actually reaches the
+    // launch window near the line. The idle plateau around -13 ft is still
+    // pre-stage and should not arm the tree.
+    return numericDistance > -2.5 && numericDistance < 1;
   }
 
   isStationaryPrelaunchState(distance, velocity, acceleration) {
@@ -1685,6 +1679,8 @@ export class TcpServer {
     if (!allStaged) {
       if (useAuthoritativeSync) {
         this.clearRaceStageSettleTimer(race);
+        race.allStagedSince = 0;
+        return;
       }
       race.allStagedSince = 0;
       if (!allowUnstagedFallback) {
@@ -1970,13 +1966,9 @@ export class TcpServer {
       Number(sender.playerId),
       Number(race.telemetryCountsByPlayer.get(Number(sender.playerId)) || 0) + 1,
     );
-    sender.isStaged =
-      this.isStagedDistance(sender.lastDistance, { includeIdleMarker: useAuthoritativeSync }) ||
-      (
-        useAuthoritativeSync &&
-        !race.sequenceStarted &&
-        this.isStationaryPrelaunchState(numericDistance, numericVelocity, numericAcceleration)
-      );
+    sender.isStaged = this.isStagedDistance(sender.lastDistance, {
+      includeIdleMarker: useAuthoritativeSync,
+    });
     if (!sender.isStaged) {
       sender.stagedSince = 0;
       race.allStagedSince = 0;
@@ -3667,7 +3659,7 @@ export class TcpServer {
 
     if (race.players.every((entry) => entry.opened)) {
       this.maybeBroadcastRivalsReady(race, {
-        allowUnstagedFallback: true,
+        allowUnstagedFallback: !this.usesAuthoritativeNewbieRivalsSync(race),
         trigger: "race-open-fallback",
       });
       this.maybeStartRaceSequence(race, "race-open");
@@ -3833,18 +3825,9 @@ export class TcpServer {
       betType: 0,
     });
 
-    const useAuthoritativeSync = this.usesAuthoritativeNewbieRivalsSync(race);
     for (const participantConn of [challengerConn, challengedConn]) {
-      if (useAuthoritativeSync) {
-        this.sendRaceLobbyBootstrap(participantConn, {
-          rnXml,
-          rraXml,
-          trackId: race.trackId,
-        });
-      } else {
-        this.sendMessage(participantConn, `"ac", "RN", "d", "${this.escapeForTcp(rnXml)}"`);
-        this.sendMessage(participantConn, `"ac", "RRA", "d", "${this.escapeForTcp(rraXml)}"`);
-      }
+      this.sendMessage(participantConn, `"ac", "RN", "d", "${this.escapeForTcp(rnXml)}"`);
+      this.sendMessage(participantConn, `"ac", "RRA", "d", "${this.escapeForTcp(rraXml)}"`);
     }
 
     this.logger.info("TCP race started from pending challenge", {

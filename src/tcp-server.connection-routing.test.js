@@ -319,7 +319,7 @@ test("live tournament join closes sibling race sockets from the previous room", 
   assert.match(lobbyConn.messages[0], /^"ac", "HTJOIN", "s", 1/);
 });
 
-test("startPendingRace sends RO and captured IO bootstrap frames on the lobby sockets", () => {
+test("startPendingRace keeps newbie rivals lobby bootstrap on RN/RRA only", () => {
   const server = createServer();
   const challengerConn = { id: 601, playerId: 21, roomId: 5, messages: [] };
   const challengedConn = { id: 602, playerId: 22, roomId: 5, messages: [] };
@@ -358,15 +358,9 @@ test("startPendingRace sends RO and captured IO bootstrap frames on the lobby so
   assert.equal(server.raceIdByPlayerId.get(challengedConn.playerId), pending.id);
 
   for (const conn of [challengerConn, challengedConn]) {
-    assert.equal(conn.messages.length, 6);
+    assert.equal(conn.messages.length, 2);
     assert.match(conn.messages[0], /^"ac", "RN", "d", "/);
     assert.match(conn.messages[1], /^"ac", "RRA", "d", "/);
-    assert.equal(conn.messages[2], '"ac", "RO", "t", 32');
-    assert.deepEqual(conn.messages.slice(3), [
-      '"ac", "IO", "d", -13, "v", 0, "a", 0, "t", 0',
-      '"ac", "IO", "d", -12.863, "v", 0.698, "a", 36.072, "t", 0',
-      '"ac", "IO", "d", -12.709, "v", 1.213, "a", 31.555, "t", 0',
-    ]);
   }
 });
 

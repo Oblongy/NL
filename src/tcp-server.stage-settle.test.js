@@ -96,7 +96,7 @@ test("cancels staged settle timer when a racer leaves the staged state", async (
   assert.deepEqual(race.players.map((player) => player.mockConn.messages), [[], []]);
 });
 
-test("defers RO fallback until both racers send telemetry or meta", () => {
+test("newbie rivals does not arm from RO fallback without actual staging", () => {
   const server = createServer();
   const race = createRace("race-open-fallback-deferred");
   race.players.forEach((player) => {
@@ -121,12 +121,9 @@ test("defers RO fallback until both racers send telemetry or meta", () => {
     trigger: "race-open-fallback",
   });
 
-  assert.equal(race.rivalsReadyBroadcasted, true);
-  assert.equal(race.phase, "TREE_ARMED");
-  assert.deepEqual(race.players.map((player) => player.mockConn.messages), [
-    ['"ac", "RIVRDY", "s", 1'],
-    ['"ac", "RIVRDY", "s", 1'],
-  ]);
+  assert.equal(race.rivalsReadyBroadcasted, false);
+  assert.equal(race.phase, "LOADED");
+  assert.deepEqual(race.players.map((player) => player.mockConn.messages), [[], []]);
 });
 
 test("team rivals keeps the legacy unstaged fallback without telemetry evidence", () => {
