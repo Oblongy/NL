@@ -3716,7 +3716,41 @@ async function handleBuyPart(context) {
         logger?.error("Failed to rename decal", { error: err.message });
       }
 
-      const installedPartXml = `<p ai='${installId}' i='${partId}' ci='${slotId}' pi='${slotId}' pt='c' t='c' n='Custom Graphic' in='1' cc='0' pdi='${decalId}' di='${decalId}' fe='${resolvedDecalFileExt}' ps=''/>`;
+      const installedPartAttrs = parsePartXmlAttributes(
+        buildInstalledCatalogPartXml(catalogPart || {
+          i: String(partId),
+          pi: slotId,
+          t: "c",
+          n: "Custom Graphic",
+          p: "0",
+          pp: "0",
+          g: "C",
+          di: "1",
+          pdi: "1",
+          b: "graphics",
+          bn: "Graphics",
+          mn: "Custom",
+          l: "100",
+          mo: "0",
+          hp: "0",
+          tq: "0",
+          wt: "0",
+          cc: "0",
+          ps: "",
+        }, installId, {
+          i: String(partId),
+          pi: slotId,
+          t: "c",
+          di: String(catalogPart?.di || "1"),
+          pdi: String(decalId),
+        }),
+      );
+      installedPartAttrs.ci = slotId;
+      installedPartAttrs.pt = "c";
+      installedPartAttrs.fe = resolvedDecalFileExt;
+      installedPartAttrs.di = String(installedPartAttrs.di || "1");
+      installedPartAttrs.pdi = String(decalId);
+      const installedPartXml = `<p ${serializePartXmlAttributes(installedPartAttrs)}/>`;
       const partsXml = upsertInstalledPartXml(car.parts_xml || "", slotId, installedPartXml);
       try {
         await saveCarPartsXml(supabase, accountCarId, partsXml);

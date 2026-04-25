@@ -86,6 +86,19 @@ test("handleRaceTelemetry does not relay prelaunch S frames before the race sequ
   assert.equal(race.players[0].isStaged, false);
 });
 
+test("handleRaceTelemetry uses the race track when open is inferred from telemetry", () => {
+  const server = createServer();
+  const { senderConn, race } = bindRace(server, {
+    sequenceStarted: false,
+  });
+  race.trackId = 44;
+  race.players[0].opened = false;
+
+  server.handleRaceTelemetry(senderConn, "S", ["S", "-12", "0", "0"]);
+
+  assert.equal(senderConn.messages[0], '"ac", "RO", "t", 44');
+});
+
 test("handleRaceTelemetry does not relay prelaunch team rivals frames before the race starts", () => {
   const server = createServer();
   const { opponentConn, senderConn, race } = bindRace(server, {
@@ -167,4 +180,16 @@ test("handleRaceMeta relays MO after the race sequence has started", () => {
   assert.deepEqual(opponentConn.messages, [
     '"ac", "MO", 1, 2, 3',
   ]);
+});
+
+test("handleRaceOpen acks RO with the race track id", () => {
+  const server = createServer();
+  const { senderConn, race } = bindRace(server, {
+    sequenceStarted: false,
+  });
+  race.trackId = 41;
+
+  server.handleRaceOpen(senderConn);
+
+  assert.equal(senderConn.messages[0], '"ac", "RO", "t", 41');
 });

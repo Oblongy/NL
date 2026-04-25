@@ -444,7 +444,11 @@ test("SRC bootstrap does not mark racer opened before client RO or telemetry", a
   assert.equal(race.players[0].opened, false);
   assert.equal(raceConn.messages[0], '"ac", "SRC", "s", 1');
   assert.match(raceConn.messages[1], /b1='11.5' b2='12.1'.*t='33'/);
-  assert.equal(raceConn.messages[2], '"ac", "RO", "t", 33');
+  assert.deepEqual(raceConn.messages.slice(2), [
+    '"ac", "IO", "d", -13, "v", 0, "a", 0, "t", 0',
+    '"ac", "IO", "d", -12.863, "v", 0.698, "a", 36.072, "t", 0',
+    '"ac", "IO", "d", -12.709, "v", 1.213, "a", 31.555, "t", 0',
+  ]);
 });
 
 test("buildRraMessage preserves bracket times, scores, bet type, and track", () => {

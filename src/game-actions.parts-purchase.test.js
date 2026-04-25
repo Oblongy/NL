@@ -260,6 +260,10 @@ test("buypart treats custom graphics as cash purchases even though they use pt=p
   assert.match(state.carRow.parts_xml, /i='6000'/);
   assert.match(state.carRow.parts_xml, /pi='160'/);
   assert.match(state.carRow.parts_xml, /pdi='54321'/);
+  assert.match(state.carRow.parts_xml, /di='1'/);
+  assert.match(state.carRow.parts_xml, /bn='Graphics'/);
+  assert.match(state.carRow.parts_xml, /mn='Custom'/);
+  assert.match(state.carRow.parts_xml, /fe='png'/);
 });
 
 test("buypart keeps custom graphics installed across multiple panel slots", async () => {

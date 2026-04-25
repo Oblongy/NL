@@ -1133,13 +1133,15 @@ export class TcpServer {
             });
             return;
           }
-          // Acknowledge the race channel and send race bootstrap
+          // Acknowledge the race channel and send race bootstrap. Keep the
+          // tree-open ack tied to the client's explicit RO packet or the
+          // telemetry-open fallback so both peers advance through the same
+          // open path.
           this.sendMessage(conn, '"ac", "SRC", "s", 1');
 
-          // Send RRA + RO + IO frames (per protocol flow)
+          // Send RRA + IO frames while the client finishes opening the tree.
           this.sendMessage(conn, this.buildRraMessage(srcRace));
           const trackId = srcRace.trackId || 32;
-          this.sendMessage(conn, `"ac", "RO", "t", ${trackId}`);
           this.sendInitialIoFrames(conn);
 
           this.logger.info("TCP SRC race bootstrap sent", {
@@ -1967,7 +1969,7 @@ export class TcpServer {
       // Some race flows begin streaming telemetry on the race channel without
       // emitting a separate RO packet first. Acking RO here keeps those
       // clients on the expected tree/open state without reopening at SRC time.
-      this.sendMessage(conn, '"ac", "RO", "t", 32');
+      this.sendRaceOpenAck(conn, race);
     }
 
     if (!this.isRaceReadyForTelemetry(race)) {
@@ -3436,6 +3438,11 @@ export class TcpServer {
     }
   }
 
+  sendRaceOpenAck(conn, race) {
+    const trackId = Number(race?.trackId || 32);
+    this.sendMessage(conn, `"ac", "RO", "t", ${trackId}`);
+  }
+
   sendRaceLobbyBootstrap(conn, { rnXml, rraXml, trackId = 32 }) {
     if (!conn) {
       return;
@@ -3704,7 +3711,7 @@ export class TcpServer {
     });
 
     // Ack the tree-open event only after the client explicitly sends RO.
-    this.sendMessage(conn, '"ac", "RO", "t", 32');
+    this.sendRaceOpenAck(conn, race);
 
     if (race.players.every((entry) => entry.opened)) {
       this.maybeBroadcastRivalsReady(race, {
