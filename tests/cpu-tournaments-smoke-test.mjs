@@ -1148,6 +1148,119 @@ async function testTeamDepositAndWithdrawReturnUpdatedMoneyBalance() {
   assert.strictEqual(withdraw.body, `"s", 1, "b", 925`, 'teamwithdraw should return the updated money balance');
 }
 
+async function testTeamTransactionsReturnNestedEmptyFundsLedger() {
+  const playerId = 95;
+  const sessionKey = `team-trans-empty-${Date.now()}`;
+  const services = {
+    teamState: new Map([[810, {
+      contributionByPlayerId: { [String(playerId)]: 200 },
+      rolesByPlayerId: { [String(playerId)]: 1 },
+    }]]),
+  };
+  const supabase = createActionSupabaseStub({
+    playerId,
+    sessionKey,
+    player: { money: 1000, team_id: 810, team_name: "Wallet Crew" },
+    teams: [{ id: 810, name: "Wallet Crew", team_fund: 500 }],
+    teamMembers: [{ team_id: 810, player_id: playerId, role: 1 }],
+  });
+
+  const result = await handleGameAction({
+    action: 'teamtrans',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['tid', '810'],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger: createLogger(),
+    supabase,
+    services,
+  });
+
+  assert.strictEqual(result.source, 'supabase:teamtrans');
+  assert.strictEqual(
+    result.body,
+    `"s", 1, "d", "<transactions><r></r></transactions>"`,
+    'teamtrans should return the nested empty ledger wrapper Team HQ expects',
+  );
+}
+
+async function testTeamTransactionsExposeRecordedFundEntries() {
+  const playerId = 96;
+  const sessionKey = `team-trans-recorded-${Date.now()}`;
+  const services = {
+    teamState: new Map([[810, {
+      contributionByPlayerId: { [String(playerId)]: 200 },
+      rolesByPlayerId: { [String(playerId)]: 1 },
+    }]]),
+  };
+  const supabase = createActionSupabaseStub({
+    playerId,
+    sessionKey,
+    player: { money: 1000, team_id: 810, team_name: "Wallet Crew" },
+    teams: [{ id: 810, name: "Wallet Crew", team_fund: 500 }],
+    teamMembers: [{ team_id: 810, player_id: playerId, role: 1 }],
+  });
+
+  await handleGameAction({
+    action: 'teamdeposit',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['amount', '125'],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger: createLogger(),
+    supabase,
+    services,
+  });
+
+  await handleGameAction({
+    action: 'teamwithdraw',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['amount', '50'],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger: createLogger(),
+    supabase,
+    services,
+  });
+
+  const result = await handleGameAction({
+    action: 'teamtrans',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['tid', '810'],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger: createLogger(),
+    supabase,
+    services,
+  });
+
+  assert.strictEqual(result.source, 'supabase:teamtrans');
+  assert.ok(
+    result.body.includes(`<transactions><r><tr `),
+    'teamtrans should return a nested transaction container for Team HQ',
+  );
+  assert.ok(
+    result.body.includes(`t='2'`) && result.body.includes(`u='WalletTester'`) && result.body.includes(`a='50'`),
+    'teamtrans should include recorded withdrawals',
+  );
+  assert.ok(
+    result.body.includes(`t='3'`) && result.body.includes(`u='WalletTester'`) && result.body.includes(`a='125'`),
+    'teamtrans should include recorded deposits',
+  );
+}
+
 async function testTeamBalanceFallsBackToMemberContributionWhenTeamFundColumnMissing() {
   const playerId = 97;
   const sessionKey = `team-compat-${Date.now()}`;
@@ -1597,6 +1710,8 @@ const tests = [
   ['buyenginepart parses formatted prices', testBuyEnginePartParsesFormattedPrices],
   ['buytestdrivecar returns updated point balance', testBuyTestDriveCarReturnsUpdatedPointBalance],
   ['team deposit and withdraw return updated money balance', testTeamDepositAndWithdrawReturnUpdatedMoneyBalance],
+  ['team transactions return nested empty funds ledger', testTeamTransactionsReturnNestedEmptyFundsLedger],
+  ['team transactions expose recorded fund entries', testTeamTransactionsExposeRecordedFundEntries],
   ['team balance falls back to member contribution when team_fund column is missing', testTeamBalanceFallsBackToMemberContributionWhenTeamFundColumnMissing],
   ['team create survives missing member_count trigger column', testTeamCreateSurvivesMissingMemberCountTriggerColumn],
   ['getuser includes team id for team members', testGetUserIncludesTeamIdForTeamMembers],

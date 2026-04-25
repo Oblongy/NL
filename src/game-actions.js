@@ -1584,6 +1584,70 @@ function buildMyApplicationsXml(applications = []) {
   return `<apps>${body}</apps>`;
 }
 
+const MAX_TEAM_TRANSACTION_HISTORY = 50;
+
+function getTeamTransactionEntries(teamMeta) {
+  if (!Array.isArray(teamMeta?.transactions)) {
+    return [];
+  }
+
+  return teamMeta.transactions
+    .filter((entry) => Number(entry?.type || 0) > 0)
+    .map((entry) => ({
+      type: Number(entry.type || 0),
+      username: String(entry.username || ""),
+      amount: Math.abs(Number(entry.amount || 0)),
+      date: String(entry.date || ""),
+      createdAt: Number(entry.createdAt || 0) || 0,
+    }));
+}
+
+function formatTeamTransactionDate(value = Date.now()) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) {
+    return "";
+  }
+
+  return date.toLocaleDateString("en-US", {
+    month: "numeric",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function buildTeamTransactionsXml(transactions = []) {
+  const body = transactions.map((entry) => (
+    `<tr d='${escapeXml(entry.date || "")}' t='${Number(entry.type || 0)}' ` +
+    `u='${escapeXml(entry.username || "")}' a='${Math.abs(Number(entry.amount || 0))}'/>`
+  )).join("");
+
+  return `<transactions><r>${body}</r></transactions>`;
+}
+
+function recordTeamTransaction(services, teamId, teamMeta, transactionInput = {}) {
+  const normalizedTeamId = Number(teamId || 0);
+  const normalizedType = Number(transactionInput.type || 0);
+  if (!normalizedTeamId || !normalizedType) {
+    return teamMeta;
+  }
+
+  const existingTransactions = getTeamTransactionEntries(teamMeta);
+  const createdAt = Number(transactionInput.createdAt || Date.now()) || Date.now();
+  return saveTeamMeta(services, normalizedTeamId, {
+    ...(teamMeta || {}),
+    transactions: [
+      {
+        type: normalizedType,
+        username: String(transactionInput.username || ""),
+        amount: Math.abs(Number(transactionInput.amount || 0)),
+        date: String(transactionInput.date || formatTeamTransactionDate(createdAt)),
+        createdAt,
+      },
+      ...existingTransactions,
+    ].slice(0, MAX_TEAM_TRANSACTION_HISTORY),
+  });
+}
+
 function removeApplicationsForPlayer(teamMeta, playerId) {
   return {
     ...teamMeta,
@@ -1942,12 +2006,16 @@ async function handleTeamDeposit(context) {
   await updateTeamMemberContribution(supabase, caller.playerId, nextContribution, {
     teamId: teamContext.team.id,
   });
-  saveTeamMeta(services, teamContext.team.id, {
+  recordTeamTransaction(services, teamContext.team.id, {
     ...teamContext.teamMeta,
     contributionByPlayerId: {
       ...teamContext.teamMeta.contributionByPlayerId,
       [String(caller.playerId)]: nextContribution,
     },
+  }, {
+    type: 3,
+    username: caller.player.username,
+    amount,
   });
 
   return { body: `"s", 1, "b", ${newBalance}`, source: "supabase:teamdeposit" };
@@ -1989,12 +2057,16 @@ async function handleTeamWithdraw(context) {
   await updateTeamMemberContribution(supabase, caller.playerId, nextContribution, {
     teamId: teamContext.team.id,
   });
-  saveTeamMeta(services, teamContext.team.id, {
+  recordTeamTransaction(services, teamContext.team.id, {
     ...teamContext.teamMeta,
     contributionByPlayerId: {
       ...teamContext.teamMeta.contributionByPlayerId,
       [String(caller.playerId)]: nextContribution,
     },
+  }, {
+    type: 2,
+    username: caller.player.username,
+    amount,
   });
 
   return { body: `"s", 1, "b", ${newBalance}`, source: "supabase:teamwithdraw" };
@@ -2041,12 +2113,16 @@ async function handleTeamDisperse(context) {
   await updateTeamMemberContribution(supabase, targetPlayer.id, nextContribution, {
     teamId: teamContext.team.id,
   });
-  saveTeamMeta(services, teamContext.team.id, {
+  recordTeamTransaction(services, teamContext.team.id, {
     ...teamContext.teamMeta,
     contributionByPlayerId: {
       ...teamContext.teamMeta.contributionByPlayerId,
       [String(targetPlayer.id)]: nextContribution,
     },
+  }, {
+    type: 1,
+    username: targetPlayer.username,
+    amount,
   });
 
   return { body: `"s", 1`, source: "supabase:teamdisperse" };
@@ -2130,6 +2206,32 @@ async function handleTeamGetAllApps(context) {
   return {
     body: wrapSuccessData(buildTeamApplicationsXml(applications)),
     source: "supabase:getallteamapps",
+  };
+}
+
+async function handleTeamTransactions(context) {
+  const { supabase, params, services } = context;
+  if (!supabase) {
+    return null;
+  }
+
+  const caller = await resolveCallerSession(context, "supabase:teamtrans");
+  if (!caller?.ok) {
+    return { body: caller?.body || failureBody(), source: caller?.source || "supabase:teamtrans:bad-session" };
+  }
+
+  const teamId = Number(params.get("tid") || caller.player?.team_id || 0);
+  if (!teamId) {
+    return {
+      body: wrapSuccessData(buildTeamTransactionsXml()),
+      source: "supabase:teamtrans:none",
+    };
+  }
+
+  const teamMeta = getTeamMeta(services, teamId);
+  return {
+    body: wrapSuccessData(buildTeamTransactionsXml(getTeamTransactionEntries(teamMeta))),
+    source: "supabase:teamtrans",
   };
 }
 
@@ -6602,6 +6704,7 @@ const handlers = {
   teamwithdrawal: handleTeamWithdraw,
   teaminfo: handleTeamInfo,
   getteaminfo: handleTeamInfo,
+  teamtrans: handleTeamTransactions,
   addteamapp: handleTeamAddApplication,
   getallteamapps: handleTeamGetAllApps,
   getallmyapps: handleTeamGetMyApps,
