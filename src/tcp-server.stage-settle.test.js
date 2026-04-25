@@ -29,9 +29,10 @@ function createServer() {
   return server;
 }
 
-function createRace(id = "race-stage-test") {
+function createRace(id = "race-stage-test", roomId = 5) {
   return {
     id,
+    roomId,
     phase: "LOADED",
     players: [
       {
@@ -122,6 +123,27 @@ test("defers RO fallback until both racers send telemetry or meta", () => {
 
   assert.equal(race.rivalsReadyBroadcasted, true);
   assert.equal(race.phase, "TREE_ARMED");
+  assert.deepEqual(race.players.map((player) => player.mockConn.messages), [
+    ['"ac", "RIVRDY", "s", 1'],
+    ['"ac", "RIVRDY", "s", 1'],
+  ]);
+});
+
+test("team rivals keeps the legacy unstaged fallback without telemetry evidence", () => {
+  const server = createServer();
+  const race = createRace("race-open-fallback-team", 1);
+  race.players.forEach((player) => {
+    player.isStaged = false;
+  });
+
+  server.maybeBroadcastRivalsReady(race, {
+    allowUnstagedFallback: true,
+    trigger: "race-open-fallback",
+  });
+
+  assert.equal(race.rivalsReadyBroadcasted, true);
+  assert.equal(race.phase, "TREE_ARMED");
+  assert.equal(race.stageSettleTimer, null);
   assert.deepEqual(race.players.map((player) => player.mockConn.messages), [
     ['"ac", "RIVRDY", "s", 1'],
     ['"ac", "RIVRDY", "s", 1'],

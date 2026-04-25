@@ -27,6 +27,21 @@ function createServer() {
   return server;
 }
 
+function createTrackedSocket(onDestroy = null) {
+  return {
+    destroyed: false,
+    destroyCalls: 0,
+    destroy() {
+      if (this.destroyed) {
+        return;
+      }
+      this.destroyed = true;
+      this.destroyCalls += 1;
+      onDestroy?.();
+    },
+  };
+}
+
 function createTeamCreateSupabaseStub({ playerId, sessionKey, username = "CrewTester" } = {}) {
   const tables = {
     game_sessions: [{
@@ -224,6 +239,86 @@ test("sendToPlayer keeps generic notifications on the lobby socket", () => {
   assert.deepEqual(raceConn.messages, []);
 });
 
+test("LR closes sibling race sockets for the leaving player", async () => {
+  const server = createServer();
+  const lobbyConn = {
+    id: 520,
+    playerId: 12,
+    roomId: 5,
+    username: "RoomLeaver",
+    carId: 1200,
+    messages: [],
+    socket: createTrackedSocket(),
+  };
+  const otherConn = {
+    id: 521,
+    playerId: 13,
+    roomId: 5,
+    username: "Opponent",
+    carId: 1300,
+    messages: [],
+    socket: createTrackedSocket(),
+  };
+  const raceConn = {
+    id: 522,
+    playerId: 12,
+    raceId: "race-room-leave",
+    messages: [],
+  };
+  raceConn.socket = createTrackedSocket(() => server.cleanupConnection(raceConn));
+
+  server.connections.set(lobbyConn.id, lobbyConn);
+  server.connections.set(otherConn.id, otherConn);
+  server.connections.set(raceConn.id, raceConn);
+  server.rooms.set(5, [
+    { connId: lobbyConn.id, playerId: 12, username: lobbyConn.username, carId: lobbyConn.carId, teamId: 0, teamRole: "", clientRole: 5 },
+    { connId: otherConn.id, playerId: 13, username: otherConn.username, carId: otherConn.carId, teamId: 0, teamRole: "", clientRole: 5 },
+  ]);
+
+  await server.handleMessage(lobbyConn, "LR");
+
+  assert.equal(raceConn.socket.destroyCalls, 1);
+  assert.equal(server.connections.has(raceConn.id), false);
+  assert.equal(lobbyConn.roomId, null);
+  assert.deepEqual(server.rooms.get(5), [
+    { connId: otherConn.id, playerId: 13, username: otherConn.username, carId: otherConn.carId, teamId: 0, teamRole: "", clientRole: 5 },
+  ]);
+  assert.deepEqual(lobbyConn.messages, ['"ac", "LR", "s", 1']);
+});
+
+test("live tournament join closes sibling race sockets from the previous room", () => {
+  const server = createServer();
+  const lobbyConn = {
+    id: 530,
+    playerId: 14,
+    roomId: 1,
+    username: "TournamentMover",
+    carId: 1400,
+    messages: [],
+    socket: createTrackedSocket(),
+  };
+  const raceConn = {
+    id: 531,
+    playerId: 14,
+    raceId: "race-tournament-join",
+    messages: [],
+  };
+  raceConn.socket = createTrackedSocket(() => server.cleanupConnection(raceConn));
+
+  server.connections.set(lobbyConn.id, lobbyConn);
+  server.connections.set(raceConn.id, raceConn);
+  server.rooms.set(1, [
+    { connId: lobbyConn.id, playerId: 14, username: lobbyConn.username, carId: lobbyConn.carId, teamId: 0, teamRole: "", clientRole: 5 },
+  ]);
+
+  server.handleLiveTournamentJoin(lobbyConn);
+
+  assert.equal(raceConn.socket.destroyCalls, 1);
+  assert.equal(server.connections.has(raceConn.id), false);
+  assert.equal(lobbyConn.roomId, 2);
+  assert.match(lobbyConn.messages[0], /^"ac", "HTJOIN", "s", 1/);
+});
+
 test("startPendingRace sends RO and captured IO bootstrap frames on the lobby sockets", () => {
   const server = createServer();
   const challengerConn = { id: 601, playerId: 21, roomId: 5, messages: [] };
@@ -272,6 +367,48 @@ test("startPendingRace sends RO and captured IO bootstrap frames on the lobby so
       '"ac", "IO", "d", -12.863, "v", 0.698, "a", 36.072, "t", 0',
       '"ac", "IO", "d", -12.709, "v", 1.213, "a", 31.555, "t", 0',
     ]);
+  }
+});
+
+test("startPendingRace keeps team rivals lobby bootstrap on RN/RRA only", () => {
+  const server = createServer();
+  const challengerConn = { id: 603, playerId: 23, roomId: 1, messages: [] };
+  const challengedConn = { id: 604, playerId: 24, roomId: 1, messages: [] };
+
+  server.connections.set(challengerConn.id, challengerConn);
+  server.connections.set(challengedConn.id, challengedConn);
+
+  const pending = {
+    id: "race-guid-team",
+    roomId: 1,
+    trackId: 32,
+    createdAt: Date.now(),
+    challenger: {
+      connId: challengerConn.id,
+      playerId: challengerConn.playerId,
+      carId: 333,
+      lane: 0,
+    },
+    challenged: {
+      connId: challengedConn.id,
+      playerId: challengedConn.playerId,
+      carId: 444,
+      lane: 1,
+    },
+    bracketTime: -1,
+    ready: {
+      challenger: true,
+      challenged: true,
+    },
+  };
+
+  server.pendingRaceChallenges.set(pending.id, pending);
+  server.startPendingRace(pending);
+
+  for (const conn of [challengerConn, challengedConn]) {
+    assert.equal(conn.messages.length, 2);
+    assert.match(conn.messages[0], /^"ac", "RN", "d", "/);
+    assert.match(conn.messages[1], /^"ac", "RRA", "d", "/);
   }
 });
 

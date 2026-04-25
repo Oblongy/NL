@@ -1310,18 +1310,29 @@ export class TcpServer {
     return reactionTime ?? "-1";
   }
 
-  isStagedDistance(distance) {
+  usesAuthoritativeNewbieRivalsSync(race) {
+    const roomType =
+      this.getRoomDefinition(race?.roomId)?.type ||
+      getDefaultRaceRoom(race?.roomId)?.type ||
+      "";
+    return roomType === "newbie";
+  }
+
+  isStagedDistance(distance, { includeIdleMarker = true } = {}) {
     const numericDistance = Number(distance);
     if (!Number.isFinite(numericDistance)) {
       return false;
     }
 
-    // Live clients report two stable prelaunch plateaus before the tree arms:
-    // some sit at the staged idle marker around -13 ft, while others creep up
-    // to the launch window just below 0. Accept both to avoid deadlocking
-    // RIVRDY when racers never enter the narrower legacy window together.
-    const isIdleStageMarker = Math.abs(numericDistance + 13) <= 0.75;
     const isLaunchWindow = numericDistance > -2.5 && numericDistance < 1;
+    if (!includeIdleMarker) {
+      return isLaunchWindow;
+    }
+
+    // Newbie Rivals clients can idle at a stable prelaunch marker around -13 ft
+    // before they creep into the launch window. Keep that broader staging band
+    // isolated to the desync-hardened newbie flow.
+    const isIdleStageMarker = Math.abs(numericDistance + 13) <= 0.75;
     return isIdleStageMarker || isLaunchWindow;
   }
 
@@ -1661,20 +1672,25 @@ export class TcpServer {
   maybeBroadcastRivalsReady(race, options = {}) {
     if (!race) return;
     if (!race.players.every((entry) => entry.opened)) return;
+    const useAuthoritativeSync = this.usesAuthoritativeNewbieRivalsSync(race);
     if (race.rivalsReadyBroadcasted) {
-      this.clearRaceStageSettleTimer(race);
+      if (useAuthoritativeSync) {
+        this.clearRaceStageSettleTimer(race);
+      }
       return;
     }
     const { allowUnstagedFallback = false, trigger = "" } = options;
     const allStaged = race.players.every((entry) => entry.isStaged);
 
     if (!allStaged) {
-      this.clearRaceStageSettleTimer(race);
+      if (useAuthoritativeSync) {
+        this.clearRaceStageSettleTimer(race);
+      }
       race.allStagedSince = 0;
       if (!allowUnstagedFallback) {
         return;
       }
-      if (!this.hasRaceStartEvidenceFromBothPlayers(race)) {
+      if (useAuthoritativeSync && !this.hasRaceStartEvidenceFromBothPlayers(race)) {
         this.logger.info("TCP rivals-ready fallback deferred until both racers send prelaunch state", {
           raceId: race.id,
           telemetryCount: race.telemetryCountsByPlayer instanceof Map ? race.telemetryCountsByPlayer.size : 0,
@@ -1697,7 +1713,9 @@ export class TcpServer {
       if (!race.allStagedSince) {
         race.allStagedSince = now;
         this.setRacePhase(race, "STAGED", "both-staged-hold");
-        this.scheduleRaceStageSettleCheck(race);
+        if (useAuthoritativeSync) {
+          this.scheduleRaceStageSettleCheck(race);
+        }
         return;
       }
 
@@ -1706,7 +1724,9 @@ export class TcpServer {
       }
     }
 
-    this.clearRaceStageSettleTimer(race);
+    if (useAuthoritativeSync) {
+      this.clearRaceStageSettleTimer(race);
+    }
     race.rivalsReadyBroadcasted = true;
     this.setRacePhase(
       race,
@@ -1877,10 +1897,11 @@ export class TcpServer {
     const numericVelocity = Number(velocity);
     const numericAcceleration = Number(acceleration);
     const numericTick = Number(tick);
+    const useAuthoritativeSync = this.usesAuthoritativeNewbieRivalsSync(race);
     const isPrelaunchTelemetry =
       this.isRaceStartWindow(numericDistance) ||
-      this.isStagedDistance(numericDistance) ||
-      this.isStationaryPrelaunchState(numericDistance, numericVelocity, numericAcceleration);
+      this.isStagedDistance(numericDistance, { includeIdleMarker: useAuthoritativeSync }) ||
+      (useAuthoritativeSync && this.isStationaryPrelaunchState(numericDistance, numericVelocity, numericAcceleration));
 
     if (!sender.opened && sender.raceConnId === conn.id) {
       if (!isPrelaunchTelemetry) {
@@ -1950,8 +1971,12 @@ export class TcpServer {
       Number(race.telemetryCountsByPlayer.get(Number(sender.playerId)) || 0) + 1,
     );
     sender.isStaged =
-      this.isStagedDistance(sender.lastDistance) ||
-      (!race.sequenceStarted && this.isStationaryPrelaunchState(numericDistance, numericVelocity, numericAcceleration));
+      this.isStagedDistance(sender.lastDistance, { includeIdleMarker: useAuthoritativeSync }) ||
+      (
+        useAuthoritativeSync &&
+        !race.sequenceStarted &&
+        this.isStationaryPrelaunchState(numericDistance, numericVelocity, numericAcceleration)
+      );
     if (!sender.isStaged) {
       sender.stagedSince = 0;
       race.allStagedSince = 0;
@@ -1961,7 +1986,7 @@ export class TcpServer {
     this.maybeBroadcastRivalsReady(race);
     this.maybeStartRaceSequence(race, "staging-complete");
 
-    if (!race.sequenceStarted && !isPrelaunchTelemetry) {
+    if (!race.sequenceStarted) {
       if (!isPrelaunchTelemetry) {
         this.logger.warn("TCP telemetry ignored before race sequence start", {
           connId: conn.id,
@@ -1981,58 +2006,107 @@ export class TcpServer {
           acceleration: numericAcceleration,
         });
       }
-      return;
-    }
-    const telemetryRelayMessage = this.buildIoRelayMessage({
-      distance,
-      velocity,
-      acceleration,
-      tick,
-    });
-
-    for (const participant of race.players) {
-      if (Number(participant.playerId) === Number(sender.playerId)) continue;
-      const participantConn = this.getRaceParticipantConnection(participant);
-      if (participantConn) {
-        try {
-          this.sendMessage(participantConn, telemetryRelayMessage);
-
-          if (this.debugTelemetry) {
-            this.logger.info("TCP relayed telemetry as IO", {
-              fromConnId: conn.id,
-              toConnId: participantConn.id,
-              messageType,
-              raceId: race.id,
-              distance,
-              velocity,
-              tick,
-            });
-          }
-        } catch (error) {
-          this.logger.error("TCP telemetry forward error", {
-            connId: conn.id,
-            opponentConnId: participantConn.id,
-            raceId: race.id,
-            error: error.message,
-            stack: error.stack,
-            socketDestroyed: participantConn.socket?.destroyed,
-            socketWritable: participantConn.socket?.writable
-          });
-          tcpErrors.inc({ category: "telemetry_forward" });
-        }
-      } else {
-        this.logger.warn("TCP opponent connection unavailable for telemetry", {
-          connId: conn.id,
-          opponentConnId: this.getRaceParticipantConnectionId(participant),
-          raceId: race.id,
-          socketExists: !!participantConn?.socket,
-          socketDestroyed: participantConn?.socket?.destroyed
-        });
+      if (!useAuthoritativeSync || !isPrelaunchTelemetry) {
+        return;
       }
     }
 
-    if (!race.sequenceStarted) {
-      return;
+    if (useAuthoritativeSync) {
+      const telemetryRelayMessage = this.buildIoRelayMessage({
+        distance,
+        velocity,
+        acceleration,
+        tick,
+      });
+
+      for (const participant of race.players) {
+        if (Number(participant.playerId) === Number(sender.playerId)) continue;
+        const participantConn = this.getRaceParticipantConnection(participant);
+        if (participantConn) {
+          try {
+            this.sendMessage(participantConn, telemetryRelayMessage);
+
+            if (this.debugTelemetry) {
+              this.logger.info("TCP relayed telemetry as IO", {
+                fromConnId: conn.id,
+                toConnId: participantConn.id,
+                messageType,
+                raceId: race.id,
+                distance,
+                velocity,
+                tick,
+              });
+            }
+          } catch (error) {
+            this.logger.error("TCP telemetry forward error", {
+              connId: conn.id,
+              opponentConnId: participantConn.id,
+              raceId: race.id,
+              error: error.message,
+              stack: error.stack,
+              socketDestroyed: participantConn.socket?.destroyed,
+              socketWritable: participantConn.socket?.writable
+            });
+            tcpErrors.inc({ category: "telemetry_forward" });
+          }
+        } else {
+          this.logger.warn("TCP opponent connection unavailable for telemetry", {
+            connId: conn.id,
+            opponentConnId: this.getRaceParticipantConnectionId(participant),
+            raceId: race.id,
+            socketExists: !!participantConn?.socket,
+            socketDestroyed: participantConn?.socket?.destroyed
+          });
+        }
+      }
+
+      if (!race.sequenceStarted) {
+        return;
+      }
+    } else {
+      const rawTelemetryFrame =
+        typeof conn._lastRaw === "string" && conn._lastRaw.length > 0
+          ? conn._lastRaw + MESSAGE_DELIMITER
+          : null;
+
+      for (const participant of race.players) {
+        if (Number(participant.playerId) === Number(sender.playerId)) continue;
+        const participantConn = this.getRaceParticipantConnection(participant);
+        if (participantConn && participantConn.socket && !participantConn.socket.destroyed) {
+          try {
+            if (rawTelemetryFrame) {
+              participantConn.socket.write(Buffer.from(rawTelemetryFrame, "latin1"));
+            } else {
+              this.sendMessage(
+                participantConn,
+                `${messageType}${FIELD_DELIMITER}${distance}${FIELD_DELIMITER}${velocity}${FIELD_DELIMITER}${acceleration}${FIELD_DELIMITER}${tick}`,
+              );
+            }
+
+            if (this.debugTelemetry) {
+              this.logger.info("TCP forwarded telemetry raw", {
+                fromConnId: conn.id,
+                toConnId: participantConn.id,
+                messageType,
+                raceId: race.id,
+                distance,
+                velocity,
+              });
+            }
+          } catch (error) {
+            this.logger.error("TCP telemetry forward error", {
+              connId: conn.id,
+              opponentConnId: participantConn.id,
+              raceId: race.id,
+              error: error.message,
+              stack: error.stack,
+              socketDestroyed: participantConn.socket?.destroyed,
+              socketWritable: participantConn.socket?.writable
+            });
+            tcpErrors.inc({ category: "telemetry_forward" });
+          }
+        }
+      }
     }
 
     // Send periodic race state updates to keep connection alive
@@ -2404,6 +2478,53 @@ export class TcpServer {
     return affectedRoomIds;
   }
 
+  closePlayerConnectionsAfterRoomLeave(playerId, { excludeConnId = null, roomId = null, reason = "room-leave" } = {}) {
+    const normalizedPlayerId = Number(playerId || 0);
+    const normalizedExcludeConnId = Number(excludeConnId || 0);
+    const normalizedRoomId = Number(roomId || 0);
+    if (!normalizedPlayerId) {
+      return [];
+    }
+
+    const closedConnIds = [];
+    for (const candidate of this.getConnectionsByPlayerId(normalizedPlayerId)) {
+      if (!candidate || Number(candidate.id || 0) === normalizedExcludeConnId) {
+        continue;
+      }
+
+      const candidateRoomId = Number(candidate.roomId || 0);
+      const shouldClose =
+        Boolean(candidate.raceId) ||
+        (normalizedRoomId > 0 && candidateRoomId === normalizedRoomId);
+      if (!shouldClose || candidate.socket?.destroyed) {
+        continue;
+      }
+
+      closedConnIds.push(candidate.id);
+      this.logger.info("Closing player TCP connection after room leave", {
+        playerId: normalizedPlayerId,
+        connId: candidate.id,
+        roomId: candidateRoomId || null,
+        raceId: candidate.raceId || null,
+        excludeConnId: normalizedExcludeConnId || null,
+        reason,
+      });
+
+      try {
+        candidate.socket?.destroy?.();
+      } catch (error) {
+        this.logger.warn("Failed to close player TCP connection after room leave", {
+          playerId: normalizedPlayerId,
+          connId: candidate.id,
+          reason,
+          error: error.message,
+        });
+      }
+    }
+
+    return closedConnIds;
+  }
+
   leaveRoom(conn) {
     if (conn.raceId) {
       const race = this.races.get(conn.raceId);
@@ -2440,20 +2561,28 @@ export class TcpServer {
     }
     if (!conn.roomId) return;
     const roomId = Number(conn.roomId);
+    const playerId = Number(conn.playerId || 0);
     const hadKothSelection = Boolean(conn.kingOfHillSelection);
     const removedRooms = this.removePlayerFromRooms(Number(conn.playerId || 0), {
       connId: conn.id,
       clearConnections: false,
     });
     const remaining = (this.rooms.get(roomId) || []).length;
+    const closedConnIds = this.closePlayerConnectionsAfterRoomLeave(playerId, {
+      excludeConnId: conn.id,
+      roomId,
+      reason: "leave-room",
+    });
     delete conn.kingOfHillSelection;
     delete conn.liveTournamentSpectator;
     this.logger.info("Player left room", {
       connId: conn.id,
+      playerId: playerId || null,
       roomId,
       remaining,
       hadKothSelection,
       removedRooms,
+      closedConnIds,
     });
     conn.roomId = null;
   }
@@ -2714,11 +2843,18 @@ export class TcpServer {
     const event = this.getLiveTournamentEvent();
     const roomId = Number(event.roomId || 2);
     const playerId = Number(conn.playerId || 0);
+    const previousRoomId = Number(conn.roomId || 0);
     if (!playerId) {
       this.logTournamentTcpPayload(conn, spectate ? "HTSPECTATE" : "HTJOIN", `"s", 0`, { spectate: !!spectate, reason: "missing-player" });
       this.sendMessage(conn, `"ac", "${spectate ? "HTSPECTATE" : "HTJOIN"}", "s", 0`);
       return;
     }
+
+    this.closePlayerConnectionsAfterRoomLeave(playerId, {
+      excludeConnId: conn.id,
+      roomId: previousRoomId,
+      reason: spectate ? "live-tournament-spectate" : "live-tournament-join",
+    });
 
     this.removePlayerFromRooms(playerId, {
       connId: conn.id,
@@ -3697,12 +3833,18 @@ export class TcpServer {
       betType: 0,
     });
 
+    const useAuthoritativeSync = this.usesAuthoritativeNewbieRivalsSync(race);
     for (const participantConn of [challengerConn, challengedConn]) {
-      this.sendRaceLobbyBootstrap(participantConn, {
-        rnXml,
-        rraXml,
-        trackId: race.trackId,
-      });
+      if (useAuthoritativeSync) {
+        this.sendRaceLobbyBootstrap(participantConn, {
+          rnXml,
+          rraXml,
+          trackId: race.trackId,
+        });
+      } else {
+        this.sendMessage(participantConn, `"ac", "RN", "d", "${this.escapeForTcp(rnXml)}"`);
+        this.sendMessage(participantConn, `"ac", "RRA", "d", "${this.escapeForTcp(rraXml)}"`);
+      }
     }
 
     this.logger.info("TCP race started from pending challenge", {
