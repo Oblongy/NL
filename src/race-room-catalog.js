@@ -1,5 +1,5 @@
 export const DEFAULT_RACE_ROOMS = [
-  { id: 1, name: "Team Rivals Strip",              type: "team",         maxPlayers: 8,  tcpRoomType: 5, systemMessages: 0, stripId: 8 },
+  { id: 1, name: "Team Rivals Strip",              type: "team",         maxPlayers: 8,  tcpRoomType: 5, systemMessages: 0, stripId: 1, stripIds: [1, 8] },
   { id: 2, name: "Tournament Strip",               type: "tournament",   maxPlayers: 32, tcpRoomType: 11, systemMessages: 0, stripId: 7 },
   { id: 3, name: "Bracket King of the Hill Strip", type: "bracket_koth", maxPlayers: 16, tcpRoomType: 3, systemMessages: 0, stripId: 3 },
   { id: 4, name: "H2H King of the Hill Strip",     type: "h2h_koth",     maxPlayers: 8,  tcpRoomType: 6, systemMessages: 0, stripId: 6 },
@@ -25,6 +25,7 @@ export function ensureDefaultRaceRooms(raceRoomRegistry) {
       tcpRoomType: room.tcpRoomType,
       systemMessages: Number(room.systemMessages ?? 0),
       stripId: room.stripId,
+      stripIds: Array.isArray(room.stripIds) ? [...room.stripIds] : [room.stripId],
       players: existingRoom.players || [],
       status: existingRoom.status || "waiting",
     });

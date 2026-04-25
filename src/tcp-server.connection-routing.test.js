@@ -488,6 +488,33 @@ test("buildRaceSummaryXml includes street-credit deltas for both racers", () => 
   assert.match(summaryXml, /c2='10'/);
 });
 
+test("buildLobbyRoomsXml keeps Team Rivals on the canonical movie id in full room lists", () => {
+  const server = createServer();
+
+  const roomsXml = server.buildLobbyRoomsXml();
+
+  assert.match(roomsXml, /<r [^>]*pi='1'[^>]*rn='Team Rivals Strip'/);
+});
+
+test("buildLobbyRoomsXml accepts the legacy Team Rivals strip alias", () => {
+  const server = createServer();
+
+  const roomsXml = server.buildLobbyRoomsXml(8);
+
+  assert.match(roomsXml, /<r [^>]*pi='8'[^>]*rn='Team Rivals Strip'/);
+});
+
+test("resolveRoomIdForJoin maps the legacy Team Rivals strip alias back to room 1", () => {
+  const server = createServer();
+  const conn = {
+    id: 1001,
+    playerId: 77,
+    lastRequestedStripId: 8,
+  };
+
+  assert.equal(server.resolveRoomIdForJoin(conn, ["JRC", "5", "1", "", "0"]), 1);
+});
+
 test("handleLegacyTeamCreate rehydrates the TCP connection after a successful create", async () => {
   const playerId = 61;
   const sessionKey = "legacy-teamcreate-session";

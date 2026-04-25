@@ -2644,6 +2644,26 @@ export class TcpServer {
     const registryRooms = this.raceRoomRegistry?.list?.() || ensureDefaultRaceRooms();
     return registryRooms.map((room) => {
       const fallback = getDefaultRaceRoom(room.roomId) || {};
+      const stripIds = [...new Set(
+        [
+          ...(Array.isArray(room.stripIds) ? room.stripIds : []),
+          ...(Array.isArray(fallback.stripIds) ? fallback.stripIds : []),
+          room.stripId,
+          fallback.stripId,
+          room.roomId,
+          fallback.id,
+        ]
+          .map((value) => Number(value || 0))
+          .filter((value) => value > 0),
+      )];
+      const stripId = Number(
+        room.stripId ??
+        fallback.stripId ??
+        stripIds[0] ??
+        room.roomId ??
+        fallback.id ??
+        0,
+      );
       return {
         roomId: Number(room.roomId ?? fallback.id ?? 0),
         name: room.name || fallback.name || `Room ${room.roomId}`,
@@ -2651,7 +2671,8 @@ export class TcpServer {
         maxPlayers: Number(room.maxPlayers ?? fallback.maxPlayers ?? 8),
         tcpRoomType: Number(room.tcpRoomType ?? fallback.tcpRoomType ?? 5),
         systemMessages: Number(room.systemMessages ?? fallback.systemMessages ?? 0),
-        stripId: Number(room.stripId ?? fallback.stripId ?? room.roomId ?? fallback.id ?? 0),
+        stripId,
+        stripIds,
         players: room.players || [],
       };
     });
@@ -2788,12 +2809,12 @@ export class TcpServer {
   buildLobbyRoomsXml(stripId = 0) {
     const allRooms = this.getRoomDefinitions();
     const rooms = stripId > 0
-      ? allRooms.filter((room) => (room.stripId ?? room.roomId) === stripId)
+      ? allRooms.filter((room) => (room.stripIds || [room.stripId ?? room.roomId]).includes(stripId))
       : allRooms;
     const roomsXml = rooms.map((room) => {
       const tcpPlayerCount = this.rooms.get(room.roomId)?.length ?? 0;
       const activePlayers = tcpPlayerCount > 0 ? tcpPlayerCount : (room.players.length ?? 0);
-      const pi = room.stripId ?? room.roomId;
+      const pi = stripId > 0 ? stripId : (room.stripId ?? room.roomId);
       return (
         `<r rc='${activePlayers}' cy='${room.maxPlayers}' rt='${room.tcpRoomType}' ` +
         `cid='${room.roomId}' pi='${pi}' rn='${this.escapeXml(room.name)}' ip='0' mo='0' sm='${room.systemMessages}' pro='0'/>`
@@ -2970,7 +2991,7 @@ export class TcpServer {
       }
 
       const stripRoom = this.getRoomDefinitions().find(
-        (room) => Number(room.stripId ?? room.roomId) === lastRequestedStripId,
+        (room) => (room.stripIds || [room.stripId ?? room.roomId]).includes(lastRequestedStripId),
       );
       if (stripRoom?.roomId) {
         return Number(stripRoom.roomId);
