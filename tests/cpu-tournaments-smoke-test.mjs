@@ -450,6 +450,9 @@ function createBuyCarSupabaseStub({
       if (filter.type === "eq") {
         return String(row?.[filter.field] ?? "") === String(filter.value ?? "");
       }
+      if (filter.type === "ilike") {
+        return String(row?.[filter.field] ?? "").toLowerCase() === String(filter.value ?? "").toLowerCase();
+      }
       if (filter.type === "in") {
         return filter.values.map((value) => String(value)).includes(String(row?.[filter.field] ?? ""));
       }
@@ -604,6 +607,7 @@ function createActionSupabaseStub({
   teams = [],
   teamMembers = [],
   missingTeamColumns = [],
+  brokenTeamMemberCountTrigger = false,
 } = {}) {
   const missingTeamColumnSet = new Set((missingTeamColumns || []).map((column) => String(column)));
   const tables = {
@@ -701,6 +705,10 @@ function createActionSupabaseStub({
           filters.push({ type: "eq", field, value });
           return query;
         },
+        ilike(field, value) {
+          filters.push({ type: "ilike", field, value });
+          return query;
+        },
         in(field, values) {
           filters.push({ type: "in", field, values: Array.isArray(values) ? values : [] });
           return query;
@@ -741,6 +749,9 @@ function createActionSupabaseStub({
             return { data: updatedRows[0] || null, error: null };
           }
           if (mode === "insert") {
+            if (table === "game_team_members" && brokenTeamMemberCountTrigger) {
+              return { data: null, error: { message: 'column "member_count" does not exist' } };
+            }
             const row = Array.isArray(payload) ? payload[0] : payload;
             if (table === "game_teams") {
               for (const key of Object.keys(row || {})) {
@@ -765,6 +776,9 @@ function createActionSupabaseStub({
               return { data: runSelect(), error: null };
             }
             if (mode === "delete") {
+              if (table === "game_team_members" && brokenTeamMemberCountTrigger) {
+                return { data: null, error: { message: 'column "member_count" does not exist' } };
+              }
               const rows = tables[table] || [];
               const kept = rows.filter((row) => !matchesFilters(row, filters));
               tables[table] = kept;
@@ -1192,6 +1206,40 @@ async function testTeamBalanceFallsBackToMemberContributionWhenTeamFundColumnMis
   );
 }
 
+async function testTeamCreateSurvivesMissingMemberCountTriggerColumn() {
+  const playerId = 98;
+  const sessionKey = `team-create-compat-${Date.now()}`;
+  const services = {
+    teamState: new Map(),
+  };
+  const supabase = createActionSupabaseStub({
+    playerId,
+    sessionKey,
+    player: { money: 1000, team_id: null, team_name: "" },
+    brokenTeamMemberCountTrigger: true,
+  });
+
+  const result = await handleGameAction({
+    action: 'teamcreate',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['n', 'Compat Crew'],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger: createLogger(),
+    supabase,
+    services,
+  });
+
+  assert.strictEqual(result.source, 'supabase:teamcreate');
+  assert.strictEqual(result.body, `"s", 1, "tid", 1`, 'teamcreate should still succeed when the member_count trigger column is missing');
+  assert.strictEqual(Number(supabase.tables.game_players[0]?.team_id || 0), 1, 'teamcreate should still update the player team id');
+  assert.strictEqual(String(supabase.tables.game_players[0]?.team_name || ''), 'Compat Crew', 'teamcreate should still update the player team name');
+  assert.strictEqual(supabase.tables.game_team_members.length, 0, 'teamcreate should tolerate the broken team member trigger without inserting rows');
+}
+
 async function testRepairPartsReturnsUpdatedMoneyBalance() {
   const playerId = 95;
   const sessionKey = `repairparts-${Date.now()}`;
@@ -1481,6 +1529,7 @@ const tests = [
   ['buytestdrivecar returns updated point balance', testBuyTestDriveCarReturnsUpdatedPointBalance],
   ['team deposit and withdraw return updated money balance', testTeamDepositAndWithdrawReturnUpdatedMoneyBalance],
   ['team balance falls back to member contribution when team_fund column is missing', testTeamBalanceFallsBackToMemberContributionWhenTeamFundColumnMissing],
+  ['team create survives missing member_count trigger column', testTeamCreateSurvivesMissingMemberCountTriggerColumn],
   ['repairparts returns updated money balance', testRepairPartsReturnsUpdatedMoneyBalance],
   ['ctst returns updated money balance with payout', testCtstReturnsUpdatedMoneyBalanceWithPayout],
   ['ctrt legacy dial key prefers player session', testCtrtLegacyDialKeyPrefersPlayerSession],

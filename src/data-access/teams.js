@@ -24,6 +24,11 @@ const OPTIONAL_TEAM_COLUMNS = [
   "owner_player_id",
 ];
 
+function isMissingTeamMemberCountCompatError(error) {
+  const message = String(error?.message || error || "");
+  return /member_count/i.test(message) && /does not exist|unknown column|column/i.test(message);
+}
+
 function getMissingOptionalTeamColumn(error, payload = {}) {
   const message = String(error?.message || error || "");
   if (!/does not exist|unknown column|column/i.test(message)) {
@@ -281,6 +286,9 @@ export async function syncGameTeamMemberRow(supabase, playerId, teamId, options 
     if (isMissingGameTeamMembersRelationError(error)) {
       return false;
     }
+    if (isMissingTeamMemberCountCompatError(error)) {
+      return false;
+    }
     throw error;
   }
 
@@ -314,6 +322,9 @@ export async function syncGameTeamMemberRow(supabase, playerId, teamId, options 
 
   if (insertError) {
     if (isMissingGameTeamMembersRelationError(insertError)) {
+      return false;
+    }
+    if (isMissingTeamMemberCountCompatError(insertError)) {
       return false;
     }
     throw insertError;
