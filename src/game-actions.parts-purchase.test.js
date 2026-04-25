@@ -346,3 +346,68 @@ test("buyenginepart charges points instead of money when the engine part is boug
   assert.match(result.body, /<r s='1' b='50'>/);
   assert.match(state.engineRow.parts_xml, /i='215'/);
 });
+
+test("installed engine parts affect generated engine payload stats for getonecarengine and practice", async () => {
+  const { supabase, state, sessionKey } = createPartPurchaseSupabaseStub({ money: 50000, points: 100 });
+
+  const purchaseResult = await handleGameAction({
+    action: "buyenginepart",
+    params: new Map([
+      ["aid", String(state.playerRow.id)],
+      ["sk", sessionKey],
+      ["acid", String(state.carRow.game_car_id)],
+      ["epid", "260"],
+      ["pt", "m"],
+      ["pr", "3000"],
+    ]),
+    rawQuery: "",
+    decodedQuery: "",
+    logger: createLogger(),
+    supabase,
+    services: {},
+  });
+
+  assert.equal(purchaseResult?.source, "supabase:buyenginepart");
+  assert.equal(state.playerRow.money, 47000);
+  assert.match(state.engineRow.parts_xml, /i='260'/);
+
+  const getOneCarEngineResult = await handleGameAction({
+    action: "getonecarengine",
+    params: new Map([
+      ["aid", String(state.playerRow.id)],
+      ["sk", sessionKey],
+      ["acid", String(state.carRow.game_car_id)],
+    ]),
+    rawQuery: "",
+    decodedQuery: "",
+    logger: createLogger(),
+    supabase,
+    services: {},
+  });
+
+  assert.equal(getOneCarEngineResult?.source, "generated:getonecarengine");
+  assert.match(getOneCarEngineResult.body, /r='2642'/);
+  assert.match(getOneCarEngineResult.body, /x='5\.861'/);
+  assert.match(getOneCarEngineResult.body, /y='32\.236'/);
+  assert.match(getOneCarEngineResult.body, /z='5\.861'/);
+
+  const practiceResult = await handleGameAction({
+    action: "practice",
+    params: new Map([
+      ["aid", String(state.playerRow.id)],
+      ["sk", sessionKey],
+      ["acid", String(state.carRow.game_car_id)],
+    ]),
+    rawQuery: "",
+    decodedQuery: "",
+    logger: createLogger(),
+    supabase,
+    services: {},
+  });
+
+  assert.equal(practiceResult?.source, "generated:practice");
+  assert.match(practiceResult.body, /r='2642'/);
+  assert.match(practiceResult.body, /x='5\.861'/);
+  assert.match(practiceResult.body, /y='32\.236'/);
+  assert.match(practiceResult.body, /z='5\.861'/);
+});

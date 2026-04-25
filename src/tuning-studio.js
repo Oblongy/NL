@@ -931,6 +931,7 @@ export function buildTuningStudioPreview(input = {}) {
     catalog.partsById,
     partOverrideMap,
   );
+  const installedEnginePartTotals = summarizeInstalledEnginePartStats(partsXml);
   const dynoDelta = {
     horsepower:
       (hasBoostController ? requestedBoost * 2.4 : 0)
@@ -942,12 +943,18 @@ export function buildTuningStudioPreview(input = {}) {
   const builtHorsepower = Math.max(1, Math.round(baseHorsepower + selectedPartDelta.horsepower + dynoDelta.horsepower));
   const builtTorque = Math.max(1, Math.round(baseTorque + selectedPartDelta.torque + dynoDelta.torque));
   const builtWeight = Math.max(1200, Math.round(baseWeight + selectedPartDelta.weight));
+  const performanceStats = {
+    horsepower: builtHorsepower,
+    torque: builtTorque,
+    weight: builtWeight,
+  };
   const engineXml = buildDriveableEngineXml({
     catalogCarId,
     gearRatios,
     engineTypeId,
+    performanceStats,
   });
-  const timing = generateTimingArray(catalogCarId, engineTypeId);
+  const timing = generateTimingArray(catalogCarId, engineTypeId, performanceStats);
   const carXml = renderOwnedGarageCar(previewCar);
   const dynoGraph = buildDynoGraph({
     catalogCarId,
@@ -1001,6 +1008,9 @@ export function buildTuningStudioPreview(input = {}) {
       partHorsepowerDelta: Math.round(selectedPartDelta.horsepower),
       partTorqueDelta: Math.round(selectedPartDelta.torque),
       partWeightDelta: Math.round(selectedPartDelta.weight),
+      installedPartHorsepowerTotal: Math.round(installedEnginePartTotals.horsepower),
+      installedPartTorqueTotal: Math.round(installedEnginePartTotals.torque),
+      installedPartWeightTotal: Math.round(installedEnginePartTotals.weight),
       dynoHorsepowerDelta: Math.round(dynoDelta.horsepower),
       dynoTorqueDelta: Math.round(dynoDelta.torque),
       engine: getEffectiveEngineString(spec.eo, engineTypeId),
