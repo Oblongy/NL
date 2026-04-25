@@ -1065,7 +1065,7 @@ export class TcpServer {
         // Find the active race for this player (by GUID hint or by playerId)
         let srcRace = null;
         if (srcRaceGuid) {
-          srcRace = this.races.get(srcRaceGuid) || this.pendingRaceChallenges.get(srcRaceGuid) || null;
+          srcRace = this.races.get(srcRaceGuid) || null;
         }
         if (!srcRace && conn.playerId) {
           // Use O(1) lookup if available, otherwise fall back to scan
@@ -1145,11 +1145,6 @@ export class TcpServer {
           const trackId = srcRace.trackId || 32;
           this.sendMessage(conn, `"ac", "RO", "t", ${trackId}`);
           this.sendInitialIoFrames(conn);
-
-          // Mark player as opened since we sent RO proactively
-          if (racePlayer) {
-            racePlayer.opened = true;
-          }
 
           this.logger.info("TCP SRC race bootstrap sent", {
             connId: conn.id,
@@ -3512,13 +3507,13 @@ export class TcpServer {
   }
 
   handleRaceOpen(conn) {
-    const race = conn.raceId ? this.races.get(conn.raceId) : null;
+    const race = this.findRaceForConnection(conn);
     if (!race) {
       this.logger.info("TCP RO received without race", { connId: conn.id });
       return;
     }
 
-    const player = race.players.find((entry) => entry.connId === conn.id || entry.raceConnId === conn.id);
+    const player = this.findRaceParticipant(race, conn, { bindRaceConn: this.isRaceChannelConnection(conn) });
     if (!player) {
       this.logger.info("TCP RO received from unknown race player", { connId: conn.id, raceId: race.id });
       return;
@@ -3686,6 +3681,8 @@ export class TcpServer {
     });
     challengerConn.raceId = race.id;
     challengedConn.raceId = race.id;
+    this.raceIdByPlayerId.set(Number(pending.challenger.playerId), race.id);
+    this.raceIdByPlayerId.set(Number(pending.challenged.playerId), race.id);
 
     const rnXml = this.buildRnXml({
       challengerPlayerId: pending.challenger.playerId,
@@ -3779,7 +3776,19 @@ export class TcpServer {
     const [playerOne, playerTwo] = race.players;
     const sc1 = playerOne.sc ?? 0;
     const sc2 = playerTwo.sc ?? 0;
-    return `"ac", "RRA", "d", "<r r1id='${playerOne.playerId}' r2id='${playerTwo.playerId}' r1cid='${playerOne.carId}' r2cid='${playerTwo.carId}' b1='-1' b2='-1' bt='0' sc1='${sc1}' sc2='${sc2}' t='32'/>"`;
+    const rraXml = this.buildRraXml({
+      challengerPlayerId: playerOne.playerId,
+      challengerCarId: playerOne.carId,
+      challengedPlayerId: playerTwo.playerId,
+      challengedCarId: playerTwo.carId,
+      trackId: race.trackId || 32,
+      sc1,
+      sc2,
+      challengerBracketTime: playerOne.bracketTime ?? -1,
+      challengedBracketTime: playerTwo.bracketTime ?? -1,
+      betType: race.betType ?? 0,
+    });
+    return `"ac", "RRA", "d", "${this.escapeForTcp(rraXml)}"`;
   }
 
   buildRacePairKey(playerAId, playerBId) {

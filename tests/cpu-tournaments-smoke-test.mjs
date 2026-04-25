@@ -957,8 +957,71 @@ async function testBuyEnginePartReturnsUpdatedPointBalance() {
   assert.ok(result.body.includes(`"d", "<r s='1' b='45'></r>"`), 'buyenginepart points purchase should return the updated points balance');
 }
 
-async function testBuyTestDriveCarReturnsUpdatedPointBalance() {
+async function testBuyPartParsesFormattedPrices() {
   const playerId = 93;
+  const sessionKey = `buypart-formatted-${Date.now()}`;
+  const supabase = createActionSupabaseStub({
+    playerId,
+    sessionKey,
+    player: { money: 1000, points: 50 },
+    cars: [{ game_car_id: 503, player_id: playerId, catalog_car_id: 1, parts_xml: "" }],
+  });
+  const result = await handleGameAction({
+    action: 'buypart',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['acid', '503'],
+      ['pid', '253'],
+      ['pt', 'm'],
+      ['pr', '$500'],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger: createLogger(),
+    supabase,
+    services: {},
+  });
+
+  assert.strictEqual(result.source, 'supabase:buypart');
+  assert.ok(result.body.includes(`"d1", "<r s='2' b='500'`), 'buypart should normalize formatted prices before charging money');
+  assert.ok(result.body.includes(`"d", "<r s='1' b='50'></r>"`), 'buypart cash purchase should preserve the current points balance');
+}
+
+async function testBuyEnginePartParsesFormattedPrices() {
+  const playerId = 94;
+  const sessionKey = `buyenginepart-formatted-${Date.now()}`;
+  const supabase = createActionSupabaseStub({
+    playerId,
+    sessionKey,
+    player: { money: 1000, points: 50 },
+    cars: [{ game_car_id: 504, player_id: playerId, catalog_car_id: 1, owned_engine_id: 301 }],
+    ownedEngines: [{ id: 301, player_id: playerId, installed_on_car_id: 504, parts_xml: "" }],
+  });
+  const result = await handleGameAction({
+    action: 'buyenginepart',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['acid', '504'],
+      ['epid', '200'],
+      ['pt', 'm'],
+      ['pr', '$500'],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger: createLogger(),
+    supabase,
+    services: {},
+  });
+
+  assert.strictEqual(result.source, 'supabase:buyenginepart');
+  assert.ok(result.body.includes(`"d1", "<r s='2' b='500'`), 'buyenginepart should normalize formatted prices before charging money');
+  assert.ok(result.body.includes(`"d", "<r s='1' b='50'></r>"`), 'buyenginepart cash purchase should preserve the current points balance');
+}
+
+async function testBuyTestDriveCarReturnsUpdatedPointBalance() {
+  const playerId = 95;
   const sessionKey = `buytestdrive-points-${Date.now()}`;
   const supabase = createActionSupabaseStub({
     playerId,
@@ -1328,6 +1391,8 @@ const tests = [
   ['buycar supports point purchases', testBuyCarSupportsPointPurchases],
   ['buypart returns updated point balance', testBuyPartReturnsUpdatedPointBalance],
   ['buyenginepart returns updated point balance', testBuyEnginePartReturnsUpdatedPointBalance],
+  ['buypart parses formatted prices', testBuyPartParsesFormattedPrices],
+  ['buyenginepart parses formatted prices', testBuyEnginePartParsesFormattedPrices],
   ['buytestdrivecar returns updated point balance', testBuyTestDriveCarReturnsUpdatedPointBalance],
   ['team deposit and withdraw return updated money balance', testTeamDepositAndWithdrawReturnUpdatedMoneyBalance],
   ['repairparts returns updated money balance', testRepairPartsReturnsUpdatedMoneyBalance],

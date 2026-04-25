@@ -910,6 +910,13 @@ function parseShowroomPurchaseCatalogCarId(params) {
   );
 }
 
+function normalizePurchasePriceValue(rawValue) {
+  const normalized = String(rawValue)
+    .replace(/[^0-9.-]/g, "")
+    .trim();
+  return Math.max(0, toFiniteNumber(normalized, 0));
+}
+
 function parseShowroomPurchasePrice(params) {
   const rawValue =
     params.get("pr")
@@ -917,10 +924,7 @@ function parseShowroomPurchasePrice(params) {
     || params.get("cp")
     || params.get("p")
     || 0;
-  const normalized = String(rawValue)
-    .replace(/[^0-9.-]/g, "")
-    .trim();
-  return Number(normalized || 0);
+  return normalizePurchasePriceValue(rawValue);
 }
 
 async function resolveInternalPlayerIdByPublicId(supabase, publicId) {
@@ -3305,21 +3309,24 @@ function resolvePartPurchaseCharge({
   treatRawPAsCustomGraphic = false,
 } = {}) {
   const normalizedPaymentType = String(rawPaymentType || "").trim().toLowerCase();
+  const normalizedRequestedPrice = normalizePurchasePriceValue(requestedPrice);
+  const normalizedMoneyPrice = Math.max(0, toFiniteNumber(moneyPrice, 0));
+  const normalizedPointsPrice = Math.max(0, toFiniteNumber(pointsPrice, 0));
   const explicitPointsPayment = normalizedPaymentType === "p" && !treatRawPAsCustomGraphic;
   const explicitMoneyPayment = normalizedPaymentType === "m";
-  const requestedLooksLikePoints = requestedPrice > 0
-    && pointsPrice > 0
-    && requestedPrice === pointsPrice
-    && requestedPrice !== moneyPrice;
-  const requestedLooksLikeMoney = requestedPrice > 0 && requestedPrice === moneyPrice;
-  const pointsOnlyCatalogPrice = requestedPrice === 0 && moneyPrice === 0 && pointsPrice > 0;
-  const chargePoints = pointsPrice > 0
+  const requestedLooksLikePoints = normalizedRequestedPrice > 0
+    && normalizedPointsPrice > 0
+    && normalizedRequestedPrice === normalizedPointsPrice
+    && normalizedRequestedPrice !== normalizedMoneyPrice;
+  const requestedLooksLikeMoney = normalizedRequestedPrice > 0 && normalizedRequestedPrice === normalizedMoneyPrice;
+  const pointsOnlyCatalogPrice = normalizedRequestedPrice === 0 && normalizedMoneyPrice === 0 && normalizedPointsPrice > 0;
+  const chargePoints = normalizedPointsPrice > 0
     && !requestedLooksLikeMoney
     && (explicitPointsPayment || requestedLooksLikePoints || (pointsOnlyCatalogPrice && !explicitMoneyPayment));
 
-  let price = requestedPrice;
+  let price = normalizedRequestedPrice;
   if (price === 0) {
-    price = chargePoints ? pointsPrice : moneyPrice;
+    price = chargePoints ? normalizedPointsPrice : normalizedMoneyPrice;
   }
 
   return {
@@ -3343,7 +3350,7 @@ async function handleBuyPart(context) {
   const decalId = params.get("did") || "";
   const decalFileExt = normalizeUserGraphicFileExt(params.get("fx") || "", "png");
   const rawPartType = params.get("pt") || "";
-  const requestedPrice = Number(params.get("pr") || 0);
+  const requestedPrice = parseShowroomPurchasePrice(params);
   const isCustomGraphicRequest = rawPartType === "p" && Boolean(decalId);
 
   if (!accountCarId) {
@@ -3572,7 +3579,7 @@ async function handleBuyEnginePart(context) {
   const accountCarId = params.get("acid") || "";
   const partId = Number(params.get("epid") || 0);
   const rawPaymentType = params.get("pt") || "";
-  const requestedPrice = Number(params.get("pr") || 0);
+  const requestedPrice = parseShowroomPurchasePrice(params);
 
   if (!accountCarId) {
     return { body: failureBody(), source: "buyenginepart:missing-params" };
