@@ -50,14 +50,16 @@ function extractEngineStateFromCar(car) {
 
 async function listOwnedEnginesInternal(supabase, playerId) {
   try {
-    return await manyResult(
-      supabase
-        .from("game_owned_engines")
-        .select("*")
-        .eq("player_id", Number(playerId))
-        .order("id", { ascending: true }),
-      parseOwnedEngineRecord,
-    );
+    let query = supabase
+      .from("game_owned_engines")
+      .select("*")
+      .eq("player_id", Number(playerId));
+
+    if (typeof query.order === "function") {
+      query = query.order("id", { ascending: true });
+    }
+
+    return await manyResult(query, parseOwnedEngineRecord);
   } catch (error) {
     if (isMissingTableError(error, "game_owned_engines")) {
       return null;

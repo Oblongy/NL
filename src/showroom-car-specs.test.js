@@ -69,6 +69,9 @@ function createSessionSupabaseStub({
         select() {
           return query;
         },
+        order() {
+          return query;
+        },
         update(nextPayload) {
           mode = "update";
           payload = nextPayload;
@@ -133,6 +136,20 @@ function createSessionSupabaseStub({
             if (table === "game_players") {
               return {
                 data: matchesFilters(playerRow, filters) ? [playerRow] : [],
+                error: null,
+              };
+            }
+            if (table === "game_owned_engines") {
+              const engines = cars.map((car, index) => ({
+                id: index + 1,
+                player_id: Number(car.player_id || playerId),
+                installed_on_car_id: Number(car.game_car_id || 0),
+                catalog_engine_part_id: 0,
+                engine_type_id: Number(car.engine_type_id || 1),
+                parts_xml: "",
+              }));
+              return {
+                data: engines.filter((engine) => matchesFilters(engine, filters)),
                 error: null,
               };
             }

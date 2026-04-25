@@ -836,6 +836,7 @@ export class TcpServer {
         this.sendMessage(conn,
           `"ac", "LRCR2", "d", "${this.escapeForTcp(this.buildLobbyRoomsXml(requestedStripId))}"`
         );
+        conn.lobbyRoomsSent = true;
         this.logger.info("Sent LRCR2 room list", { connId: conn.id, stripId: requestedStripId });
 
       // --- JRC: Join room (create) ---
