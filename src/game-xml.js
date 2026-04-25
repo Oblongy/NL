@@ -43,7 +43,7 @@ function renderUserSummaryNode(player, options = {}) {
     u: player.username,
     r: getClientRoleForPlayer(player),
     sc: player.score,
-    ti: player.title_id,
+    ti: teamId,
     tid: teamId,
   };
   

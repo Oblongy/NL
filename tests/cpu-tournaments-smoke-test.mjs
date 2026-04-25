@@ -1271,7 +1271,7 @@ async function testGetUserIncludesTeamIdForTeamMembers() {
 
   assert.strictEqual(result.source, 'supabase:getuser');
   assert.ok(result.body.includes(`tn='Pure Insanity'`), 'getuser should expose the team name');
-  assert.ok(result.body.includes(`ti='1'`), 'getuser should preserve the title id field');
+  assert.ok(result.body.includes(`ti='810'`), 'getuser should expose the player team id in the team summary field');
   assert.ok(result.body.includes(`tid='810'`), 'getuser should expose the player team id');
 }
 
