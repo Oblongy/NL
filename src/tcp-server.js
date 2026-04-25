@@ -884,9 +884,9 @@ export class TcpServer {
           }
         }
 
-        // 10.0.03 only acks the join here. The room snapshot follows after `GR`.
+        // 10.0.03 only acks the join here. The room snapshot follows after an
+        // explicit `GR`/refresh request, not automatically on join.
         this.sendMessage(conn, '"ac", "JR", "s", 1');
-        this.sendRoomSnapshot(conn, filtered);
 
         // Notify all OTHER players in room that someone joined (send updated LRCU)
         for (const member of filtered) {
@@ -938,6 +938,10 @@ export class TcpServer {
       // --- RRSP: Rivals challenge response (accept/decline) ---
       } else if (messageType === "RRSP") {
         this.handleRaceResponse(conn, parts);
+
+      // --- RLVE: Rivals pre-stage cancel / chicken out ---
+      } else if (messageType === "RLVE") {
+        this.handleRivalsLeave(conn);
 
       // --- LO: Logout ---
       } else if (messageType === "LO") {
@@ -3024,8 +3028,8 @@ export class TcpServer {
     const roomPlayers = this.rooms.get(roomId) || [];
 
     // 10.0.03 captures show `LRC` as a standalone lobby packet after room
-    // entry. Treat it as a room-content refresh using the canonical `LR` +
-    // `LRCU` snapshot we already emit on join, but do not invent a new ack.
+    // entry. Treat it as an explicit room-content refresh using the canonical
+    // `LR` + `LRCU` snapshot, but do not invent a new ack.
     if (roomId > 0 && roomPlayers.some((player) => player.connId === conn.id)) {
       this.sendRoomSnapshot(conn, roomPlayers);
     }
@@ -3393,6 +3397,18 @@ export class TcpServer {
       `<r i='${Number(challengerPlayerId)}' ci='${Number(challengedPlayerId)}' ` +
       `icid='${Number(challengerCarId)}' cicid='${Number(challengedCarId)}' ` +
       `bt='0' b='${Number(bracketTime)}' r='${raceGuid}'/>`
+    );
+  }
+
+  buildRivalsLeaveXml({
+    challengerPlayerId,
+    challengerCarId,
+    challengedPlayerId,
+    challengedCarId,
+  }) {
+    return (
+      `<r i='${Number(challengerPlayerId)}' ci='${Number(challengedPlayerId)}' ` +
+      `icid='${Number(challengerCarId)}' cicid='${Number(challengedCarId)}'/>`
     );
   }
 
@@ -3789,6 +3805,35 @@ export class TcpServer {
     this.startPendingRace(pending);
   }
 
+  handleRivalsLeave(conn) {
+    const race = this.findRaceForConnection(conn);
+    const participant = this.findRaceParticipant(race, conn);
+    const isTooLateToCancel =
+      !race ||
+      !participant ||
+      race.resultBroadcasted ||
+      race.sequenceStarted ||
+      race.finishResults?.size;
+
+    if (isTooLateToCancel) {
+      this.sendMessage(conn, '"ac", "RLVE", "s", 0');
+      this.logger.info("TCP RLVE rejected", {
+        connId: conn.id,
+        playerId: Number(conn.playerId || 0) || null,
+        raceId: race?.id || null,
+        hasParticipant: Boolean(participant),
+        sequenceStarted: Boolean(race?.sequenceStarted),
+      });
+      return;
+    }
+
+    this.sendMessage(conn, '"ac", "RLVE", "s", 1');
+    this.cancelRivalsRace(race, {
+      cancelledByPlayerId: Number(participant.playerId || 0),
+      reason: "chicken-out",
+    });
+  }
+
   startPendingRace(pending) {
     this.pendingRaceChallenges.delete(pending.id);
 
@@ -3893,6 +3938,72 @@ export class TcpServer {
       challengerBracketTime,
       challengedBracketTime,
     });
+  }
+
+  cancelRivalsRace(race, { cancelledByPlayerId = 0, reason = "canceled" } = {}) {
+    if (!race) {
+      return false;
+    }
+
+    const [challenger, challenged] = race.players;
+    const cancelXml = this.buildRivalsLeaveXml({
+      challengerPlayerId: challenger?.playerId,
+      challengerCarId: challenger?.carId,
+      challengedPlayerId: challenged?.playerId,
+      challengedCarId: challenged?.carId,
+    });
+    // The Flash client proves the cancel payload shape (`icid`/`cicid`), but
+    // the legacy Director fanout packet name is still unverified. Reuse RLVE
+    // as a provisional data envelope until we can confirm the original wire.
+    const cancelMessage = `"ac", "RLVE", "d", "${this.escapeForTcp(cancelXml)}"`;
+    const numericCancelledByPlayerId = Number(cancelledByPlayerId || 0);
+
+    this.recordRaceDebugEvent(race, "race-canceled", {
+      cancelledByPlayerId: numericCancelledByPlayerId || null,
+      reason,
+    });
+
+    for (const participant of race.players) {
+      const lobbyConn = this.connections.get(participant.connId);
+      if (lobbyConn) {
+        lobbyConn.raceId = null;
+        if (Number(participant.playerId || 0) !== numericCancelledByPlayerId) {
+          this.sendMessage(lobbyConn, cancelMessage);
+        }
+      }
+
+      const raceConn = participant.raceConnId ? this.connections.get(participant.raceConnId) : null;
+      participant.raceConnId = null;
+      if (raceConn) {
+        raceConn.raceId = null;
+        try {
+          raceConn.socket?.destroy?.();
+        } catch (error) {
+          this.logger.warn("Failed to close race channel during RLVE cancel", {
+            connId: raceConn.id,
+            raceId: race.id,
+            error: error.message,
+          });
+        }
+      }
+    }
+
+    this.clearRaceStageSettleTimer(race);
+    this.archiveRaceDebugRecord(race, "canceled", { reason });
+    for (const participant of race.players) {
+      const playerId = Number(participant.playerId || 0);
+      if (playerId && this.raceIdByPlayerId.get(playerId) === race.id) {
+        this.raceIdByPlayerId.delete(playerId);
+      }
+    }
+    this.races.delete(race.id);
+    this.raceCompletions.delete(race.id);
+    this.logger.info("TCP rivals race canceled", {
+      raceId: race.id,
+      cancelledByPlayerId: numericCancelledByPlayerId || null,
+      reason,
+    });
+    return true;
   }
 
   handleRaceResult(conn, parts) {

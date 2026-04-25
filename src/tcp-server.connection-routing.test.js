@@ -286,6 +286,49 @@ test("LR closes sibling race sockets for the leaving player", async () => {
   assert.deepEqual(lobbyConn.messages, ['"ac", "LR", "s", 1']);
 });
 
+test("JRC only acks join and waits for GR before sending the room snapshot", async () => {
+  const server = createServer();
+  const joiningConn = {
+    id: 523,
+    playerId: 15,
+    username: "Joiner",
+    carId: 1500,
+    teamId: 0,
+    teamRole: "",
+    clientRole: 5,
+    messages: [],
+  };
+  const roomMate = {
+    id: 524,
+    playerId: 16,
+    roomId: 1,
+    username: "RoomMate",
+    carId: 1600,
+    teamId: 0,
+    teamRole: "",
+    clientRole: 5,
+    messages: [],
+  };
+
+  server.connections.set(joiningConn.id, joiningConn);
+  server.connections.set(roomMate.id, roomMate);
+  server.rooms.set(1, [
+    { connId: roomMate.id, playerId: roomMate.playerId, username: roomMate.username, carId: roomMate.carId, teamId: 0, teamRole: "", clientRole: 5 },
+  ]);
+
+  await server.handleMessage(joiningConn, "JRC\x1e1\x1e1");
+
+  assert.deepEqual(joiningConn.messages, ['"ac", "JR", "s", 1']);
+  assert.match(roomMate.messages.at(-1) || "", /^"ac", "LRCU", "d", "/);
+
+  joiningConn.messages.length = 0;
+  await server.handleMessage(joiningConn, "GR");
+
+  assert.equal(joiningConn.messages.length, 2);
+  assert.match(joiningConn.messages[0], /^"ac", "LR", "s", "/);
+  assert.match(joiningConn.messages[1], /^"ac", "LRCU", "d", "/);
+});
+
 test("live tournament join closes sibling race sockets from the previous room", () => {
   const server = createServer();
   const lobbyConn = {
@@ -362,6 +405,97 @@ test("startPendingRace keeps newbie rivals lobby bootstrap on RN/RRA only", () =
     assert.match(conn.messages[0], /^"ac", "RN", "d", "/);
     assert.match(conn.messages[1], /^"ac", "RRA", "d", "/);
   }
+});
+
+test("RLVE acks the sender, notifies the opponent, and tears down the pre-stage race", async () => {
+  const server = createServer();
+  const challengerConn = {
+    id: 605,
+    playerId: 25,
+    roomId: 1,
+    username: "Challenger",
+    carId: 2500,
+    messages: [],
+    socket: createTrackedSocket(),
+  };
+  const challengedConn = {
+    id: 606,
+    playerId: 26,
+    roomId: 1,
+    username: "Challenged",
+    carId: 2600,
+    messages: [],
+    socket: createTrackedSocket(),
+  };
+  const challengerRaceConn = {
+    id: 607,
+    playerId: 25,
+    raceId: "race-guid-cancel",
+    messages: [],
+  };
+  challengerRaceConn.socket = createTrackedSocket(() => server.cleanupConnection(challengerRaceConn));
+  const challengedRaceConn = {
+    id: 608,
+    playerId: 26,
+    raceId: "race-guid-cancel",
+    messages: [],
+  };
+  challengedRaceConn.socket = createTrackedSocket(() => server.cleanupConnection(challengedRaceConn));
+
+  server.connections.set(challengerConn.id, challengerConn);
+  server.connections.set(challengedConn.id, challengedConn);
+  server.connections.set(challengerRaceConn.id, challengerRaceConn);
+  server.connections.set(challengedRaceConn.id, challengedRaceConn);
+
+  const pending = {
+    id: "race-guid-cancel",
+    roomId: 1,
+    trackId: 32,
+    createdAt: Date.now(),
+    challenger: {
+      connId: challengerConn.id,
+      playerId: challengerConn.playerId,
+      carId: 111,
+      lane: 0,
+    },
+    challenged: {
+      connId: challengedConn.id,
+      playerId: challengedConn.playerId,
+      carId: 222,
+      lane: 1,
+    },
+    bracketTime: -1,
+    ready: {
+      challenger: true,
+      challenged: true,
+    },
+  };
+
+  server.pendingRaceChallenges.set(pending.id, pending);
+  server.startPendingRace(pending);
+  const race = server.races.get(pending.id);
+  race.players[0].raceConnId = challengerRaceConn.id;
+  race.players[1].raceConnId = challengedRaceConn.id;
+
+  challengerConn.messages.length = 0;
+  challengedConn.messages.length = 0;
+
+  await server.handleMessage(challengerConn, "RLVE");
+
+  assert.deepEqual(challengerConn.messages, ['"ac", "RLVE", "s", 1']);
+  assert.equal(challengedConn.messages.length, 1);
+  assert.match(challengedConn.messages[0], /^"ac", "RLVE", "d", "/);
+  assert.match(challengedConn.messages[0], /icid='111'/);
+  assert.match(challengedConn.messages[0], /cicid='222'/);
+  assert.equal(server.races.has(pending.id), false);
+  assert.equal(server.raceIdByPlayerId.has(challengerConn.playerId), false);
+  assert.equal(server.raceIdByPlayerId.has(challengedConn.playerId), false);
+  assert.equal(challengerConn.raceId, null);
+  assert.equal(challengedConn.raceId, null);
+  assert.equal(challengerRaceConn.socket.destroyCalls, 1);
+  assert.equal(challengedRaceConn.socket.destroyCalls, 1);
+  assert.equal(server.connections.has(challengerRaceConn.id), false);
+  assert.equal(server.connections.has(challengedRaceConn.id), false);
 });
 
 test("startPendingRace keeps team rivals lobby bootstrap on RN/RRA only", () => {
