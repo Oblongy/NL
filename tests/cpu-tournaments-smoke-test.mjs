@@ -7,42 +7,129 @@ function createLogger() {
   return { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} };
 }
 
-function createTournamentSupabaseStub({ playerId = 77, sessionKey = "cpu-tournament-session" } = {}) {
+function createTournamentSupabaseStub({
+  playerId = 77,
+  sessionKey = "cpu-tournament-session",
+  extraPlayers = [],
+} = {}) {
   const sessionRow = {
     session_key: sessionKey,
     player_id: playerId,
     last_seen_at: new Date().toISOString(),
   };
-  const playerRow = {
+  const basePlayer = {
     id: playerId,
     username: "CpuTournamentTester",
+    money: 0,
+    points: 0,
+    score: 0,
+    default_car_game_id: 0,
   };
+  const players = [
+    basePlayer,
+    ...extraPlayers.map((player) => ({
+      money: 0,
+      points: 0,
+      score: 0,
+      default_car_game_id: 0,
+      ...player,
+    })),
+  ];
+
+  function matchesFilters(row, filters) {
+    return filters.every((filter) => {
+      if (filter.type === "eq") {
+        return String(row?.[filter.field] ?? "") === String(filter.value ?? "");
+      }
+      if (filter.type === "in") {
+        return filter.values.map((value) => String(value)).includes(String(row?.[filter.field] ?? ""));
+      }
+      if (filter.type === "ilike") {
+        const needle = String(filter.value ?? "").replace(/%/g, "").toLowerCase();
+        return String(row?.[filter.field] ?? "").toLowerCase().includes(needle);
+      }
+      return true;
+    });
+  }
 
   return {
     from(table) {
+      let mode = "select";
+      let payload = null;
+      const filters = [];
+
       const query = {
         select() {
           return query;
         },
-        eq() {
+        eq(field, value) {
+          filters.push({ type: "eq", field, value });
+          return query;
+        },
+        in(field, values) {
+          filters.push({ type: "in", field, values: Array.isArray(values) ? values : [] });
+          return query;
+        },
+        ilike(field, value) {
+          filters.push({ type: "ilike", field, value });
           return query;
         },
         gte() {
           return query;
         },
+        order() {
+          return query;
+        },
         maybeSingle: async () => {
           if (table === "game_sessions") {
-            return { data: sessionRow, error: null };
+            return {
+              data: matchesFilters(sessionRow, filters) ? sessionRow : null,
+              error: null,
+            };
           }
           if (table === "game_players") {
-            return { data: playerRow, error: null };
+            return {
+              data: players.find((player) => matchesFilters(player, filters)) || null,
+              error: null,
+            };
           }
           return { data: null, error: null };
         },
-        update() {
-          return {
-            eq: async () => ({ error: null }),
+        update(updatePayload) {
+          mode = "update";
+          payload = updatePayload;
+          return query;
+        },
+        single: async () => {
+          if (table === "game_players" && mode === "update") {
+            const player = players.find((entry) => matchesFilters(entry, filters)) || null;
+            if (player) {
+              Object.assign(player, payload || {});
+            }
+            return { data: player, error: null };
+          }
+          return { data: null, error: null };
+        },
+        then(resolve, reject) {
+          const runner = async () => {
+            if (table === "game_players") {
+              if (mode === "update") {
+                const player = players.find((entry) => matchesFilters(entry, filters)) || null;
+                if (player) {
+                  Object.assign(player, payload || {});
+                }
+                return { data: player ? [player] : [], error: null };
+              }
+
+              return {
+                data: players.filter((player) => matchesFilters(player, filters)),
+                error: null,
+              };
+            }
+
+            return { data: [], error: null };
           };
+          return Promise.resolve(runner()).then(resolve, reject);
         },
       };
 
@@ -64,6 +151,7 @@ async function testCtgrCtId2() {
   const result = await handleGameAction(context);
   assert.ok(result, 'ctgr with ctid=2 should produce a result');
   assert.ok(result.body.includes('<n2'), 'ctgr should return computer tournament field xml');
+  assert.strictEqual((result.body.match(/<r\b/g) || []).length, 32, 'ctgr should expose a 32-racer bracket');
   assert.ok(result.source.startsWith('generated:ctgr:tournament='), 'ctgr source should indicate tournament id');
 }
 
@@ -80,6 +168,7 @@ async function testCtgrTid3() {
   const result = await handleGameAction(context);
   assert.ok(result, 'ctgr with tid=3 should produce a result');
   assert.ok(result.body.includes('<n2'), 'ctgr should return computer tournament field xml');
+  assert.strictEqual((result.body.match(/<r\b/g) || []).length, 32, 'ctgr should expose a 32-racer bracket');
   assert.ok(result.source.startsWith('generated:ctgr:tournament='), 'ctgr source should indicate tournament id');
 }
 
@@ -623,11 +712,116 @@ async function testCtrtIncludesOpponentAliases() {
   };
   const result = await handleGameAction(fetchOpponent);
   assert.ok(result, 'ctrt should return an opponent payload when session is valid');
-  assert.ok(result.body.includes(`id='1007'`), 'ctrt should expose the opponent id alias');
-  assert.ok(result.body.includes(`caid='2007'`), 'ctrt should expose the opponent competitor car id');
+  assert.ok(result.body.includes(`id='2107'`), 'ctrt should echo the requested bracket id alias');
+  assert.ok(result.body.includes(`cid='2107'`), 'ctrt should expose the requested bracket id in the cid alias');
+  assert.ok(result.body.includes(`caid='2107'`), 'ctrt should expose the opponent competitor car id');
   assert.ok(result.body.includes(`cacid='6107'`), 'ctrt should expose the opponent virtual race car id');
   assert.ok(result.body.includes(`n='tourneyA 08'`), 'ctrt should expose the opponent display name');
   assert.strictEqual(result.source, 'generated:ctrt');
+}
+
+async function testGetUserReturnsSyntheticTournamentCompetitor() {
+  const playerId = 81;
+  const sessionKey = `cpu-getuser-${Date.now()}`;
+  const supabase = createTournamentSupabaseStub({ playerId, sessionKey });
+  const logger = createLogger();
+
+  await handleGameAction({
+    action: 'ctjt',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['ctid', '1'],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger,
+    supabase,
+    services: {},
+  });
+
+  const result = await handleGameAction({
+    action: 'getuser',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['tid', '2107'],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger,
+    supabase,
+    services: {},
+  });
+
+  assert.ok(result, 'getuser should return a payload for synthetic tournament competitors');
+  assert.ok(result.body.includes(`i='2107'`), 'getuser should preserve the requested tournament public id');
+  assert.ok(result.body.includes(`u='tourneyA 08'`), 'getuser should expose the synthetic tournament username');
+  assert.strictEqual(result.source, 'generated:getuser:computer-tournament');
+}
+
+async function testGetUsersTracksSyntheticSourcesExplicitly() {
+  const playerId = 82;
+  const teammateId = 83;
+  const sessionKey = `cpu-getusers-${Date.now()}`;
+  const supabase = createTournamentSupabaseStub({
+    playerId,
+    sessionKey,
+    extraPlayers: [
+      { id: teammateId, username: 'RealPlayerTwo', score: 10 },
+    ],
+  });
+  const logger = createLogger();
+
+  await handleGameAction({
+    action: 'ctjt',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['ctid', '1'],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger,
+    supabase,
+    services: {},
+  });
+
+  const mixedResult = await handleGameAction({
+    action: 'getusers',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['aids', `${playerId},2107`],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger,
+    supabase,
+    services: {},
+  });
+
+  assert.ok(mixedResult.body.includes(`u='CpuTournamentTester'`), 'getusers should still include real players');
+  assert.ok(mixedResult.body.includes(`u='tourneyA 08'`), 'getusers should include synthetic tournament players');
+  assert.strictEqual(mixedResult.source, 'generated:getusers:computer-tournament');
+
+  const realOnlyResult = await handleGameAction({
+    action: 'getusers',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['aids', `${playerId},${teammateId}`],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger,
+    supabase,
+    services: {},
+  });
+
+  assert.ok(realOnlyResult.body.includes(`u='CpuTournamentTester'`), 'getusers should include the caller in real-only queries');
+  assert.ok(realOnlyResult.body.includes(`u='RealPlayerTwo'`), 'getusers should include additional real players');
+  assert.strictEqual(realOnlyResult.source, 'supabase:getusers');
 }
 
 const tests = [
@@ -644,6 +838,8 @@ const tests = [
   ['buycar supports point purchases', testBuyCarSupportsPointPurchases],
   ['ctrt legacy dial key prefers player session', testCtrtLegacyDialKeyPrefersPlayerSession],
   ['ctrt opponent aliases', testCtrtIncludesOpponentAliases],
+  ['getuser synthetic tournament competitor', testGetUserReturnsSyntheticTournamentCompetitor],
+  ['getusers explicit synthetic source tracking', testGetUsersTracksSyntheticSourcesExplicitly],
 ];
 
 let failed = false;
