@@ -18,6 +18,13 @@ function toNumber(value, fallback = 0) {
   return Number.isFinite(numericValue) ? numericValue : fallback;
 }
 
+function isFiniteNumberValue(value) {
+  if (value === null || value === undefined || value === "") {
+    return false;
+  }
+  return Number.isFinite(Number(value));
+}
+
 function toNullableNumber(value) {
   if (value === null || value === undefined || value === "") {
     return null;
@@ -123,13 +130,20 @@ export function parsePlayerRecord(record) {
     return null;
   }
 
+  const hasValidMoney = isFiniteNumberValue(record.money);
+  const hasValidPoints = isFiniteNumberValue(record.points);
+
   return {
     ...record,
     id: toNumber(record.id, 0),
     username: toStringValue(record.username),
     password_hash: toStringValue(record.password_hash),
-    money: toNumber(record.money, 50000),
+    money: toNumber(record.money, 0),
     points: toNumber(record.points, 0),
+    _money_valid: hasValidMoney,
+    _points_valid: hasValidPoints,
+    _raw_money: record.money,
+    _raw_points: record.points,
     score: toNumber(record.score, 0),
     wins: toNumber(record.wins, 0),
     losses: toNumber(record.losses, 0),

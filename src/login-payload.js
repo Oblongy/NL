@@ -179,7 +179,7 @@ function renderLoginNode(player) {
       : 0;
 
   const clientRole = getClientRoleForPlayer(player);
-  const moneyBalance = toFiniteNumber(player.money, 50000);
+  const moneyBalance = toFiniteNumber(player.money, 0);
   const pointsBalance = toFiniteNumber(player.points, 0);
 
   return (

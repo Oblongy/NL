@@ -786,6 +786,47 @@ function toFiniteNumber(value, fallback = 0) {
   return Number.isFinite(numericValue) ? numericValue : fallback;
 }
 
+async function recoverPlayerLoginBalances(supabase, player, logger) {
+  if (!player || (player._money_valid !== false && player._points_valid !== false)) {
+    return player;
+  }
+
+  let transactions = [];
+  try {
+    const { data, error } = await supabase
+      .from("game_transactions")
+      .select("money_change, points_change")
+      .eq("player_id", Number(player.id));
+
+    if (error) {
+      throw error;
+    }
+
+    transactions = Array.isArray(data) ? data : [];
+  } catch (error) {
+    logger?.warn?.("Unable to recover invalid player balance from transactions", {
+      playerId: player.id,
+      error: error?.message || String(error),
+    });
+  }
+
+  let recoveredMoney = 0;
+  let recoveredPoints = 0;
+  if (transactions.length > 0) {
+    recoveredMoney = 50000;
+    for (const row of transactions) {
+      recoveredMoney += toFiniteNumber(row?.money_change, 0);
+      recoveredPoints += toFiniteNumber(row?.points_change, 0);
+    }
+  }
+
+  return {
+    ...player,
+    money: player._money_valid === false ? recoveredMoney : toFiniteNumber(player.money, 0),
+    points: player._points_valid === false ? recoveredPoints : toFiniteNumber(player.points, 0),
+  };
+}
+
 function getPersistedDynoState(car) {
   const catalogCarId = String(car?.catalog_car_id || "");
   const engineTypeId = getEngineTypeIdForCar(car);
@@ -2593,7 +2634,7 @@ async function handleLogin(context) {
   }
 
   try {
-    const player = await getPlayerByUsername(supabase, username);
+    let player = await getPlayerByUsername(supabase, username);
 
     if (!player || !verifyGamePassword(password, player.password_hash)) {
       logger.warn("Login failed: invalid credentials", {
@@ -2605,6 +2646,7 @@ async function handleLogin(context) {
     }
 
     logger.info("Login successful", { username, playerId: player.id, publicId: player.public_id });
+    player = await recoverPlayerLoginBalances(supabase, player, logger);
 
     const cars = await ensurePlayerHasGarageCar(supabase, player.id, {
       catalogCarId: DEFAULT_STARTER_CATALOG_CAR_ID,
@@ -5878,15 +5920,16 @@ async function handleGetInfo(context) {
     return { body: caller?.body || failureBody(), source: caller?.source || "supabase:getinfo:bad-session" };
   }
 
-  const [player, cars] = await Promise.all([
+  const [playerRecord, cars] = await Promise.all([
     getPlayerById(supabase, caller.playerId),
     listCarsForPlayer(supabase, caller.playerId),
   ]);
 
-  if (!player) {
+  if (!playerRecord) {
     return { body: failureBody(), source: "supabase:getinfo:no-player" };
   }
 
+  const player = await recoverPlayerLoginBalances(supabase, playerRecord, logger);
   const sessionKey = params.get("sk") || "";
   const infoXml = extractInfoXmlFromLoginBody(buildLoginBody(player, cars || [], null, sessionKey, logger));
   return {

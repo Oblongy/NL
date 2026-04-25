@@ -48,6 +48,10 @@ function matchesFilters(row, filters = []) {
       }
       return String(rowValue ?? "") === String(filter.value ?? "");
     }
+    if (filter.type === "ilike") {
+      const pattern = String(filter.value ?? "").toLowerCase().replaceAll("%", "");
+      return String(rowValue ?? "").toLowerCase().includes(pattern);
+    }
     return true;
   });
 }
@@ -57,6 +61,8 @@ function createMoneyPointsSyncSupabaseStub({
   money = 50000,
   points = 100,
   gameCarId = 6100,
+  passwordHash = "secret",
+  transactions = [],
 } = {}) {
   const nowIso = new Date().toISOString();
   const sessionKey = `money-points-sync-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -71,6 +77,7 @@ function createMoneyPointsSyncSupabaseStub({
     playerRow: {
       id: playerId,
       username: "BalanceTester",
+      password_hash: passwordHash,
       money,
       points,
       score: 0,
@@ -116,6 +123,14 @@ function createMoneyPointsSyncSupabaseStub({
       updated_at: nowIso,
     }],
     nextOwnedEngineId: 7101,
+    transactions: transactions.map((row, index) => ({
+      id: index + 1,
+      player_id: playerId,
+      money_change: 0,
+      points_change: 0,
+      created_at: nowIso,
+      ...row,
+    })),
   };
 
   const tables = {
@@ -123,6 +138,7 @@ function createMoneyPointsSyncSupabaseStub({
     game_players: [state.playerRow],
     game_cars: state.gameCars,
     game_owned_engines: state.ownedEngines,
+    game_transactions: state.transactions,
   };
 
   const supabase = {
@@ -152,6 +168,10 @@ function createMoneyPointsSyncSupabaseStub({
         },
         eq(field, value) {
           filters.push({ type: "eq", field, value });
+          return query;
+        },
+        ilike(field, value) {
+          filters.push({ type: "ilike", field, value });
           return query;
         },
         gte() {
@@ -270,9 +290,38 @@ test("login payload normalizes invalid money and points instead of emitting NaN"
     default_car_game_id: 0,
   }, [], null, "test-session", createLogger());
 
-  assert.match(body, /m='50000'/);
+  assert.match(body, /m='0'/);
   assert.match(body, /p='0'/);
   assert.doesNotMatch(body, /NaN|undefined/);
+});
+
+test("login recovers invalid money and points from transaction deltas", async () => {
+  const { supabase } = createMoneyPointsSyncSupabaseStub({
+    money: "NaN",
+    points: "NaN",
+    transactions: [
+      { money_change: -2000, points_change: 10 },
+      { money_change: -1500, points_change: -3 },
+    ],
+  });
+
+  const result = await handleGameAction({
+    action: "login",
+    params: new Map([
+      ["u", "BalanceTester"],
+      ["p", "secret"],
+    ]),
+    rawQuery: "",
+    decodedQuery: "",
+    logger: createLogger(),
+    supabase,
+    services: {},
+  });
+
+  assert.equal(result?.source, "supabase:login");
+  assert.match(result.body, /m='46500'/);
+  assert.match(result.body, /p='7'/);
+  assert.doesNotMatch(result.body, /NaN|undefined/);
 });
 
 test("sellcar preserves the caller's points balance in the response wrapper", async () => {
