@@ -568,9 +568,13 @@ async function handleBuyEngine(context) {
   }
 
   const price = Number(catalogPart.p || 0);
+  const currentPointsBalance = Number(player?.points || 0);
   const newBalance = Number(player?.money || 0) - price;
   if (newBalance < 0) {
-    return { body: `"s", 0, "d1", "<r s='-3' b='${Number(player?.money || 0)}' ai='0'/>", "d", "<r s='0' b='0'/>"`, source: "supabase:buyengine:insufficient-funds" };
+    return {
+      body: `"s", 0, "d1", "<r s='-3' b='${Number(player?.money || 0)}' ai='0'/>", "d", "<r s='0' b='${currentPointsBalance}'/>"`,
+      source: "supabase:buyengine:insufficient-funds",
+    };
   }
   await updatePlayerMoney(supabase, caller.playerId, newBalance);
   const installId = createInstalledPartId();
@@ -587,7 +591,7 @@ async function handleBuyEngine(context) {
     partsXml: installedPartXml,
   });
   return {
-    body: `"s", 1, "d1", "<r s='2' b='${newBalance}' ai='${installId}'/>", "d", "<r s='1' b='0'></r>"`,
+    body: `"s", 1, "d1", "<r s='2' b='${newBalance}' ai='${installId}'/>", "d", "<r s='1' b='${currentPointsBalance}'></r>"`,
     source: "supabase:buyengine",
   };
 }
@@ -4815,10 +4819,11 @@ async function handleSellCar(context) {
     if (car && Number(car.player_id) === caller.playerId) {
       const player = await getPlayerById(supabase, caller.playerId);
       const newBalance = Number(player?.money ?? 0) + salePrice;
+      const currentPointsBalance = Number(player?.points ?? 0);
       await updatePlayerMoney(supabase, caller.playerId, newBalance);
       await deleteCar(supabase, gameCarId);
       return {
-        body: `"s", 1, "d1", "<r s='2' b='${newBalance}' ai='0'/>", "d", "<r s='1' b='0'/>"`,
+        body: `"s", 1, "d1", "<r s='2' b='${newBalance}' ai='0'/>", "d", "<r s='1' b='${currentPointsBalance}'/>"`,
         source: "supabase:sellcar",
       };
     }
