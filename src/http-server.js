@@ -19,7 +19,10 @@ import {
   buildTuningStudioCatalog,
   buildTuningStudioPreview,
 } from "./tuning-studio.js";
-import { rememberRecentDecalUpload } from "./upload-state.js";
+import {
+  getCustomGraphicSlotIdForField,
+  rememberRecentDecalUpload,
+} from "./upload-state.js";
 import { FULL_CAR_CATALOG } from "./car-catalog.js";
 
 function buildStaticFileRoute(relativePath, contentType, encoding = "utf8") {
@@ -317,8 +320,9 @@ function getContentTypeForUserDecal(filename) {
   }
 }
 
-function getUserGraphicUploadResponseAttrs(slotKey, decalId, extension) {
-  const normalizedSlot = String(slotKey || "").trim().toLowerCase();
+export function getUserGraphicUploadResponseAttrs(slotKey, decalId, extension, fieldName = "") {
+  const inferredSlotKey = String(slotKey || "").trim() || getCustomGraphicSlotIdForField(fieldName);
+  const normalizedSlot = String(inferredSlotKey || "").trim().toLowerCase();
   const normalizedExt = normalizeUserGraphicExt(extension);
   switch (normalizedSlot) {
     case "hood":
@@ -801,10 +805,15 @@ export function createHttpServer({ config, logger, supabase, services = {}, fixt
               logger.error("Failed to save upload", { error: err.message, targetPath });
             }
 
-            if (requestUrl.pathname.toLowerCase().endsWith("usergraphicupload.aspx")) {
-              const attrs = getUserGraphicUploadResponseAttrs(requestUrl.searchParams.get("slot"), decalId, requestExt);
+            if (!pendingUpload || pendingUpload.type === "userDecals") {
+              const attrs = getUserGraphicUploadResponseAttrs(
+                requestUrl.searchParams.get("slot"),
+                decalId,
+                requestExt,
+                fieldName,
+              );
               const serializedAttrs = Object.entries(attrs).map(([key, value]) => `${key}='${value}'`).join(" ");
-              responseBody = `<r s='1' ${serializedAttrs}/>`;
+              responseBody = `<r s='1' i='${decalId}' ${serializedAttrs}/>`;
             }
 
             pendingUploadsByRemote.delete(remoteAddress);
