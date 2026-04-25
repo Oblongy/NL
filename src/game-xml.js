@@ -37,16 +37,18 @@ export function failureBody() {
 
 function renderUserSummaryNode(player, options = {}) {
   const publicId = options.publicId ?? player.id;
+  const teamId = Number(player.team_id || 0);
   const attrs = {
     i: publicId,
     u: player.username,
     r: getClientRoleForPlayer(player),
     sc: player.score,
     ti: player.title_id,
+    tid: teamId,
   };
   
   // Only include team_name if player is actually on a team
-  if (player.team_id || (player.team_name && player.team_name !== '')) {
+  if (teamId || (player.team_name && player.team_name !== '')) {
     attrs.tn = player.team_name;
   }
   

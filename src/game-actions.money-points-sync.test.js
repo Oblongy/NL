@@ -295,6 +295,35 @@ test("login payload normalizes invalid money and points instead of emitting NaN"
   assert.doesNotMatch(body, /NaN|undefined/);
 });
 
+test("login payload includes team id without overwriting title id", () => {
+  const body = buildLoginBody({
+    id: 99,
+    username: "BalanceTester",
+    money: 50000,
+    points: 10,
+    score: 0,
+    image_id: 0,
+    active: true,
+    vip: false,
+    facebook_connected: false,
+    sponsor_rating: 0,
+    driver_text: "",
+    team_id: 6,
+    team_name: "Pure Insanity",
+    gender: "m",
+    respect_level: 0,
+    title_id: 1,
+    track_rank: 0,
+    location_id: 100,
+    background_id: 0,
+    default_car_game_id: 0,
+  }, [], null, "test-session", createLogger());
+
+  assert.match(body, /tn='Pure Insanity'/);
+  assert.match(body, /ti='1'/);
+  assert.match(body, /tid='6'/);
+});
+
 test("login recovers invalid money and points from transaction deltas", async () => {
   const { supabase } = createMoneyPointsSyncSupabaseStub({
     money: "NaN",

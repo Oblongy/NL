@@ -1240,6 +1240,41 @@ async function testTeamCreateSurvivesMissingMemberCountTriggerColumn() {
   assert.strictEqual(supabase.tables.game_team_members.length, 0, 'teamcreate should tolerate the broken team member trigger without inserting rows');
 }
 
+async function testGetUserIncludesTeamIdForTeamMembers() {
+  const playerId = 99;
+  const sessionKey = `getuser-team-${Date.now()}`;
+  const supabase = createActionSupabaseStub({
+    playerId,
+    sessionKey,
+    player: {
+      money: 1000,
+      points: 50,
+      team_id: 810,
+      team_name: "Pure Insanity",
+      title_id: 1,
+    },
+  });
+
+  const result = await handleGameAction({
+    action: 'getuser',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['tid', String(playerId)],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger: createLogger(),
+    supabase,
+    services: {},
+  });
+
+  assert.strictEqual(result.source, 'supabase:getuser');
+  assert.ok(result.body.includes(`tn='Pure Insanity'`), 'getuser should expose the team name');
+  assert.ok(result.body.includes(`ti='1'`), 'getuser should preserve the title id field');
+  assert.ok(result.body.includes(`tid='810'`), 'getuser should expose the player team id');
+}
+
 async function testRepairPartsReturnsUpdatedMoneyBalance() {
   const playerId = 95;
   const sessionKey = `repairparts-${Date.now()}`;
@@ -1530,6 +1565,7 @@ const tests = [
   ['team deposit and withdraw return updated money balance', testTeamDepositAndWithdrawReturnUpdatedMoneyBalance],
   ['team balance falls back to member contribution when team_fund column is missing', testTeamBalanceFallsBackToMemberContributionWhenTeamFundColumnMissing],
   ['team create survives missing member_count trigger column', testTeamCreateSurvivesMissingMemberCountTriggerColumn],
+  ['getuser includes team id for team members', testGetUserIncludesTeamIdForTeamMembers],
   ['repairparts returns updated money balance', testRepairPartsReturnsUpdatedMoneyBalance],
   ['ctst returns updated money balance with payout', testCtstReturnsUpdatedMoneyBalanceWithPayout],
   ['ctrt legacy dial key prefers player session', testCtrtLegacyDialKeyPrefersPlayerSession],
