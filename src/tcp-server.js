@@ -3822,10 +3822,14 @@ export class TcpServer {
 
   async handleLegacyTeamCreate(conn, parts) {
     const sessionKey = String(conn.sessionKey || "");
+    const playerId = Number(conn.playerId || 0);
     const decodedTeamName = this.decodeLegacyTcpValue(parts[1] || "");
     const params = new URLSearchParams();
     params.set("action", "teamcreate");
     params.set("n", decodedTeamName);
+    if (playerId > 0) {
+      params.set("aid", String(playerId));
+    }
     if (sessionKey) {
       params.set("sk", sessionKey);
     }
@@ -3847,6 +3851,10 @@ export class TcpServer {
         logger: this.logger,
         services: this.buildLegacyActionServices(),
       });
+
+      if (result?.source === "supabase:teamcreate" && playerId > 0) {
+        await this.hydrateConnectionPlayerContext(conn, { playerId, sessionKey });
+      }
 
       const responseBody = result?.body || '"s", 0';
       this.sendMessage(conn, `"ac", "TEAMCREATE", ${responseBody}`);

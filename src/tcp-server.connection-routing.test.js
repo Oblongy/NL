@@ -27,6 +27,160 @@ function createServer() {
   return server;
 }
 
+function createTeamCreateSupabaseStub({ playerId, sessionKey, username = "CrewTester" } = {}) {
+  const tables = {
+    game_sessions: [{
+      session_key: sessionKey,
+      player_id: playerId,
+      last_seen_at: new Date().toISOString(),
+    }],
+    game_players: [{
+      id: playerId,
+      username,
+      money: 10000,
+      points: 50,
+      score: 0,
+      default_car_game_id: 77,
+      team_id: null,
+      team_name: "",
+      title_id: 0,
+      vip: 0,
+      track_rank: 0,
+      badges_json: null,
+      client_role: 5,
+    }],
+    game_teams: [],
+    game_team_members: [],
+  };
+
+  function matchesFilters(row, filters) {
+    return filters.every((filter) => {
+      const value = row?.[filter.field];
+      if (filter.type === "eq") {
+        return String(value ?? "") === String(filter.value ?? "");
+      }
+      if (filter.type === "ilike") {
+        return String(value ?? "").toLowerCase() === String(filter.value ?? "").toLowerCase();
+      }
+      if (filter.type === "gte") {
+        return String(value ?? "") >= String(filter.value ?? "");
+      }
+      return true;
+    });
+  }
+
+  return {
+    from(table) {
+      let mode = "select";
+      let payload = null;
+      const filters = [];
+
+      const query = {
+        select() {
+          return query;
+        },
+        eq(field, value) {
+          filters.push({ type: "eq", field, value });
+          return query;
+        },
+        ilike(field, value) {
+          filters.push({ type: "ilike", field, value });
+          return query;
+        },
+        gte(field, value) {
+          filters.push({ type: "gte", field, value });
+          return query;
+        },
+        limit() {
+          return query;
+        },
+        update(nextPayload) {
+          mode = "update";
+          payload = nextPayload;
+          return query;
+        },
+        insert(nextPayload) {
+          mode = "insert";
+          payload = nextPayload;
+          return query;
+        },
+        delete() {
+          mode = "delete";
+          return query;
+        },
+        maybeSingle: async () => {
+          const rows = runSelect();
+          return { data: rows[0] || null, error: null };
+        },
+        single: async () => {
+          if (mode === "insert") {
+            const sourceRow = Array.isArray(payload) ? payload[0] : payload;
+            const inserted = {
+              id: nextIdFor(table),
+              ...(sourceRow || {}),
+            };
+            tables[table].push(inserted);
+            return { data: inserted, error: null };
+          }
+          if (mode === "update") {
+            const rows = runUpdate();
+            return { data: rows[0] || null, error: null };
+          }
+          const rows = runSelect();
+          return { data: rows[0] || null, error: null };
+        },
+        then(resolve, reject) {
+          const runner = async () => {
+            if (mode === "update") {
+              runUpdate();
+              return { data: runSelect(), error: null };
+            }
+            if (mode === "insert") {
+              const rows = Array.isArray(payload) ? payload : [payload];
+              const insertedRows = rows.map((row) => {
+                const inserted = {
+                  id: nextIdFor(table),
+                  ...(row || {}),
+                };
+                tables[table].push(inserted);
+                return inserted;
+              });
+              return { data: insertedRows, error: null };
+            }
+            if (mode === "delete") {
+              const rows = tables[table] || [];
+              tables[table] = rows.filter((row) => !matchesFilters(row, filters));
+              return { data: [], error: null };
+            }
+            return { data: runSelect(), error: null };
+          };
+
+          return Promise.resolve(runner()).then(resolve, reject);
+        },
+      };
+
+      function nextIdFor(targetTable) {
+        return (tables[targetTable] || []).reduce((maxId, row) => Math.max(maxId, Number(row.id || 0)), 0) + 1;
+      }
+
+      function runSelect() {
+        return (tables[table] || []).filter((row) => matchesFilters(row, filters));
+      }
+
+      function runUpdate() {
+        const rows = runSelect();
+        for (const row of rows) {
+          Object.assign(row, payload || {});
+        }
+        return rows;
+      }
+
+      return query;
+    },
+    tables,
+  };
+}
+
 test("findConnectionByPlayerId prefers the lobby socket when a race channel is also open", () => {
   const server = createServer();
   const lobbyConn = { id: 101, playerId: 7, roomId: 1, messages: [] };
@@ -176,5 +330,42 @@ test("buildRraMessage preserves bracket times, scores, bet type, and track", () 
   assert.equal(
     server.buildRraMessage(race),
     `"ac", "RRA", "d", "<r r1id='51' r2id='52' r1cid='5101' r2cid='5202' b1='10.25' b2='10.75' bt='2' sc1='123' sc2='456' t='44'/>"`,
+  );
+});
+
+test("handleLegacyTeamCreate rehydrates the TCP connection after a successful create", async () => {
+  const playerId = 61;
+  const sessionKey = "legacy-teamcreate-session";
+  const supabase = createTeamCreateSupabaseStub({ playerId, sessionKey });
+  const server = new TcpServer({
+    logger: createLogger(),
+    notify() {},
+    proxy: null,
+    supabase,
+  });
+  clearInterval(server.challengeCleanupInterval);
+  server.challengeCleanupInterval = null;
+  server.sendMessage = (conn, message) => {
+    conn.messages.push(message);
+  };
+
+  const conn = {
+    id: 901,
+    playerId,
+    sessionKey,
+    username: "CrewTester",
+    messages: [],
+  };
+
+  await server.handleLegacyTeamCreate(conn, ["TEAMCREATE", "Fresh Crew"]);
+
+  assert.match(conn.messages[0], /^"ac", "TEAMCREATE", "s", 1, "tid", \d+$/);
+  assert.equal(conn.teamId, 1);
+  assert.equal(conn.teamRole, "owner");
+  assert.equal(supabase.tables.game_players[0].team_id, 1);
+  assert.equal(supabase.tables.game_players[0].team_name, "Fresh Crew");
+  assert.deepEqual(
+    supabase.tables.game_team_members.map(({ team_id, player_id, role }) => ({ team_id, player_id, role })),
+    [{ team_id: 1, player_id: 61, role: "owner" }],
   );
 });
