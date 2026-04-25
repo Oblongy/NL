@@ -15,6 +15,46 @@ import {
   toNumericIds,
 } from "./shared.js";
 
+const OPTIONAL_TEAM_COLUMNS = [
+  "team_fund",
+  "background_color",
+  "location_code",
+  "recruitment_type",
+  "vip",
+  "owner_player_id",
+];
+
+function getMissingOptionalTeamColumn(error, payload = {}) {
+  const message = String(error?.message || error || "");
+  if (!/does not exist|unknown column|column/i.test(message)) {
+    return null;
+  }
+
+  return OPTIONAL_TEAM_COLUMNS.find((column) =>
+    Object.prototype.hasOwnProperty.call(payload, column) && new RegExp(column, "i").test(message),
+  ) || null;
+}
+
+async function runTeamMutationWithCompat(runQuery, payload, onEmptyPayload = null) {
+  const nextPayload = { ...(payload || {}) };
+
+  while (true) {
+    if (Object.keys(nextPayload).length === 0) {
+      return typeof onEmptyPayload === "function" ? onEmptyPayload() : null;
+    }
+
+    try {
+      return await runQuery(nextPayload);
+    } catch (error) {
+      const missingColumn = getMissingOptionalTeamColumn(error, nextPayload);
+      if (!missingColumn) {
+        throw error;
+      }
+      delete nextPayload[missingColumn];
+    }
+  }
+}
+
 export async function findTeamByName(supabase, teamName) {
   if (!supabase || !teamName) {
     return null;
@@ -40,24 +80,13 @@ export async function createTeam(supabase, input = {}) {
     return null;
   }
 
-  let team;
-  try {
-    team = await singleResult(
-      supabase.from("game_teams").insert(insert).select("*"),
+  const team = await runTeamMutationWithCompat(
+    (compatibleInsert) => singleResult(
+      supabase.from("game_teams").insert(compatibleInsert).select("*"),
       parseTeamRecord,
-    );
-  } catch (error) {
-    const message = String(error?.message || error || "");
-    if (!/team_fund|column/i.test(message) || !/does not exist|unknown column/i.test(message)) {
-      throw error;
-    }
-
-    const { team_fund: _ignored, ...withoutTeamFund } = insert;
-    team = await singleResult(
-      supabase.from("game_teams").insert(withoutTeamFund).select("*"),
-      parseTeamRecord,
-    );
-  }
+    ),
+    insert,
+  );
 
   const ownerPlayerId = Number(
     input.ownerPlayerId !== undefined && input.ownerPlayerId !== null
@@ -65,14 +94,7 @@ export async function createTeam(supabase, input = {}) {
       : (input.owner_player_id || 0),
   );
   if (team && ownerPlayerId > 0) {
-    try {
-      team = await updateTeamRecord(supabase, team.id, { ownerPlayerId });
-    } catch (error) {
-      const message = String(error?.message || error || "");
-      if (!/owner_player_id/i.test(message) || !/does not exist|unknown column/i.test(message)) {
-        throw error;
-      }
-    }
+    return updateTeamRecord(supabase, team.id, { ownerPlayerId });
   }
 
   return team;
@@ -88,39 +110,56 @@ export async function updateTeamRecord(supabase, teamId, patchInput = {}) {
     return null;
   }
 
-  try {
-    return await singleResult(
+  return runTeamMutationWithCompat(
+    (compatiblePatch) => singleResult(
       supabase
         .from("game_teams")
-        .update(patch)
+        .update(compatiblePatch)
         .eq("id", Number(teamId))
         .select("*"),
       parseTeamRecord,
-    );
-  } catch (error) {
-    const message = String(error?.message || error || "");
-    if (/owner_player_id/i.test(message) && /does not exist|unknown column/i.test(message) && "owner_player_id" in patch) {
-      const { owner_player_id: _ignored, ...withoutOwner } = patch;
-      if (Object.keys(withoutOwner).length === 0) {
-        return maybeSingle(
-          supabase
-            .from("game_teams")
-            .select("*")
-            .eq("id", Number(teamId)),
-          parseTeamRecord,
-        );
-      }
+    ),
+    patch,
+    () => maybeSingle(
+      supabase
+        .from("game_teams")
+        .select("*")
+        .eq("id", Number(teamId)),
+      parseTeamRecord,
+    ),
+  );
+}
 
-      return singleResult(
-        supabase
-          .from("game_teams")
-          .update(withoutOwner)
-          .eq("id", Number(teamId))
-          .select("*"),
-        parseTeamRecord,
-      );
+export async function updateTeamMemberContribution(supabase, playerId, contributionScore, options = {}) {
+  if (!supabase || !playerId) {
+    return false;
+  }
+
+  const numericScore = Math.max(0, Number(contributionScore || 0));
+  try {
+    let query = supabase
+      .from("game_team_members")
+      .update({ contribution_score: numericScore })
+      .eq("player_id", Number(playerId));
+
+    if (options.teamId) {
+      query = query.eq("team_id", Number(options.teamId));
     }
 
+    const { error } = await query;
+    if (error) {
+      throw error;
+    }
+    return true;
+  } catch (error) {
+    if (isMissingGameTeamMembersRelationError(error)) {
+      return false;
+    }
+
+    const message = String(error?.message || error || "");
+    if (/contribution_score/i.test(message) && /does not exist|unknown column|column/i.test(message)) {
+      return false;
+    }
     throw error;
   }
 }

@@ -603,7 +603,9 @@ function createActionSupabaseStub({
   ownedEngines = [],
   teams = [],
   teamMembers = [],
+  missingTeamColumns = [],
 } = {}) {
+  const missingTeamColumnSet = new Set((missingTeamColumns || []).map((column) => String(column)));
   const tables = {
     game_sessions: [{
       session_key: sessionKey,
@@ -680,6 +682,10 @@ function createActionSupabaseStub({
     });
   }
 
+  function buildMissingColumnError(column) {
+    return { message: `column "${column}" does not exist` };
+  }
+
   return {
     tables,
     rpc: async () => ({ data: null, error: null }),
@@ -728,10 +734,21 @@ function createActionSupabaseStub({
         },
         single: async () => {
           if (mode === "update") {
-            return { data: runUpdate()[0] || null, error: null };
+            const updatedRows = runUpdate();
+            if (updatedRows?.error) {
+              return { data: null, error: updatedRows.error };
+            }
+            return { data: updatedRows[0] || null, error: null };
           }
           if (mode === "insert") {
             const row = Array.isArray(payload) ? payload[0] : payload;
+            if (table === "game_teams") {
+              for (const key of Object.keys(row || {})) {
+                if (missingTeamColumnSet.has(key)) {
+                  return { data: null, error: buildMissingColumnError(key) };
+                }
+              }
+            }
             const inserted = { id: nextIdFor(table), ...row };
             tables[table].push(inserted);
             return { data: inserted, error: null };
@@ -741,7 +758,10 @@ function createActionSupabaseStub({
         then(resolve, reject) {
           const runner = async () => {
             if (mode === "update") {
-              runUpdate();
+              const updatedRows = runUpdate();
+              if (updatedRows?.error) {
+                return { data: null, error: updatedRows.error };
+              }
               return { data: runSelect(), error: null };
             }
             if (mode === "delete") {
@@ -765,6 +785,13 @@ function createActionSupabaseStub({
       }
 
       function runUpdate() {
+        if (table === "game_teams") {
+          for (const key of Object.keys(payload || {})) {
+            if (missingTeamColumnSet.has(key)) {
+              return { error: buildMissingColumnError(key) };
+            }
+          }
+        }
         const rows = runSelect();
         for (const row of rows) {
           Object.assign(row, payload || {});
@@ -1107,6 +1134,64 @@ async function testTeamDepositAndWithdrawReturnUpdatedMoneyBalance() {
   assert.strictEqual(withdraw.body, `"s", 1, "b", 925`, 'teamwithdraw should return the updated money balance');
 }
 
+async function testTeamBalanceFallsBackToMemberContributionWhenTeamFundColumnMissing() {
+  const playerId = 97;
+  const sessionKey = `team-compat-${Date.now()}`;
+  const services = {
+    teamState: new Map(),
+  };
+  const supabase = createActionSupabaseStub({
+    playerId,
+    sessionKey,
+    player: { money: 1000, team_id: 810, team_name: "Compat Crew" },
+    teams: [{ id: 810, name: "Compat Crew" }],
+    teamMembers: [{ team_id: 810, player_id: playerId, role: "member", contribution_score: 200 }],
+    missingTeamColumns: ["team_fund"],
+  });
+
+  const deposit = await handleGameAction({
+    action: 'teamdeposit',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['amount', '125'],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger: createLogger(),
+    supabase,
+    services,
+  });
+  assert.strictEqual(deposit.source, 'supabase:teamdeposit');
+  assert.strictEqual(deposit.body, `"s", 1, "b", 875`, 'teamdeposit should still succeed when team_fund is missing');
+  assert.strictEqual(
+    Number(supabase.tables.game_team_members[0]?.contribution_score || 0),
+    325,
+    'teamdeposit should persist the fallback contribution score',
+  );
+
+  const withdraw = await handleGameAction({
+    action: 'teamwithdraw',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['amount', '50'],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger: createLogger(),
+    supabase,
+    services,
+  });
+  assert.strictEqual(withdraw.source, 'supabase:teamwithdraw');
+  assert.strictEqual(withdraw.body, `"s", 1, "b", 925`, 'teamwithdraw should still succeed when team_fund is missing');
+  assert.strictEqual(
+    Number(supabase.tables.game_team_members[0]?.contribution_score || 0),
+    275,
+    'teamwithdraw should keep contribution score in sync',
+  );
+}
+
 async function testRepairPartsReturnsUpdatedMoneyBalance() {
   const playerId = 95;
   const sessionKey = `repairparts-${Date.now()}`;
@@ -1395,6 +1480,7 @@ const tests = [
   ['buyenginepart parses formatted prices', testBuyEnginePartParsesFormattedPrices],
   ['buytestdrivecar returns updated point balance', testBuyTestDriveCarReturnsUpdatedPointBalance],
   ['team deposit and withdraw return updated money balance', testTeamDepositAndWithdrawReturnUpdatedMoneyBalance],
+  ['team balance falls back to member contribution when team_fund column is missing', testTeamBalanceFallsBackToMemberContributionWhenTeamFundColumnMissing],
   ['repairparts returns updated money balance', testRepairPartsReturnsUpdatedMoneyBalance],
   ['ctst returns updated money balance with payout', testCtstReturnsUpdatedMoneyBalanceWithPayout],
   ['ctrt legacy dial key prefers player session', testCtrtLegacyDialKeyPrefersPlayerSession],

@@ -77,6 +77,7 @@ import {
   setPlayerTeamMembership as setPlayerTeamMembershipRecord,
   syncGameTeamMemberRow as syncGameTeamMemberRowRecord,
   updateTeamRecord as updateTeamRecordInService,
+  updateTeamMemberContribution,
   updatePlayerRecord,
   updatePlayerDefaultCar,
   updatePlayerMoney,
@@ -1177,6 +1178,15 @@ function sanitizeTeamMeta(teamMeta) {
   };
 }
 
+function getEffectiveTeamFund(team, members = []) {
+  const persistedTeamFund = Number(team?.team_fund || 0);
+  const contributionTotal = (members || []).reduce(
+    (sum, member) => sum + Number(member?.contribution_score || 0),
+    0,
+  );
+  return Math.max(persistedTeamFund, contributionTotal);
+}
+
 function getTeamMeta(services, teamId) {
   if (!teamId) {
     return getDefaultTeamMeta();
@@ -1274,8 +1284,11 @@ function groupPlayersByTeamId(players) {
   return playersByTeamId;
 }
 
-function ensureTeamMetadata(services, team, players) {
+function ensureTeamMetadata(services, team, players, members = []) {
   const playerIds = new Set(players.map((player) => Number(player.id)));
+  const memberContributionByPlayerId = new Map(
+    (members || []).map((member) => [Number(member.player_id), Number(member.contribution_score || 0)]),
+  );
   const teamMeta = sanitizeTeamMeta(getTeamMeta(services, team.id));
   let changed = false;
 
@@ -1324,7 +1337,7 @@ function ensureTeamMetadata(services, team, players) {
       changed = true;
     }
     if (teamMeta.contributionByPlayerId[key] === undefined) {
-      teamMeta.contributionByPlayerId[key] = 0;
+      teamMeta.contributionByPlayerId[key] = memberContributionByPlayerId.get(Number(player.id)) || 0;
       changed = true;
     }
   }
@@ -1370,11 +1383,13 @@ function renderTeamDetailXml(team, players, teamMeta, totalContribution = 0) {
   );
 }
 
-function renderTeamsWithMetadata(teams, playersByTeamId, services) {
+function renderTeamsWithMetadata(teams, playersByTeamId, membersByTeamId, services) {
   const body = teams.map((team) => {
     const players = playersByTeamId.get(Number(team.id)) || [];
-    const { teamMeta, sortedPlayers, totalContribution } = ensureTeamMetadata(services, team, players);
-    return renderTeamDetailXml(team, sortedPlayers, teamMeta, totalContribution);
+    const members = membersByTeamId.get(Number(team.id)) || [];
+    const effectiveTeam = { ...team, team_fund: getEffectiveTeamFund(team, members) };
+    const { teamMeta, sortedPlayers, totalContribution } = ensureTeamMetadata(services, effectiveTeam, players, members);
+    return renderTeamDetailXml(effectiveTeam, sortedPlayers, teamMeta, totalContribution);
   }).join("");
 
   return `<teams>${body}</teams>`;
@@ -1391,13 +1406,18 @@ async function loadTeamContextById({ supabase, services, teamId }) {
     return null;
   }
 
-  const players = await listPlayersForTeams(supabase, [teamId]);
-  const { teamMeta, sortedPlayers, totalContribution } = ensureTeamMetadata(services, team, players);
+  const [players, members] = await Promise.all([
+    listPlayersForTeams(supabase, [teamId]),
+    listTeamMembersForTeams(supabase, [teamId]),
+  ]);
+  const effectiveTeam = { ...team, team_fund: getEffectiveTeamFund(team, members) };
+  const { teamMeta, sortedPlayers, totalContribution } = ensureTeamMetadata(services, effectiveTeam, players, members);
   const playersByPublicId = new Map(sortedPlayers.map((player) => [Number(getPublicIdForPlayer(player)), player]));
 
   return {
-    team,
+    team: effectiveTeam,
     players: sortedPlayers,
+    members,
     playersByPublicId,
     teamMeta,
     totalContribution,
@@ -1865,7 +1885,9 @@ async function handleTeamQuit(context) {
 
   if (remainingPlayers.length === 0) {
     await deleteTeamRecord(supabase, teamContext.team.id);
-    if (services?.teamState) {
+    if (typeof services?.teamState?.remove === "function") {
+      services.teamState.remove(teamContext.team.id);
+    } else if (services?.teamState?.teams) {
       services.teamState.teams.delete(String(teamContext.team.id));
     }
   } else {
@@ -1912,15 +1934,19 @@ async function handleTeamDeposit(context) {
   }
 
   const newBalance = callerMoney - amount;
+  const nextContribution = Number(teamContext.teamMeta.contributionByPlayerId?.[String(caller.playerId)] || 0) + amount;
   await updatePlayerMoney(supabase, caller.playerId, newBalance);
   await updateTeamRecord(supabase, teamContext.team.id, {
     team_fund: Number(teamContext.team.team_fund || 0) + amount,
+  });
+  await updateTeamMemberContribution(supabase, caller.playerId, nextContribution, {
+    teamId: teamContext.team.id,
   });
   saveTeamMeta(services, teamContext.team.id, {
     ...teamContext.teamMeta,
     contributionByPlayerId: {
       ...teamContext.teamMeta.contributionByPlayerId,
-      [String(caller.playerId)]: Number(teamContext.teamMeta.contributionByPlayerId?.[String(caller.playerId)] || 0) + amount,
+      [String(caller.playerId)]: nextContribution,
     },
   });
 
@@ -1955,15 +1981,19 @@ async function handleTeamWithdraw(context) {
   }
 
   const newBalance = toFiniteNumber(caller.player.money, 0) + amount;
+  const nextContribution = contribution - amount;
   await updatePlayerMoney(supabase, caller.playerId, newBalance);
   await updateTeamRecord(supabase, teamContext.team.id, {
     team_fund: teamFunds - amount,
+  });
+  await updateTeamMemberContribution(supabase, caller.playerId, nextContribution, {
+    teamId: teamContext.team.id,
   });
   saveTeamMeta(services, teamContext.team.id, {
     ...teamContext.teamMeta,
     contributionByPlayerId: {
       ...teamContext.teamMeta.contributionByPlayerId,
-      [String(caller.playerId)]: contribution - amount,
+      [String(caller.playerId)]: nextContribution,
     },
   });
 
@@ -2003,15 +2033,19 @@ async function handleTeamDisperse(context) {
     return { body: `"s", -2`, source: "supabase:teamdisperse:insufficient-funds" };
   }
 
+  const nextContribution = contribution - amount;
   await updatePlayerMoney(supabase, targetPlayer.id, toFiniteNumber(targetPlayer.money, 0) + amount);
   await updateTeamRecord(supabase, teamContext.team.id, {
     team_fund: teamFunds - amount,
+  });
+  await updateTeamMemberContribution(supabase, targetPlayer.id, nextContribution, {
+    teamId: teamContext.team.id,
   });
   saveTeamMeta(services, teamContext.team.id, {
     ...teamContext.teamMeta,
     contributionByPlayerId: {
       ...teamContext.teamMeta.contributionByPlayerId,
-      [String(targetPlayer.id)]: contribution - amount,
+      [String(targetPlayer.id)]: nextContribution,
     },
   });
 
@@ -2363,7 +2397,12 @@ async function loadTeamRivalsContext({ supabase, roomPlayers = [], teamIds = [] 
     });
   }
 
-  return { teams, members, players, playersById, membersByTeamId };
+  const effectiveTeams = teams.map((team) => ({
+    ...team,
+    team_fund: getEffectiveTeamFund(team, membersByTeamId.get(Number(team.id)) || []),
+  }));
+
+  return { teams: effectiveTeams, members, players, playersById, membersByTeamId };
 }
 
 function getLeaderForTeam(team, membersByTeamId, roomPlayersById = new Map()) {
@@ -6392,9 +6431,10 @@ async function handleTeamInfo(context) {
     };
   }
 
-  const [teams, players] = await Promise.all([
+  const [teams, players, members] = await Promise.all([
     listTeamsByIds(supabase, teamIds),
     listPlayersForTeams(supabase, teamIds),
+    listTeamMembersForTeams(supabase, teamIds),
   ]);
 
   if (teams.length === 0) {
@@ -6405,9 +6445,17 @@ async function handleTeamInfo(context) {
   }
 
   const playersByTeamId = groupPlayersByTeamId(players);
+  const membersByTeamId = new Map();
+  for (const member of members) {
+    const teamId = Number(member.team_id || 0);
+    if (!membersByTeamId.has(teamId)) {
+      membersByTeamId.set(teamId, []);
+    }
+    membersByTeamId.get(teamId).push(member);
+  }
 
   return {
-    body: wrapSuccessData(renderTeamsWithMetadata(teams, playersByTeamId, services)),
+    body: wrapSuccessData(renderTeamsWithMetadata(teams, playersByTeamId, membersByTeamId, services)),
     source: "supabase:teaminfo",
   };
 }
