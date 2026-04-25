@@ -750,6 +750,10 @@ function listInstalledPartEntries(partsXml) {
   return entries;
 }
 
+function collectInstalledPartEntries(partsXml) {
+  return listInstalledPartEntries(partsXml);
+}
+
 function serializePartXmlAttributes(attrs) {
   return Object.entries(attrs)
     .filter(([, value]) => value !== undefined && value !== null && value !== "")
@@ -1903,7 +1907,8 @@ async function handleTeamDeposit(context) {
     return { body: `"s", -1`, source: "supabase:teamdeposit:insufficient-funds" };
   }
 
-  await updatePlayerMoney(supabase, caller.playerId, callerMoney - amount);
+  const newBalance = callerMoney - amount;
+  await updatePlayerMoney(supabase, caller.playerId, newBalance);
   await updateTeamRecord(supabase, teamContext.team.id, {
     team_fund: Number(teamContext.team.team_fund || 0) + amount,
   });
@@ -1915,7 +1920,7 @@ async function handleTeamDeposit(context) {
     },
   });
 
-  return { body: `"s", 1`, source: "supabase:teamdeposit" };
+  return { body: `"s", 1, "b", ${newBalance}`, source: "supabase:teamdeposit" };
 }
 
 async function handleTeamWithdraw(context) {
@@ -1945,7 +1950,8 @@ async function handleTeamWithdraw(context) {
     return { body: `"s", -1`, source: "supabase:teamwithdraw:insufficient-funds" };
   }
 
-  await updatePlayerMoney(supabase, caller.playerId, toFiniteNumber(caller.player.money, 0) + amount);
+  const newBalance = toFiniteNumber(caller.player.money, 0) + amount;
+  await updatePlayerMoney(supabase, caller.playerId, newBalance);
   await updateTeamRecord(supabase, teamContext.team.id, {
     team_fund: teamFunds - amount,
   });
@@ -1957,7 +1963,7 @@ async function handleTeamWithdraw(context) {
     },
   });
 
-  return { body: `"s", 1`, source: "supabase:teamwithdraw" };
+  return { body: `"s", 1, "b", ${newBalance}`, source: "supabase:teamwithdraw" };
 }
 
 async function handleTeamDisperse(context) {
@@ -6209,9 +6215,10 @@ async function handleRepairParts(context) {
     return { body: `"s", -1`, source: "supabase:repairparts:insufficient-funds" };
   }
 
-  await updatePlayerMoney(supabase, caller.playerId, currentMoney - totalCost);
+  const newBalance = currentMoney - totalCost;
+  await updatePlayerMoney(supabase, caller.playerId, newBalance);
   return {
-    body: `"s", 1`,
+    body: `"s", 1, "b", ${newBalance}`,
     source: "supabase:repairparts",
   };
 }
@@ -6872,8 +6879,9 @@ const handlers = {
       clearedTournamentSession: responseWinState !== 1,
     });
 
+    const balanceSegment = newMoneyBalance === null ? "" : `, "b", ${newMoneyBalance}`;
     return {
-      body: `"s", 1, "d", "<n2 w='${responseWinState}' b='${payout}'/>"`,
+      body: `"s", 1, "d", "<n2 w='${responseWinState}' b='${payout}'/>"${balanceSegment}`,
       source: "generated:ctst",
     };
   },

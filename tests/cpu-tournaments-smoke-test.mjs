@@ -595,6 +595,188 @@ function createBuyCarSupabaseStub({
   };
 }
 
+function createActionSupabaseStub({
+  playerId = 91,
+  sessionKey = "action-session",
+  player = {},
+  cars = [],
+  ownedEngines = [],
+  teams = [],
+  teamMembers = [],
+} = {}) {
+  const tables = {
+    game_sessions: [{
+      session_key: sessionKey,
+      player_id: playerId,
+      last_seen_at: new Date().toISOString(),
+    }],
+    game_players: [{
+      id: playerId,
+      username: "WalletTester",
+      money: 10000,
+      points: 50,
+      score: 0,
+      default_car_game_id: cars[0]?.game_car_id ?? 0,
+      team_id: teamMembers.find((member) => Number(member.player_id) === Number(playerId))?.team_id ?? null,
+      team_name: "",
+      ...player,
+    }],
+    game_cars: cars.map((car) => ({
+      player_id: playerId,
+      catalog_car_id: 1,
+      selected: false,
+      paint_index: 0,
+      plate_name: "",
+      color_code: "FFFFFF",
+      image_index: 0,
+      locked: 0,
+      aero: 0,
+      wheel_xml: "",
+      parts_xml: "",
+      test_drive_invitation_id: null,
+      test_drive_name: null,
+      test_drive_money_price: null,
+      test_drive_point_price: null,
+      test_drive_expires_at: null,
+      ...car,
+    })),
+    game_owned_engines: ownedEngines.map((engine) => ({
+      player_id: playerId,
+      installed_on_car_id: 0,
+      catalog_engine_part_id: 0,
+      engine_type_id: 1,
+      parts_xml: "",
+      ...engine,
+    })),
+    game_teams: teams.map((team) => ({
+      id: 1,
+      name: "Wallet Crew",
+      score: 0,
+      team_fund: 0,
+      wins: 0,
+      losses: 0,
+      owner_player_id: playerId,
+      ...team,
+    })),
+    game_team_members: teamMembers.map((member, index) => ({
+      id: index + 1,
+      team_id: 1,
+      player_id: playerId,
+      role: 1,
+      contribution_score: 0,
+      ...member,
+    })),
+  };
+
+  function matchesFilters(row, filters) {
+    return filters.every((filter) => {
+      if (filter.type === "eq") {
+        return String(row?.[filter.field] ?? "") === String(filter.value ?? "");
+      }
+      if (filter.type === "in") {
+        return filter.values.map((value) => String(value)).includes(String(row?.[filter.field] ?? ""));
+      }
+      return true;
+    });
+  }
+
+  return {
+    tables,
+    rpc: async () => ({ data: null, error: null }),
+    from(table) {
+      let mode = "select";
+      let payload = null;
+      const filters = [];
+      const query = {
+        select() {
+          return query;
+        },
+        eq(field, value) {
+          filters.push({ type: "eq", field, value });
+          return query;
+        },
+        in(field, values) {
+          filters.push({ type: "in", field, values: Array.isArray(values) ? values : [] });
+          return query;
+        },
+        order() {
+          return query;
+        },
+        limit() {
+          return query;
+        },
+        gte() {
+          return query;
+        },
+        update(patch) {
+          mode = "update";
+          payload = patch;
+          return query;
+        },
+        insert(insertPayload) {
+          mode = "insert";
+          payload = insertPayload;
+          return query;
+        },
+        delete() {
+          mode = "delete";
+          return query;
+        },
+        maybeSingle: async () => {
+          const rows = runSelect();
+          return { data: rows[0] || null, error: null };
+        },
+        single: async () => {
+          if (mode === "update") {
+            return { data: runUpdate()[0] || null, error: null };
+          }
+          if (mode === "insert") {
+            const row = Array.isArray(payload) ? payload[0] : payload;
+            const inserted = { id: nextIdFor(table), ...row };
+            tables[table].push(inserted);
+            return { data: inserted, error: null };
+          }
+          return { data: runSelect()[0] || null, error: null };
+        },
+        then(resolve, reject) {
+          const runner = async () => {
+            if (mode === "update") {
+              runUpdate();
+              return { data: runSelect(), error: null };
+            }
+            if (mode === "delete") {
+              const rows = tables[table] || [];
+              const kept = rows.filter((row) => !matchesFilters(row, filters));
+              tables[table] = kept;
+              return { data: [], error: null };
+            }
+            return { data: runSelect(), error: null };
+          };
+          return Promise.resolve(runner()).then(resolve, reject);
+        },
+      };
+
+      function nextIdFor(targetTable) {
+        return (tables[targetTable] || []).reduce((maxId, row) => Math.max(maxId, Number(row.id || 0)), 0) + 1;
+      }
+
+      function runSelect() {
+        return (tables[table] || []).filter((row) => matchesFilters(row, filters));
+      }
+
+      function runUpdate() {
+        const rows = runSelect();
+        for (const row of rows) {
+          Object.assign(row, payload || {});
+        }
+        return rows;
+      }
+
+      return query;
+    },
+  };
+}
+
 async function testLoginPayloadSeedsHiddenTournamentPlaceholderCar() {
   const body = buildLoginBody(
     {
@@ -710,6 +892,214 @@ async function testBuyCarSupportsPointPurchases() {
   assert.strictEqual(result.source, 'supabase:buycar');
   assert.ok(result.body.includes(`"d1", "<r s='2' b='50000' ai='243'/>"`), 'buycar points purchase should leave money unchanged');
   assert.ok(result.body.includes(`"d", "<r s='1' b='55'></r>"`), 'buycar points purchase should deduct points and return the updated points balance');
+}
+
+async function testBuyPartReturnsUpdatedPointBalance() {
+  const playerId = 91;
+  const sessionKey = `buypart-points-${Date.now()}`;
+  const supabase = createActionSupabaseStub({
+    playerId,
+    sessionKey,
+    player: { money: 10000, points: 50 },
+    cars: [{ game_car_id: 501, player_id: playerId, catalog_car_id: 1, parts_xml: "" }],
+  });
+  const result = await handleGameAction({
+    action: 'buypart',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['acid', '501'],
+      ['pid', '253'],
+      ['pt', 'p'],
+      ['pr', '5'],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger: createLogger(),
+    supabase,
+    services: {},
+  });
+
+  assert.strictEqual(result.source, 'supabase:buypart');
+  assert.ok(result.body.includes(`"d1", "<r s='2' b='10000'`), 'buypart points purchase should leave money balance unchanged');
+  assert.ok(result.body.includes(`"d", "<r s='1' b='45'></r>"`), 'buypart points purchase should return the updated points balance');
+}
+
+async function testBuyEnginePartReturnsUpdatedPointBalance() {
+  const playerId = 92;
+  const sessionKey = `buyenginepart-points-${Date.now()}`;
+  const supabase = createActionSupabaseStub({
+    playerId,
+    sessionKey,
+    player: { money: 10000, points: 50 },
+    cars: [{ game_car_id: 502, player_id: playerId, catalog_car_id: 1, owned_engine_id: 301 }],
+    ownedEngines: [{ id: 301, player_id: playerId, installed_on_car_id: 502, parts_xml: "" }],
+  });
+  const result = await handleGameAction({
+    action: 'buyenginepart',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['acid', '502'],
+      ['epid', '200'],
+      ['pt', 'p'],
+      ['pr', '5'],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger: createLogger(),
+    supabase,
+    services: {},
+  });
+
+  assert.strictEqual(result.source, 'supabase:buyenginepart');
+  assert.ok(result.body.includes(`"d1", "<r s='2' b='10000'`), 'buyenginepart points purchase should leave money balance unchanged');
+  assert.ok(result.body.includes(`"d", "<r s='1' b='45'></r>"`), 'buyenginepart points purchase should return the updated points balance');
+}
+
+async function testBuyTestDriveCarReturnsUpdatedPointBalance() {
+  const playerId = 93;
+  const sessionKey = `buytestdrive-points-${Date.now()}`;
+  const supabase = createActionSupabaseStub({
+    playerId,
+    sessionKey,
+    player: { money: 10000, points: 50 },
+    cars: [{
+      game_car_id: 503,
+      player_id: playerId,
+      catalog_car_id: 1,
+      test_drive_invitation_id: 7001,
+      test_drive_name: "Acura Integra GSR",
+      test_drive_money_price: 1000,
+      test_drive_point_price: 7,
+      test_drive_expires_at: "2099-01-01T00:00:00.000Z",
+    }],
+  });
+  const result = await handleGameAction({
+    action: 'buytestdrivecar',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['tid', '7001'],
+      ['pt', 'p'],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger: createLogger(),
+    supabase,
+    services: {},
+  });
+
+  assert.strictEqual(result.source, 'buytestdrivecar:points');
+  assert.strictEqual(result.body, `"s", 1, "m", 43`, 'buytestdrivecar points purchase should return the updated points balance');
+}
+
+async function testTeamDepositAndWithdrawReturnUpdatedMoneyBalance() {
+  const playerId = 94;
+  const sessionKey = `team-wallet-${Date.now()}`;
+  const services = {
+    teamState: new Map([[810, {
+      contributionByPlayerId: { [String(playerId)]: 200 },
+      rolesByPlayerId: { [String(playerId)]: 1 },
+    }]]),
+  };
+  const supabase = createActionSupabaseStub({
+    playerId,
+    sessionKey,
+    player: { money: 1000, team_id: 810, team_name: "Wallet Crew" },
+    teams: [{ id: 810, name: "Wallet Crew", team_fund: 500 }],
+    teamMembers: [{ team_id: 810, player_id: playerId, role: 1 }],
+  });
+
+  const deposit = await handleGameAction({
+    action: 'teamdeposit',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['amount', '125'],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger: createLogger(),
+    supabase,
+    services,
+  });
+  assert.strictEqual(deposit.source, 'supabase:teamdeposit');
+  assert.strictEqual(deposit.body, `"s", 1, "b", 875`, 'teamdeposit should return the updated money balance');
+
+  const withdraw = await handleGameAction({
+    action: 'teamwithdraw',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['amount', '50'],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger: createLogger(),
+    supabase,
+    services,
+  });
+  assert.strictEqual(withdraw.source, 'supabase:teamwithdraw');
+  assert.strictEqual(withdraw.body, `"s", 1, "b", 925`, 'teamwithdraw should return the updated money balance');
+}
+
+async function testRepairPartsReturnsUpdatedMoneyBalance() {
+  const playerId = 95;
+  const sessionKey = `repairparts-${Date.now()}`;
+  const supabase = createActionSupabaseStub({
+    playerId,
+    sessionKey,
+    player: { money: 1000, points: 50 },
+    cars: [{
+      game_car_id: 504,
+      player_id: playerId,
+      catalog_car_id: 1,
+      parts_xml: "<p ai='repair-253' i='253' pi='114' t='c' n='Eibach Lowering Springs' p='500' pp='5'/>",
+    }],
+  });
+  const result = await handleGameAction({
+    action: 'repairparts',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['acid', '504'],
+      ['aepids', 'repair-253'],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger: createLogger(),
+    supabase,
+    services: {},
+  });
+
+  assert.strictEqual(result.source, 'supabase:repairparts');
+  assert.strictEqual(result.body, `"s", 1, "b", 875`, 'repairparts should return the updated money balance');
+}
+
+async function testCtstReturnsUpdatedMoneyBalanceWithPayout() {
+  const playerId = 96;
+  const sessionKey = `cpu-ctst-payout-${Date.now()}`;
+  const supabase = createTournamentSupabaseStub({ playerId, sessionKey });
+  await supabase.from("game_players").update({ money: 1000 }).eq("id", playerId);
+  const result = await handleGameAction({
+    action: 'ctst',
+    params: new Map([
+      ['aid', String(playerId)],
+      ['sk', sessionKey],
+      ['k', 'ctst-balance-key'],
+      ['w', '1'],
+      ['b', '250'],
+    ]),
+    rawQuery: '',
+    decodedQuery: '',
+    logger: createLogger(),
+    supabase,
+    services: {},
+  });
+
+  assert.strictEqual(result.source, 'generated:ctst');
+  assert.strictEqual(result.body, `"s", 1, "d", "<n2 w='1' b='250'/>", "b", 1250`, 'ctst should include the updated money balance alongside the payout payload');
 }
 
 async function testCtrtLegacyDialKeyPrefersPlayerSession() {
@@ -936,6 +1326,12 @@ const tests = [
   ['buycar returns client purchase balances', testBuyCarReturnsClientPurchaseBalances],
   ['buycar parses formatted prices', testBuyCarParsesFormattedPrices],
   ['buycar supports point purchases', testBuyCarSupportsPointPurchases],
+  ['buypart returns updated point balance', testBuyPartReturnsUpdatedPointBalance],
+  ['buyenginepart returns updated point balance', testBuyEnginePartReturnsUpdatedPointBalance],
+  ['buytestdrivecar returns updated point balance', testBuyTestDriveCarReturnsUpdatedPointBalance],
+  ['team deposit and withdraw return updated money balance', testTeamDepositAndWithdrawReturnUpdatedMoneyBalance],
+  ['repairparts returns updated money balance', testRepairPartsReturnsUpdatedMoneyBalance],
+  ['ctst returns updated money balance with payout', testCtstReturnsUpdatedMoneyBalanceWithPayout],
   ['ctrt legacy dial key prefers player session', testCtrtLegacyDialKeyPrefersPlayerSession],
   ['ctrt opponent aliases', testCtrtIncludesOpponentAliases],
   ['getuser synthetic tournament competitor', testGetUserReturnsSyntheticTournamentCompetitor],
