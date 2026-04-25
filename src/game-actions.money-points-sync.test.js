@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { handleGameAction } from "./game-actions.js";
+import { buildLoginBody } from "./login-payload.js";
 import { PARTS_CATALOG_XML } from "./parts-catalog.js";
 
 function createLogger() {
@@ -246,6 +247,33 @@ function createMoneyPointsSyncSupabaseStub({
 
   return { supabase, state, sessionKey };
 }
+
+test("login payload normalizes invalid money and points instead of emitting NaN", () => {
+  const body = buildLoginBody({
+    id: 99,
+    username: "BalanceTester",
+    money: "NaN",
+    score: 0,
+    image_id: 0,
+    active: true,
+    vip: false,
+    facebook_connected: false,
+    sponsor_rating: 0,
+    driver_text: "",
+    team_name: "",
+    gender: "m",
+    respect_level: 0,
+    title_id: 0,
+    track_rank: 0,
+    location_id: 100,
+    background_id: 0,
+    default_car_game_id: 0,
+  }, [], null, "test-session", createLogger());
+
+  assert.match(body, /m='50000'/);
+  assert.match(body, /p='0'/);
+  assert.doesNotMatch(body, /NaN|undefined/);
+});
 
 test("sellcar preserves the caller's points balance in the response wrapper", async () => {
   const { supabase, state, sessionKey } = createMoneyPointsSyncSupabaseStub({ money: 50000, points: 37 });

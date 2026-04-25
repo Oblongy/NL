@@ -487,7 +487,7 @@ async function handleSellEnginePart(context) {
 
   const player = await getPlayerById(supabase, caller.playerId);
   const sellValue = Math.max(1, Math.round(Number(catalogPart.p || 0) * 0.5));
-  const newBalance = Number(player?.money || 0) + sellValue;
+  const newBalance = toFiniteNumber(player?.money, 0) + sellValue;
   await updatePlayerMoney(supabase, caller.playerId, newBalance);
   if (consumeInventory) {
     await consumePartInventoryItem(supabase, inventoryId, caller.playerId);
@@ -537,7 +537,7 @@ async function handleSellEngine(context) {
   const catalogPart = getPartsCatalogById().get(partId);
   const sellValue = Math.max(1, Math.round(Number(catalogPart?.p || 0) * 0.5));
   const player = await getPlayerById(supabase, caller.playerId);
-  const newBalance = Number(player?.money || 0) + sellValue;
+  const newBalance = toFiniteNumber(player?.money, 0) + sellValue;
   await updatePlayerMoney(supabase, caller.playerId, newBalance);
   await deleteOwnedEngine(supabase, engine.id, caller.playerId);
 
@@ -568,11 +568,11 @@ async function handleBuyEngine(context) {
   }
 
   const price = Number(catalogPart.p || 0);
-  const currentPointsBalance = Number(player?.points || 0);
-  const newBalance = Number(player?.money || 0) - price;
+  const currentPointsBalance = toFiniteNumber(player?.points, 0);
+  const newBalance = toFiniteNumber(player?.money, 0) - price;
   if (newBalance < 0) {
     return {
-      body: `"s", 0, "d1", "<r s='-3' b='${Number(player?.money || 0)}' ai='0'/>", "d", "<r s='0' b='${currentPointsBalance}'/>"`,
+      body: `"s", 0, "d1", "<r s='-3' b='${toFiniteNumber(player?.money, 0)}' ai='0'/>", "d", "<r s='0' b='${currentPointsBalance}'/>"`,
       source: "supabase:buyengine:insufficient-funds",
     };
   }
@@ -775,6 +775,14 @@ function findTuneCarrierPartEntry(partsXml, preferredSlotIds = DYNO_TUNE_CARRIER
 
 function readNumericPartAttr(attrs, key, fallback) {
   const numericValue = Number(attrs?.[key]);
+  return Number.isFinite(numericValue) ? numericValue : fallback;
+}
+
+function toFiniteNumber(value, fallback = 0) {
+  if (value === null || value === undefined || value === "") {
+    return fallback;
+  }
+  const numericValue = Number(value);
   return Number.isFinite(numericValue) ? numericValue : fallback;
 }
 
@@ -1849,11 +1857,12 @@ async function handleTeamDeposit(context) {
   if (amount <= 0 || amount > 100000000) {
     return { body: `"s", -2`, source: "supabase:teamdeposit:bad-amount" };
   }
-  if (Number(caller.player.money || 0) < amount) {
+  const callerMoney = toFiniteNumber(caller.player.money, 0);
+  if (callerMoney < amount) {
     return { body: `"s", -1`, source: "supabase:teamdeposit:insufficient-funds" };
   }
 
-  await updatePlayerMoney(supabase, caller.playerId, Number(caller.player.money || 0) - amount);
+  await updatePlayerMoney(supabase, caller.playerId, callerMoney - amount);
   await updateTeamRecord(supabase, teamContext.team.id, {
     team_fund: Number(teamContext.team.team_fund || 0) + amount,
   });
@@ -1895,7 +1904,7 @@ async function handleTeamWithdraw(context) {
     return { body: `"s", -1`, source: "supabase:teamwithdraw:insufficient-funds" };
   }
 
-  await updatePlayerMoney(supabase, caller.playerId, Number(caller.player.money || 0) + amount);
+  await updatePlayerMoney(supabase, caller.playerId, toFiniteNumber(caller.player.money, 0) + amount);
   await updateTeamRecord(supabase, teamContext.team.id, {
     team_fund: teamFunds - amount,
   });
@@ -1943,7 +1952,7 @@ async function handleTeamDisperse(context) {
     return { body: `"s", -2`, source: "supabase:teamdisperse:insufficient-funds" };
   }
 
-  await updatePlayerMoney(supabase, targetPlayer.id, Number(targetPlayer.money || 0) + amount);
+  await updatePlayerMoney(supabase, targetPlayer.id, toFiniteNumber(targetPlayer.money, 0) + amount);
   await updateTeamRecord(supabase, teamContext.team.id, {
     team_fund: teamFunds - amount,
   });
@@ -3202,7 +3211,7 @@ async function handleBuyDyno(context) {
   if (player.has_dyno === 1 || player.has_dyno === true) {
     return {
       body:
-        `"s", 1, "b", ${Number(player.money)}, ` +
+        `"s", 1, "b", ${toFiniteNumber(player.money, 0)}, ` +
         `"bs", ${Number(dynoState.boostSetting)}, ` +
         `"mp", ${Number(dynoState.maxPsi)}, ` +
         `"cs", ${Number(dynoState.chipSetting)}, ` +
@@ -3213,7 +3222,7 @@ async function handleBuyDyno(context) {
   }
 
   const dynoPrice = 500;
-  const newBalance = Number(player.money) - dynoPrice;
+  const newBalance = toFiniteNumber(player.money, 0) - dynoPrice;
 
   if (newBalance < 0) {
     return { body: `"s", "-2"`, source: "supabase:buydyno:insufficient-funds" };
@@ -3353,8 +3362,8 @@ async function handleBuyPart(context) {
     return { body: failureBody(), source: "supabase:buypart:no-part" };
   }
 
-  const currentMoneyBalance = Number(player.money || 0);
-  const currentPointsBalance = Number(player.points || 0);
+  const currentMoneyBalance = toFiniteNumber(player.money, 0);
+  const currentPointsBalance = toFiniteNumber(player.points, 0);
   let newMoneyBalance = currentMoneyBalance;
   let newPointsBalance = currentPointsBalance;
   if (purchase.chargePoints) {
@@ -3558,8 +3567,8 @@ async function handleBuyEnginePart(context) {
     moneyPrice: Number(catalogPart.p || 0),
     pointsPrice: Number(catalogPart.pp || 0),
   });
-  const currentMoneyBalance = Number(player.money || 0);
-  const currentPointsBalance = Number(player.points || 0);
+  const currentMoneyBalance = toFiniteNumber(player.money, 0);
+  const currentPointsBalance = toFiniteNumber(player.points, 0);
   let newMoneyBalance = currentMoneyBalance;
   let newPointsBalance = currentPointsBalance;
   if (purchase.chargePoints) {
@@ -3629,8 +3638,8 @@ async function handleBuyCar(context) {
   const pointPrice = getCatalogCarPointPrice(catalogCarId);
   const requestedPrice = parseShowroomPurchasePrice(params);
   const purchasePrice = requestedPrice || (paymentType === "p" ? pointPrice : moneyPrice);
-  const currentMoneyBalance = Number(player.money || 0);
-  const currentPointsBalance = Number(player.points || 0);
+  const currentMoneyBalance = toFiniteNumber(player.money, 0);
+  const currentPointsBalance = toFiniteNumber(player.points, 0);
   let newMoneyBalance = currentMoneyBalance;
   let newPointsBalance = currentPointsBalance;
 
@@ -3960,7 +3969,11 @@ async function handleBuyTestDriveCar(context) {
 
   const paymentType = String(params.get("pt") || "m").toLowerCase();
   if (paymentType === "p") {
-    const newPointsBalance = Number(player.points) - Number(activeTestDrive.pointPrice);
+    const pointPrice = toFiniteNumber(activeTestDrive.pointPrice, NaN);
+    if (!Number.isFinite(pointPrice) || pointPrice < 0) {
+      return { body: `"s", -4`, source: "buytestdrivecar:invalid-points-price" };
+    }
+    const newPointsBalance = toFiniteNumber(player.points, 0) - pointPrice;
     if (newPointsBalance < 0) {
       return { body: `"s", -4`, source: "buytestdrivecar:insufficient-points" };
     }
@@ -3975,7 +3988,11 @@ async function handleBuyTestDriveCar(context) {
     };
   }
 
-  const newMoneyBalance = Number(player.money) - Number(activeTestDrive.moneyPrice);
+  const moneyPrice = toFiniteNumber(activeTestDrive.moneyPrice, NaN);
+  if (!Number.isFinite(moneyPrice) || moneyPrice < 0) {
+    return { body: `"s", -4`, source: "buytestdrivecar:invalid-money-price" };
+  }
+  const newMoneyBalance = toFiniteNumber(player.money, 0) - moneyPrice;
   if (newMoneyBalance < 0) {
     return { body: `"s", -4`, source: "buytestdrivecar:insufficient-money" };
   }
@@ -4167,15 +4184,16 @@ function getPendingTestDriveInvitation(invitationId) {
 }
 
 function setActiveTestDriveCar(state) {
+  const catalogCarId = toFiniteNumber(state.catalogCarId, 0);
   activeTestDriveCarsByPlayerId.set(Number(state.playerId), {
     ...state,
     playerId: Number(state.playerId),
     gameCarId: Number(state.gameCarId),
-    catalogCarId: Number(state.catalogCarId),
+    catalogCarId,
     invitationId: Number(state.invitationId),
-    moneyPrice: Number(state.moneyPrice),
-    pointPrice: Number(state.pointPrice),
-    hoursRemaining: Number(state.hoursRemaining),
+    moneyPrice: toFiniteNumber(state.moneyPrice, getCatalogCarPrice(catalogCarId)),
+    pointPrice: toFiniteNumber(state.pointPrice, getCatalogCarPointPrice(catalogCarId)),
+    hoursRemaining: toFiniteNumber(state.hoursRemaining, 0),
     expired: Boolean(state.expired),
   });
 }
@@ -4229,14 +4247,15 @@ async function loadActiveTestDriveCar(supabase, playerId) {
   const cars = await listCarsForPlayer(supabase, playerId);
   const persistedCar = findTestDriveCarInGarage(cars);
   if (persistedCar) {
+    const catalogCarId = toFiniteNumber(persistedCar.catalog_car_id, 0);
     return {
       playerId: Number(playerId),
       gameCarId: Number(persistedCar.game_car_id),
-      catalogCarId: Number(persistedCar.catalog_car_id),
+      catalogCarId,
       invitationId: Number(persistedCar.test_drive_invitation_id),
-      moneyPrice: Number(persistedCar.test_drive_money_price),
-      pointPrice: Number(persistedCar.test_drive_point_price),
-      hoursRemaining: Number(persistedCar.test_drive_hours_remaining),
+      moneyPrice: toFiniteNumber(persistedCar.test_drive_money_price, getCatalogCarPrice(catalogCarId)),
+      pointPrice: toFiniteNumber(persistedCar.test_drive_point_price, getCatalogCarPointPrice(catalogCarId)),
+      hoursRemaining: toFiniteNumber(persistedCar.test_drive_hours_remaining, 0),
       expired: Number(persistedCar.test_drive_expired || 0) === 1,
     };
   }
@@ -4247,12 +4266,13 @@ async function loadActiveTestDriveCar(supabase, playerId) {
 function buildTestDriveLoginState(playerId, cars = []) {
   const persistedCar = findTestDriveCarInGarage(cars);
   if (persistedCar) {
+    const catalogCarId = toFiniteNumber(persistedCar.catalog_car_id, 0);
     return {
       gameCarId: Number(persistedCar.game_car_id),
       invitationId: Number(persistedCar.test_drive_invitation_id),
-      moneyPrice: Number(persistedCar.test_drive_money_price),
-      pointPrice: Number(persistedCar.test_drive_point_price),
-      hoursRemaining: Number(persistedCar.test_drive_hours_remaining),
+      moneyPrice: toFiniteNumber(persistedCar.test_drive_money_price, getCatalogCarPrice(catalogCarId)),
+      pointPrice: toFiniteNumber(persistedCar.test_drive_point_price, getCatalogCarPointPrice(catalogCarId)),
+      hoursRemaining: toFiniteNumber(persistedCar.test_drive_hours_remaining, 0),
       expired: Number(persistedCar.test_drive_expired || 0),
     };
   }
@@ -4749,7 +4769,7 @@ async function handleMoveLocation(context) {
       // m = current balance (client sets its display to this value)
       const player = await getPlayerById(supabase, caller.playerId);
       const s = paymentType === "p" ? 1 : 2;
-      const balance = s === 1 ? Number(player?.points ?? 0) : Number(player?.money ?? 0);
+      const balance = s === 1 ? toFiniteNumber(player?.points, 0) : toFiniteNumber(player?.money, 0);
       return {
         body: `"s", ${s}, "m", ${balance}`,
         source: "supabase:movelocation",
@@ -4811,15 +4831,15 @@ async function handleSellCar(context) {
   }
 
   const gameCarId = Number(params.get("acid") || params.get("cid") || 0);
-  const salePrice = Number(params.get("pr") || params.get("price") || 0);
+  const salePrice = toFiniteNumber(params.get("pr") || params.get("price"), 0);
 
   if (gameCarId) {
     // Verify the car belongs to this player before crediting money
     const car = await getCarById(supabase, gameCarId);
     if (car && Number(car.player_id) === caller.playerId) {
       const player = await getPlayerById(supabase, caller.playerId);
-      const newBalance = Number(player?.money ?? 0) + salePrice;
-      const currentPointsBalance = Number(player?.points ?? 0);
+      const newBalance = toFiniteNumber(player?.money, 0) + salePrice;
+      const currentPointsBalance = toFiniteNumber(player?.points, 0);
       await updatePlayerMoney(supabase, caller.playerId, newBalance);
       await deleteCar(supabase, gameCarId);
       return {
@@ -5026,7 +5046,7 @@ async function handleBuyGears(context) {
   }
 
   const gearPrice = 2500;
-  const newBalance = Number(player.money) - gearPrice;
+  const newBalance = toFiniteNumber(player.money, 0) - gearPrice;
   if (newBalance < 0) {
     return { body: `"s", "-2"`, source: "supabase:buygears:insufficient-funds" };
   }
@@ -5944,7 +5964,7 @@ async function handleJoinHumanTournament(context) {
   const requestedTournamentId = Number(params.get("tid") || 0);
   const eventId = Number(liveEvent?.id || 9001);
   if (requestedTournamentId && requestedTournamentId !== eventId) {
-    const balance = Number(caller.player.money || 0);
+    const balance = toFiniteNumber(caller.player.money, 0);
     return {
       body: `"s", 0, "b", ${balance}, "d", "This tournament is no longer available."`,
       source: "supabase:joinhumantournament:invalid-event",
@@ -5954,7 +5974,7 @@ async function handleJoinHumanTournament(context) {
   const gameCarId = Number(params.get("acid") || 0);
   const car = await getCarById(supabase, gameCarId);
   if (!car || Number(car.player_id) !== caller.playerId) {
-    const balance = Number(caller.player.money || 0);
+    const balance = toFiniteNumber(caller.player.money, 0);
     return {
       body: `"s", 0, "b", ${balance}, "d", "That car is not available for entry."`,
       source: "supabase:joinhumantournament:invalid-car",
@@ -5964,8 +5984,8 @@ async function handleJoinHumanTournament(context) {
   const paymentType = String(params.get("pt") || liveEvent?.entryType || "m").trim().toLowerCase();
   const chargePoints = paymentType === "p";
   const entryCost = Math.max(0, Number(liveEvent?.entryCost || 0));
-  const currentMoney = Number(caller.player.money || 0);
-  const currentPoints = Number(caller.player.points || 0);
+  const currentMoney = toFiniteNumber(caller.player.money, 0);
+  const currentPoints = toFiniteNumber(caller.player.points, 0);
   const currentBalance = chargePoints ? currentPoints : currentMoney;
   const statusCode = chargePoints ? 1 : 2;
 
@@ -6077,12 +6097,12 @@ async function handleSellCarPart(context) {
 
   if (slotId && findInstalledPartBySlotId(getDefaultPartsXmlForCar(targetCar.catalog_car_id), slotId)) {
     const player = await getPlayerById(supabase, caller.playerId);
-    return { body: `"s", -2, "b", ${Number(player?.money || 0)}`, source: "supabase:sellcarpart:stock-part" };
+    return { body: `"s", -2, "b", ${toFiniteNumber(player?.money, 0)}`, source: "supabase:sellcarpart:stock-part" };
   }
 
   const sellValue = Math.max(1, Math.round(Number(catalogPart.p || 0) * 0.5));
   const player = await getPlayerById(supabase, caller.playerId);
-  const newBalance = Number(player?.money || 0) + sellValue;
+  const newBalance = toFiniteNumber(player?.money, 0) + sellValue;
   await updatePlayerMoney(supabase, caller.playerId, newBalance);
   await saveCarPartsXml(supabase, targetCar.game_car_id, removeInstalledPartByAi(targetCar.parts_xml || "", accountPartId));
 
@@ -6141,11 +6161,12 @@ async function handleRepairParts(context) {
     .filter((entry) => repairIds.includes(String(entry?.attrs?.i || "")));
   const totalCost = repairEntries.reduce((sum, entry) => sum + Number(entry?.attrs?.p || 0), 0);
   const player = await getPlayerById(supabase, caller.playerId);
-  if (totalCost > Number(player?.money || 0)) {
+  const currentMoney = toFiniteNumber(player?.money, 0);
+  if (totalCost > currentMoney) {
     return { body: `"s", -1`, source: "supabase:repairparts:insufficient-funds" };
   }
 
-  await updatePlayerMoney(supabase, caller.playerId, Number(player?.money || 0) - totalCost);
+  await updatePlayerMoney(supabase, caller.playerId, currentMoney - totalCost);
   return {
     body: `"s", 1`,
     source: "supabase:repairparts",
@@ -6788,7 +6809,7 @@ const handlers = {
     if (payout > 0 && supabase) {
       const player = await getPlayerById(supabase, caller.playerId);
       if (player) {
-        newMoneyBalance = Number(player.money || 0) + payout;
+        newMoneyBalance = toFiniteNumber(player.money, 0) + payout;
         await updatePlayerMoney(supabase, caller.playerId, newMoneyBalance);
       }
     }

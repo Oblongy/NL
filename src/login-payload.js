@@ -163,6 +163,14 @@ function renderIntroXml(options = {}) {
 // Per-player nodes
 // ---------------------------------------------------------------------------
 
+function toFiniteNumber(value, fallback = 0) {
+  if (value === null || value === undefined || value === "") {
+    return fallback;
+  }
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : fallback;
+}
+
 function renderLoginNode(player) {
   const publicId = getPublicIdForPlayer(player);
   const genderValue =
@@ -171,10 +179,12 @@ function renderLoginNode(player) {
       : 0;
 
   const clientRole = getClientRoleForPlayer(player);
+  const moneyBalance = toFiniteNumber(player.money, 50000);
+  const pointsBalance = toFiniteNumber(player.points, 0);
 
   return (
     "<n id='login'>" +
-    `<r u='${escapeXml(player.username)}' i='${publicId}' r='${clientRole}' m='${player.money}' p='${player.points}' ` +
+    `<r u='${escapeXml(player.username)}' i='${publicId}' r='${clientRole}' m='${moneyBalance}' p='${pointsBalance}' ` +
     `sc='${player.score}' im='${player.image_id ?? 0}' act='${player.active ? 1 : 0}' vip='${player.vip ? 1 : 0}' ` +
     `fbc='${player.facebook_connected ? 1 : 0}' alr='1' bpr='1' ` +
     `sr='${player.sponsor_rating}' dt='${escapeXml(player.driver_text || "")}' tn='${escapeXml(player.team_name || "")}' ` +
