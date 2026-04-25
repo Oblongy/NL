@@ -3655,24 +3655,30 @@ async function handleBuyPart(context) {
       const installedGraphicPartId = installedGraphicPartIdMap[partId] || partId;
       const installedGraphicCatalogPart = getPartsCatalogById().get(installedGraphicPartId) || catalogPart || null;
       let resolvedDecalFileExt = decalFileExt;
+      let resolvedDecalId = String(decalId || "").replace(/[^0-9]/g, "") || "1";
 
       try {
         const { existsSync, mkdirSync, readdirSync, renameSync, statSync } = await import("node:fs");
-        const { extname, resolve } = await import("node:path");
+        const { basename, extname, resolve } = await import("node:path");
         const decalDir = resolve(process.cwd(), "../cache/car/userDecals");
         mkdirSync(decalDir, { recursive: true });
-        const targetPath = resolve(decalDir, `${slotId}_${decalId}.${decalFileExt}`);
+        const resolveDecalIdFromPath = (filePath) => {
+          const fileName = basename(String(filePath || ""));
+          const normalized = fileName.match(/^(?:\d+_)?(\d+)\.(?:png|jpe?g|gif)$/i);
+          return normalized?.[1] || "";
+        };
         const exactSourceCandidates = [
-          resolve(decalDir, `${decalId}.${decalFileExt}`),
-          resolve(decalDir, `${decalId}.png`),
-          resolve(decalDir, `${decalId}.jpg`),
-          resolve(decalDir, `${decalId}.jpeg`),
-          resolve(decalDir, `${decalId}.gif`),
+          resolve(decalDir, `${resolvedDecalId}.${decalFileExt}`),
+          resolve(decalDir, `${resolvedDecalId}.png`),
+          resolve(decalDir, `${resolvedDecalId}.jpg`),
+          resolve(decalDir, `${resolvedDecalId}.jpeg`),
+          resolve(decalDir, `${resolvedDecalId}.gif`),
         ];
         const exactSourcePath = exactSourceCandidates.find((candidate) => existsSync(candidate)) || "";
         let sourcePath = existsSync(exactSourcePath) ? exactSourcePath : "";
         if (sourcePath) {
           resolvedDecalFileExt = normalizeUserGraphicFileExt(extname(sourcePath), decalFileExt);
+          resolvedDecalId = resolveDecalIdFromPath(sourcePath) || resolvedDecalId;
         }
 
         if (!sourcePath) {
@@ -3680,6 +3686,7 @@ async function handleBuyPart(context) {
           if (recentUpload?.targetPath && existsSync(recentUpload.targetPath)) {
             sourcePath = recentUpload.targetPath;
             resolvedDecalFileExt = normalizeUserGraphicFileExt(extname(recentUpload.targetPath), decalFileExt);
+            resolvedDecalId = resolveDecalIdFromPath(recentUpload.targetPath) || resolvedDecalId;
           }
         }
 
@@ -3700,8 +3707,10 @@ async function handleBuyPart(context) {
           sourcePath = fallbackUpload?.filePath || "";
           if (sourcePath) {
             resolvedDecalFileExt = normalizeUserGraphicFileExt(extname(sourcePath), decalFileExt);
+            resolvedDecalId = resolveDecalIdFromPath(sourcePath) || resolvedDecalId;
             logger?.warn("Using recent upload fallback for custom graphic", {
               decalId,
+              resolvedDecalId,
               slotId,
               sourcePath,
               remoteAddress,
@@ -3710,11 +3719,12 @@ async function handleBuyPart(context) {
         }
 
         if (sourcePath) {
-          const normalizedTargetPath = resolve(decalDir, `${slotId}_${decalId}.${resolvedDecalFileExt}`);
+          const normalizedTargetPath = resolve(decalDir, `${slotId}_${resolvedDecalId}.${resolvedDecalFileExt}`);
           renameSync(sourcePath, normalizedTargetPath);
         } else {
           logger?.warn("Custom graphic source upload missing", {
             decalId,
+            resolvedDecalId,
             slotId,
             exactSourcePath,
             remoteAddress,
@@ -3750,14 +3760,14 @@ async function handleBuyPart(context) {
           pi: slotId,
           t: "c",
           di: String(installedGraphicCatalogPart?.di || "1"),
-          pdi: String(decalId),
+          pdi: String(resolvedDecalId),
         }),
       );
       installedPartAttrs.ci = slotId;
       installedPartAttrs.pt = "c";
       installedPartAttrs.fe = resolvedDecalFileExt;
       installedPartAttrs.di = String(installedPartAttrs.di || "1");
-      installedPartAttrs.pdi = String(decalId);
+      installedPartAttrs.pdi = String(resolvedDecalId);
       const installedPartXml = `<p ${serializePartXmlAttributes(installedPartAttrs)}/>`;
       const partsXml = upsertInstalledPartXml(car.parts_xml || "", slotId, installedPartXml);
       try {
@@ -3766,6 +3776,7 @@ async function handleBuyPart(context) {
           accountCarId,
           partId,
           installedGraphicPartId,
+          resolvedDecalId,
           slotId,
           partsXmlLength: partsXml.length,
         });
