@@ -257,7 +257,7 @@ test("buypart treats custom graphics as cash purchases even though they use pt=p
   assert.equal(state.playerRow.points, 25);
   assert.match(result.body, /<r s='2' b='49890' ai='/);
   assert.match(result.body, /<r s='1' b='25'>/);
-  assert.match(state.carRow.parts_xml, /i='6000'/);
+  assert.match(state.carRow.parts_xml, /i='16001'/);
   assert.match(state.carRow.parts_xml, /pi='160'/);
   assert.match(state.carRow.parts_xml, /pdi='54321'/);
   assert.match(state.carRow.parts_xml, /di='1'/);
@@ -311,10 +311,10 @@ test("buypart keeps custom graphics installed across multiple panel slots", asyn
   assert.equal(sidePurchase?.source, "supabase:buypart");
   assert.equal(state.playerRow.money, 49700);
   assert.equal(state.playerRow.points, 25);
-  assert.match(state.carRow.parts_xml, /i='6000'/);
+  assert.match(state.carRow.parts_xml, /i='16001'/);
   assert.match(state.carRow.parts_xml, /pi='160'/);
   assert.match(state.carRow.parts_xml, /pdi='11111'/);
-  assert.match(state.carRow.parts_xml, /i='6001'/);
+  assert.match(state.carRow.parts_xml, /i='16101'/);
   assert.match(state.carRow.parts_xml, /pi='161'/);
   assert.match(state.carRow.parts_xml, /pdi='22222'/);
 });

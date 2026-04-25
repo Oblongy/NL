@@ -3645,7 +3645,15 @@ async function handleBuyPart(context) {
         16201: "162",
         16301: "163",
       };
+      const installedGraphicPartIdMap = {
+        6000: 16001,
+        6001: 16101,
+        6002: 16201,
+        6003: 16301,
+      };
       const slotId = partSlotMap[partId] || String(catalogPart?.pi || "161");
+      const installedGraphicPartId = installedGraphicPartIdMap[partId] || partId;
+      const installedGraphicCatalogPart = getPartsCatalogById().get(installedGraphicPartId) || catalogPart || null;
       let resolvedDecalFileExt = decalFileExt;
 
       try {
@@ -3717,8 +3725,8 @@ async function handleBuyPart(context) {
       }
 
       const installedPartAttrs = parsePartXmlAttributes(
-        buildInstalledCatalogPartXml(catalogPart || {
-          i: String(partId),
+        buildInstalledCatalogPartXml(installedGraphicCatalogPart || {
+          i: String(installedGraphicPartId),
           pi: slotId,
           t: "c",
           n: "Custom Graphic",
@@ -3738,10 +3746,10 @@ async function handleBuyPart(context) {
           cc: "0",
           ps: "",
         }, installId, {
-          i: String(partId),
+          i: String(installedGraphicPartId),
           pi: slotId,
           t: "c",
-          di: String(catalogPart?.di || "1"),
+          di: String(installedGraphicCatalogPart?.di || "1"),
           pdi: String(decalId),
         }),
       );
@@ -3754,7 +3762,13 @@ async function handleBuyPart(context) {
       const partsXml = upsertInstalledPartXml(car.parts_xml || "", slotId, installedPartXml);
       try {
         await saveCarPartsXml(supabase, accountCarId, partsXml);
-        logger?.info("Saved custom graphic to car", { accountCarId, partId, slotId, partsXmlLength: partsXml.length });
+        logger?.info("Saved custom graphic to car", {
+          accountCarId,
+          partId,
+          installedGraphicPartId,
+          slotId,
+          partsXmlLength: partsXml.length,
+        });
       } catch (error) {
         logger?.error("Failed to save custom graphic", { error, accountCarId, partId });
       }
