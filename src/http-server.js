@@ -81,8 +81,10 @@ const pendingUploadsByRemote = new Map();
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25MB
 const CAR_NAME_BY_ID = new Map(FULL_CAR_CATALOG.map(([id, name]) => [String(id), String(name || `Car ${id}`)]));
 
-// Cleanup stale uploads every 10 minutes
-setInterval(() => {
+// Cleanup stale uploads every 10 minutes.
+// `unref()` keeps this housekeeping timer from pinning short-lived processes
+// like smoke tests that import the HTTP helpers directly.
+const pendingUploadCleanupTimer = setInterval(() => {
   const now = Date.now();
   const staleThreshold = 10 * 60 * 1000; // 10 minutes
   let cleaned = 0;
@@ -98,6 +100,7 @@ setInterval(() => {
     console.log(`[${new Date().toISOString()}] [info] Cleaned up stale uploads: ${cleaned}`);
   }
 }, 10 * 60 * 1000);
+pendingUploadCleanupTimer.unref?.();
 
 function sendText(res, statusCode, body, headers = {}) {
   res.writeHead(statusCode, {
@@ -158,12 +161,23 @@ const TOURNAMENT_KEY_DIGIT_BITMAPS = Object.freeze({
   9: ["111","101","111","001","111"],
 });
 
-function createTournamentKeyCode(aid, rid, tournamentType = "") {
+export function createTournamentKeyCode(aid, rid, tournamentType = "") {
+  // Mirror the CPU tournament dial-key shape used by the game action flow.
+  // The Flash client closes the tournament UI when the generated image shows
+  // a different key than the one returned by ctjt/ctct.
+  if (!tournamentType || tournamentType === "cpu") {
+    const digest = createHash("sha1")
+      .update(`${aid}:1:cpu`, "utf8")
+      .digest("hex");
+    const numeric = parseInt(digest.slice(0, 8), 16);
+    return String((numeric % 32) + 1);
+  }
+
   const digest = createHash("sha1")
     .update(`${aid}:${rid}:${tournamentType}`, "utf8")
     .digest("hex");
   const numeric = parseInt(digest.slice(0, 8), 16);
-  return String((numeric % 9000) + 1000);
+  return String((numeric % 32) + 1);
 }
 
 function writePngChunk(type, data) {

@@ -1,5 +1,6 @@
 import assert from 'assert';
 import { handleGameAction } from "../src/game-actions.js";
+import { createTournamentKeyCode } from "../src/http-server.js";
 import { buildLoginBody } from "../src/login-payload.js";
 import { failureBody } from "../src/game-xml.js";
 
@@ -11,6 +12,7 @@ function createTournamentSupabaseStub({
   playerId = 77,
   sessionKey = "cpu-tournament-session",
   extraPlayers = [],
+  ownedCars = [],
 } = {}) {
   const sessionRow = {
     session_key: sessionKey,
@@ -35,6 +37,31 @@ function createTournamentSupabaseStub({
       ...player,
     })),
   ];
+  const cars = ownedCars.map((car) => ({
+    selected: false,
+    paint_index: 0,
+    plate_name: "",
+    color_code: "FFFFFF",
+    image_index: 0,
+    locked: 0,
+    aero: 0,
+    wheel_xml: "",
+    parts_xml: "",
+    test_drive_invitation_id: null,
+    test_drive_name: null,
+    test_drive_money_price: null,
+    test_drive_point_price: null,
+    test_drive_expires_at: null,
+    ...car,
+  }));
+  const ownedEngines = cars.map((car, index) => ({
+    id: index + 1,
+    player_id: Number(car.player_id || playerId),
+    installed_on_car_id: Number(car.game_car_id || 0),
+    catalog_engine_part_id: 0,
+    engine_type_id: Number(car.engine_type_id || 1),
+    parts_xml: "",
+  }));
 
   function matchesFilters(row, filters) {
     return filters.every((filter) => {
@@ -93,6 +120,18 @@ function createTournamentSupabaseStub({
               error: null,
             };
           }
+          if (table === "game_cars") {
+            return {
+              data: cars.find((car) => matchesFilters(car, filters)) || null,
+              error: null,
+            };
+          }
+          if (table === "game_owned_engines") {
+            return {
+              data: ownedEngines.find((engine) => matchesFilters(engine, filters)) || null,
+              error: null,
+            };
+          }
           return { data: null, error: null };
         },
         update(updatePayload) {
@@ -123,6 +162,20 @@ function createTournamentSupabaseStub({
 
               return {
                 data: players.filter((player) => matchesFilters(player, filters)),
+                error: null,
+              };
+            }
+
+            if (table === "game_cars") {
+              return {
+                data: cars.filter((car) => matchesFilters(car, filters)),
+                error: null,
+              };
+            }
+
+            if (table === "game_owned_engines") {
+              return {
+                data: ownedEngines.filter((engine) => matchesFilters(engine, filters)),
                 error: null,
               };
             }
@@ -241,10 +294,21 @@ async function testCtstBadSession() {
   assert.strictEqual(result.source, 'supabase:ctst:bad-session');
 }
 
-async function testCtctSeedsNeutralQualifyPayload() {
+async function testCtctReturnsEngineTimingForQualifyCar() {
   const playerId = 77;
   const sessionKey = `cpu-ctct-${Date.now()}`;
-  const supabase = createTournamentSupabaseStub({ playerId, sessionKey });
+  const supabase = createTournamentSupabaseStub({
+    playerId,
+    sessionKey,
+    ownedCars: [
+      {
+        game_car_id: 909,
+        player_id: playerId,
+        catalog_car_id: 1,
+        selected: true,
+      },
+    ],
+  });
   const context = {
     action: 'ctct',
     params: new Map([
@@ -261,18 +325,37 @@ async function testCtctSeedsNeutralQualifyPayload() {
     services: {},
   };
   const result = await handleGameAction(context);
-  assert.ok(result, 'ctct should return a seeded payload when session is valid');
+  assert.ok(result, 'ctct should return an engine payload when session is valid');
   assert.ok(
-    result.body.includes(`<q><r i='${playerId}' icid='909' ci='0' cicid='0' bt='13.456' b='0'/></q>`),
-    'ctct should seed a self-paired RN-style queue payload for qualify',
+    result.body.includes(`"d", "<n2 `),
+    'ctct should return driveable engine xml for the qualifying car',
   );
-  assert.strictEqual(result.source, 'generated:ctct');
+  assert.ok(
+    result.body.includes(`"t", [`),
+    'ctct should return the timing array alongside the engine xml',
+  );
+  assert.ok(
+    !result.body.includes(`<q><r `),
+    'ctct should not return the queue-seed xml shape',
+  );
+  assert.strictEqual(result.source, 'generated:ctct:with-engine-timing');
 }
 
-async function testCtctLegacyDialKeyIncludesSeedPayload() {
+async function testCtctLegacyDialKeyReturnsEngineTiming() {
   const playerId = 78;
   const sessionKey = `cpu-ctct-legacy-${Date.now()}`;
-  const supabase = createTournamentSupabaseStub({ playerId, sessionKey });
+  const supabase = createTournamentSupabaseStub({
+    playerId,
+    sessionKey,
+    ownedCars: [
+      {
+        game_car_id: 909,
+        player_id: playerId,
+        catalog_car_id: 1,
+        selected: true,
+      },
+    ],
+  });
   const context = {
     action: 'ctct',
     params: new Map([
@@ -290,12 +373,28 @@ async function testCtctLegacyDialKeyIncludesSeedPayload() {
   };
   const result = await handleGameAction(context);
   assert.ok(result, 'ctct should return a payload for legacy dial key path');
-  assert.ok(result.body.includes(`"k", "16"`), 'ctct should preserve legacy tournament dial key response');
   assert.ok(
-    result.body.includes(`<q><r i='${playerId}' icid='909' ci='0' cicid='0' bt='12.000' b='0'/></q>`),
-    'ctct should include seeded qualify xml for legacy dial key path',
+    result.body.includes(`"d", "<n2 `),
+    'ctct should still return driveable engine xml when the client submits a numeric dial key',
   );
-  assert.strictEqual(result.source, 'generated:ctct');
+  assert.ok(
+    result.body.includes(`"t", [`),
+    'ctct should keep returning the timing array for the legacy dial key path',
+  );
+  assert.ok(
+    !result.body.includes(`"k", "16"`),
+    'ctct should not echo the numeric dial key back in the response body',
+  );
+  assert.strictEqual(result.source, 'generated:ctct:with-engine-timing');
+}
+
+async function testCpuTournamentKeyMatchesReferenceFlow() {
+  const playerId = "63";
+  const cpuKey = createTournamentKeyCode(playerId, "0", "cpu");
+  const blankTypeKey = createTournamentKeyCode(playerId, "999", "");
+
+  assert.strictEqual(cpuKey, "28", 'CPU tournament key should match the reference deterministic dial key');
+  assert.strictEqual(blankTypeKey, cpuKey, 'Missing tournament type should still follow the CPU tournament key path');
 }
 
 function createOwnedCar(overrides = {}) {
@@ -648,7 +747,7 @@ async function testCtrtLegacyDialKeyPrefersPlayerSession() {
     supabase,
     services: {},
   });
-  assert.ok(joinTournament.body.includes(`"k", "`), 'ctjt should return a generated tournament key');
+  assert.strictEqual(joinTournament.body, `"s", 1`, 'ctjt should only acknowledge success for the client');
 
   const fetchOpponent = await handleGameAction({
     action: 'ctrt',
@@ -830,8 +929,9 @@ const tests = [
   ['ctct bad session', testCtctBadSession],
   ['ctrt bad session', testCtrtBadSession],
   ['ctst bad session', testCtstBadSession],
-  ['ctct qualify seed', testCtctSeedsNeutralQualifyPayload],
-  ['ctct legacy dial key includes seed', testCtctLegacyDialKeyIncludesSeedPayload],
+  ['cpu tournament key matches reference flow', testCpuTournamentKeyMatchesReferenceFlow],
+  ['ctct returns engine timing for qualify car', testCtctReturnsEngineTimingForQualifyCar],
+  ['ctct legacy dial key returns engine timing', testCtctLegacyDialKeyReturnsEngineTiming],
   ['login payload seeds hidden tournament placeholder car', testLoginPayloadSeedsHiddenTournamentPlaceholderCar],
   ['buycar returns client purchase balances', testBuyCarReturnsClientPurchaseBalances],
   ['buycar parses formatted prices', testBuyCarParsesFormattedPrices],

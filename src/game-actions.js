@@ -6605,12 +6605,12 @@ const handlers = {
     });
 
     return {
-      body: `"s", 1, "k", "${tournamentDialKey}"`,
+      body: `"s", 1`,
       source: `generated:ctjt:tournament=${tournamentId}`,
     };
   },
   ctct: async (context) => {
-    const { params, logger } = context;
+    const { params, logger, supabase } = context;
     const tournamentKey = params.get("k") || "";
     const legacyDialKey = isLegacyDialTournamentKey(tournamentKey);
     const bracketTime = Number(params.get("bt") || 0);
@@ -6652,21 +6652,15 @@ const handlers = {
     }
     bindComputerTournamentSession(session);
 
-    const qualifySeedXml = buildComputerTournamentQualifySeedXml(session);
-    const responseTournamentKey = String(
-      tournamentKey
-      || session.lastTournamentCode
-      || session.tournamentDialKey
-      || session.sessionKey
-      || "",
-    ).replace(/"/g, "");
-    const isLegacyDialKey = isLegacyDialTournamentKey(responseTournamentKey);
-    const responseParts = [`"s", 1`];
-    if (responseTournamentKey) {
-      responseParts.push(`"k", "${responseTournamentKey}"`);
-    }
-    responseParts.push(`"d", "${qualifySeedXml}"`);
-    const responseBody = responseParts.join(", ");
+    const qualifyingCar = supabase && activeCarId > 0
+      ? await getCarById(supabase, activeCarId)
+      : null;
+    const enginePayload = qualifyingCar && Number(qualifyingCar.player_id || 0) === Number(caller.playerId)
+      ? buildDriveableEnginePayloadForCar(qualifyingCar)
+      : null;
+    const responseBody = enginePayload
+      ? `"s", 1, "d", "${enginePayload.engineXml}", "t", [${enginePayload.timing.join(", ")}]`
+      : `"s", 1`;
 
     logger.info("ctct called - saved computer tournament qualifying pass", {
       tournamentKey: session.sessionKey,
@@ -6674,9 +6668,7 @@ const handlers = {
       activeCarId,
       playerId: session.playerId,
       publicId: session.publicId,
-      responseTournamentKey,
-      qualifySeeded: Boolean(qualifySeedXml),
-      qualifySeedSuppressedForLegacyDialKey: isLegacyDialKey,
+      includesEngineTiming: Boolean(enginePayload),
     });
     logTournamentPayload(logger, "ctct", responseBody, {
       tournamentKey: session.sessionKey,
@@ -6684,14 +6676,12 @@ const handlers = {
       activeCarId,
       playerId: session.playerId,
       publicId: session.publicId,
-      responseTournamentKey,
-      qualifySeeded: Boolean(qualifySeedXml),
-      qualifySeedSuppressedForLegacyDialKey: isLegacyDialKey,
+      includesEngineTiming: Boolean(enginePayload),
     });
 
     return {
       body: responseBody,
-      source: "generated:ctct",
+      source: enginePayload ? "generated:ctct:with-engine-timing" : "generated:ctct",
     };
   },
   ctrt: async (context) => {
