@@ -221,3 +221,40 @@ test("getonecarengine still returns driveable xml and timing for catalog car 1",
   assert.match(result.body, /"t", \[/);
   assert.match(result.body, /sl='7600'/);
 });
+
+test("getonecarengine marks turbo-equipped cars as turbo in driveable engine xml", async () => {
+  const playerId = 77;
+  const sessionKey = `showroom-turbo-${Date.now()}`;
+  const supabase = createSessionSupabaseStub({
+    playerId,
+    sessionKey,
+    ownedCars: [
+      {
+        game_car_id: 910,
+        player_id: playerId,
+        catalog_car_id: 1,
+        selected: true,
+        parts_xml: "<p ai='studio_87_206' i='206' pi='87' n='Garrett Small Turbo Kit'/>",
+      },
+    ],
+  });
+
+  const result = await handleGameAction({
+    action: "getonecarengine",
+    params: new Map([
+      ["aid", String(playerId)],
+      ["sk", sessionKey],
+      ["acid", "910"],
+    ]),
+    rawQuery: "",
+    decodedQuery: "",
+    logger: createLogger(),
+    supabase,
+    services: {},
+  });
+
+  assert.ok(result, "expected getonecarengine response");
+  assert.notEqual(result.body, failureBody());
+  assert.equal(result.source, "generated:getonecarengine");
+  assert.match(result.body, /<n2[^>]* d='T'/);
+});

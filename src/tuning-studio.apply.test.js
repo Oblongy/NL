@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { mergePartsXmlBySlotIds } from "./tuning-studio.js";
+import { buildTuningStudioPreview, mergePartsXmlBySlotIds } from "./tuning-studio.js";
 
 test("mergePartsXmlBySlotIds updates only the requested tune carrier slots", () => {
   const basePartsXml = [
@@ -51,4 +51,15 @@ test("mergePartsXmlBySlotIds removes scoped parts when the preview clears that s
 
   assert.match(merged, /pi='10'/);
   assert.doesNotMatch(merged, /pi='11'/);
+});
+
+test("buildTuningStudioPreview marks turbo builds as turbo in driveable engine xml", () => {
+  const preview = buildTuningStudioPreview({
+    catalogCarId: "1",
+    selectedPartIds: {
+      "87": "206",
+    },
+  });
+
+  assert.match(preview.xml.engineXml, /<n2[^>]* d='T'/);
 });
