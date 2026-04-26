@@ -963,13 +963,21 @@ async function resolveInternalPlayerIdByPublicId(supabase, publicId) {
   return Number(directPlayer?.id || 0);
 }
 
+function normalizeSessionKeyParam(value) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized || normalized === "undefined" || normalized === "null") {
+    return "";
+  }
+  return normalized;
+}
+
 async function resolveCallerSession(context, sourceLabel) {
   const { supabase, params } = context;
   if (!supabase) {
     return null;
   }
 
-  const sessionKey = params.get("sk") || "";
+  const sessionKey = normalizeSessionKeyParam(params.get("sk"));
   const requestedPublicId = Number(params.get("aid") || 0);
   if (!sessionKey) {
     return { ok: false, body: failureBody(), source: `${sourceLabel}:missing-session` };
@@ -7605,12 +7613,45 @@ const handlers = {
     // Get player info from session
     const caller = await resolveCallerSession(context, "leaveroom");
     if (!caller?.ok) {
-      return { body: wrapSuccessData("<leave s='0'/>"), source: "leaveroom:bad-session" };
+      return { body: wrapSuccessData("<leave s='0'/>"), source: caller?.source || "leaveroom:bad-session" };
     }
 
-    const removedLiveRooms = tcpServer?.removePlayerFromRooms
-      ? tcpServer.removePlayerFromRooms(caller.playerId, { clearConnections: true })
+    const playerConnections = tcpServer?.getConnectionsByPlayerId
+      ? tcpServer.getConnectionsByPlayerId(caller.playerId)
       : [];
+    const primaryLobbyConn = tcpServer?.selectConnectionByPlayer
+      ? tcpServer.selectConnectionByPlayer(playerConnections, { excludeRaceChannels: true })
+      : playerConnections.find((connection) => !connection?.raceId) || playerConnections[0] || null;
+    const roomIdsBeforeRemoval = [...new Set(
+      playerConnections
+        .map((connection) => Number(connection?.roomId || 0))
+        .filter((roomId) => roomId > 0),
+    )];
+
+    const removedLiveRooms = tcpServer?.removePlayerFromRooms
+      ? tcpServer.removePlayerFromRooms(caller.playerId, {
+          connId: primaryLobbyConn?.id || null,
+          clearConnections: false,
+        })
+      : [];
+    if (tcpServer?.closePlayerConnectionsAfterRoomLeave) {
+      for (const roomId of roomIdsBeforeRemoval) {
+        tcpServer.closePlayerConnectionsAfterRoomLeave(caller.playerId, {
+          excludeConnId: primaryLobbyConn?.id || null,
+          roomId,
+          reason: "game-action-leaveroom",
+        });
+      }
+    }
+    const removedLiveRoomSet = new Set(removedLiveRooms.map((roomId) => Number(roomId || 0)));
+    for (const connection of playerConnections) {
+      if (!removedLiveRoomSet.has(Number(connection?.roomId || 0))) {
+        continue;
+      }
+      delete connection.kingOfHillSelection;
+      delete connection.liveTournamentSpectator;
+      connection.roomId = null;
+    }
     const removedRegistryRooms = raceRoomRegistry?.removePlayerFromAllRooms
       ? raceRoomRegistry.removePlayerFromAllRooms(caller.playerId)
       : [];
@@ -7636,7 +7677,7 @@ const handlers = {
     // Get player info from session
     const caller = await resolveCallerSession(context, "setready");
     if (!caller?.ok) {
-      return { body: wrapSuccessData("<ready s='0'/>"), source: "setready:bad-session" };
+      return { body: wrapSuccessData("<ready s='0'/>"), source: caller?.source || "setready:bad-session" };
     }
 
     // Find which room the player is in

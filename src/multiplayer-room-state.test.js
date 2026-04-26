@@ -267,3 +267,79 @@ test("leaveroom action updates live tcp rooms and clears the caller connection s
   assert.match(roomMate.messages.at(-1) || "", /^"ac", "LRCU", "d", "/);
   assert.doesNotMatch(roomMate.messages.at(-1) || "", /i='30'/);
 });
+
+test("leaveroom action closes sibling room connections for the same player after removing room membership", async () => {
+  const { server, raceRoomRegistry } = createServer();
+  const { supabase, sessionKey } = createSessionSupabaseStub({ playerId: 40, username: "ActionLeaver" });
+  const callerSocket = {
+    destroyed: false,
+    destroyCalls: 0,
+    destroy() {
+      this.destroyed = true;
+      this.destroyCalls += 1;
+    },
+  };
+  const siblingSocket = {
+    destroyed: false,
+    destroyCalls: 0,
+    destroy() {
+      this.destroyed = true;
+      this.destroyCalls += 1;
+    },
+  };
+  const callerConn = { id: 400, playerId: 40, roomId: 1, messages: [], username: "ActionLeaver", socket: callerSocket };
+  const siblingConn = { id: 401, playerId: 40, roomId: 1, messages: [], username: "ActionLeaver", socket: siblingSocket };
+  const roomMate = { id: 402, playerId: 41, roomId: 1, messages: [], username: "Watcher" };
+
+  server.connections.set(callerConn.id, callerConn);
+  server.connections.set(siblingConn.id, siblingConn);
+  server.connections.set(roomMate.id, roomMate);
+  server.rooms.set(1, [
+    { connId: callerConn.id, playerId: callerConn.playerId, username: callerConn.username, teamId: 0, clientRole: 5 },
+    { connId: siblingConn.id, playerId: siblingConn.playerId, username: siblingConn.username, teamId: 0, clientRole: 5 },
+    { connId: roomMate.id, playerId: roomMate.playerId, username: roomMate.username, teamId: 0, clientRole: 5 },
+  ]);
+  seedRegistryRoom(raceRoomRegistry, 1, server.rooms.get(1));
+
+  const result = await handleGameAction({
+    action: "leaveroom",
+    params: new Map([["sk", sessionKey]]),
+    rawQuery: "",
+    decodedQuery: "",
+    logger: createLogger(),
+    supabase,
+    services: {
+      raceRoomRegistry,
+      tcpServer: server,
+    },
+  });
+
+  assert.equal(result.source, "generated:leaveroom");
+  assert.equal(callerConn.roomId, null);
+  assert.equal(siblingConn.roomId, null);
+  assert.equal(callerSocket.destroyCalls, 0);
+  assert.equal(siblingSocket.destroyCalls, 1);
+  assert.equal(siblingSocket.destroyed, true);
+  assert.deepEqual((server.rooms.get(1) || []).map((player) => player.playerId), [41]);
+});
+
+test("leaveroom action treats literal undefined session keys as missing sessions", async () => {
+  const { server, raceRoomRegistry } = createServer();
+  const { supabase } = createSessionSupabaseStub({ playerId: 50, username: "ActionLeaver" });
+
+  const result = await handleGameAction({
+    action: "leaveroom",
+    params: new Map([["sk", "undefined"]]),
+    rawQuery: "",
+    decodedQuery: "",
+    logger: createLogger(),
+    supabase,
+    services: {
+      raceRoomRegistry,
+      tcpServer: server,
+    },
+  });
+
+  assert.equal(result.source, "leaveroom:missing-session");
+  assert.match(result.body, /<leave s='0'\/>/);
+});
