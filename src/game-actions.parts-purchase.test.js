@@ -407,6 +407,58 @@ test("buyenginepart charges points instead of money when the engine part is boug
   assert.match(state.engineRow.parts_xml, /i='215'/);
 });
 
+test("getinstalledenginepartbyaccountcar merges legacy engine-owned parts from the car row with owned engine parts", async () => {
+  const { supabase, state, sessionKey } = createPartPurchaseSupabaseStub();
+  state.engineRow.parts_xml = "<p ai='8001' i='206' pi='87'/>";
+  state.carRow.parts_xml = "<p ai='8002' i='214' pi='21'/>";
+
+  const result = await handleGameAction({
+    action: "getinstalledenginepartbyaccountcar",
+    params: new Map([
+      ["aid", String(state.playerRow.id)],
+      ["sk", sessionKey],
+      ["acid", String(state.carRow.game_car_id)],
+    ]),
+    rawQuery: "",
+    decodedQuery: "",
+    logger: createLogger(),
+    supabase,
+    services: {},
+  });
+
+  assert.equal(result?.source, "supabase:getinstalledenginepartbyaccountcar");
+  assert.match(result.body, /i='206'/);
+  assert.match(result.body, /ai='8001'/);
+  assert.match(result.body, /i='214'/);
+  assert.match(result.body, /ai='8002'/);
+});
+
+test("getinstalledenginepartbyaccountcar prefers owned engine parts over legacy car parts for the same slot", async () => {
+  const { supabase, state, sessionKey } = createPartPurchaseSupabaseStub();
+  state.engineRow.parts_xml = "<p ai='8003' i='215' pi='21'/>";
+  state.carRow.parts_xml = "<p ai='8004' i='214' pi='21'/>";
+
+  const result = await handleGameAction({
+    action: "getinstalledenginepartbyaccountcar",
+    params: new Map([
+      ["aid", String(state.playerRow.id)],
+      ["sk", sessionKey],
+      ["acid", String(state.carRow.game_car_id)],
+    ]),
+    rawQuery: "",
+    decodedQuery: "",
+    logger: createLogger(),
+    supabase,
+    services: {},
+  });
+
+  assert.equal(result?.source, "supabase:getinstalledenginepartbyaccountcar");
+  assert.match(result.body, /i='215'/);
+  assert.match(result.body, /ai='8003'/);
+  assert.doesNotMatch(result.body, /i='214'/);
+  assert.doesNotMatch(result.body, /ai='8004'/);
+});
+
 test("installed engine parts affect generated engine payload stats for getonecarengine and practice", async () => {
   const { supabase, state, sessionKey } = createPartPurchaseSupabaseStub({ money: 50000, points: 100 });
 

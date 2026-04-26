@@ -12,6 +12,23 @@ function createLogger() {
   };
 }
 
+function parseAttrs(node) {
+  return Object.fromEntries(
+    [...node.matchAll(/([a-z]+)='([^']*)'/gi)].map(([, key, value]) => [key, value]),
+  );
+}
+
+function getCategoryNodes(xml) {
+  return [...xml.matchAll(/<c\b[^>]*\/>/g)].map((match) => parseAttrs(match[0]));
+}
+
+function getCategoryNodeByName(nodes, name, parentId = null) {
+  return nodes.find((node) => (
+    node.n === name &&
+    (parentId === null || node.pi === String(parentId))
+  ));
+}
+
 test("viewshowroom keeps the applied preview paint inside paint-state xml only", async () => {
   const result = await handleGameAction({
     action: "viewshowroom",
@@ -44,62 +61,7 @@ test("viewshowroom keeps the applied preview paint inside paint-state xml only",
   }
 });
 
-test("viewshowroom only returns cars for the requested showroom tier", async () => {
-  const result = await handleGameAction({
-    action: "viewshowroom",
-    params: new Map([["lid", "100"]]),
-    rawQuery: "",
-    decodedQuery: "",
-    logger: createLogger(),
-    supabase: null,
-    services: {},
-  });
-
-  assert.equal(result.source, "generated:viewshowroom:lid=100");
-
-  const locationIds = [...result.body.matchAll(/<c\b[^>]*\bl='(\d+)'/g)].map((match) => Number(match[1]));
-  assert.ok(locationIds.length > 0, "showroom should include at least one car");
-  assert.ok(locationIds.every((locationId) => locationId === 100), "Toreno showroom should only include Toreno-tier cars");
-});
-
-test("viewshowroom without a selected category returns the mixed dealership catalog", async () => {
-  const result = await handleGameAction({
-    action: "viewshowroom",
-    params: new Map(),
-    rawQuery: "",
-    decodedQuery: "",
-    logger: createLogger(),
-    supabase: null,
-    services: {},
-  });
-
-  assert.equal(result.source, "generated:viewshowroom:lid=100");
-
-  const locationIds = [...result.body.matchAll(/<c\b[^>]*\bl='(\d+)'/g)].map((match) => Number(match[1]));
-  assert.ok(locationIds.length > 0, "showroom should include at least one car");
-  assert.ok(locationIds.includes(100), "mixed showroom should include Toreno-tier cars");
-  assert.ok(locationIds.some((locationId) => locationId !== 100), "mixed showroom should include non-Toreno tiers for category discovery");
-});
-
-test("viewshowroom accepts showroom category ids when selecting a dealer tier", async () => {
-  const result = await handleGameAction({
-    action: "viewshowroom",
-    params: new Map([["cid", "1002"]]),
-    rawQuery: "",
-    decodedQuery: "",
-    logger: createLogger(),
-    supabase: null,
-    services: {},
-  });
-
-  assert.equal(result.source, "generated:viewshowroom:lid=200");
-
-  const locationIds = [...result.body.matchAll(/<c\b[^>]*\bl='(\d+)'/g)].map((match) => Number(match[1]));
-  assert.ok(locationIds.length > 0, "showroom should include at least one car");
-  assert.ok(locationIds.every((locationId) => locationId === 200), "Newburge category should only include Newburge-tier cars");
-});
-
-test("getcarcategories preserves the legacy category flags expected by the client", async () => {
+test("getcarcategories restores the dealership category tree expected by the client", async () => {
   const result = await handleGameAction({
     action: "getcarcategories",
     params: new Map(),
@@ -111,6 +73,79 @@ test("getcarcategories preserves the legacy category flags expected by the clien
   });
 
   assert.equal(result.source, "stub:getcarcategories");
-  assert.match(result.body, /<c i='1001' pi='0' c='0' p='0' n='Toreno Showroom' cl='55AACC' l='100'\/>/);
-  assert.match(result.body, /<c i='1005' pi='0' c='0' p='0' n='Diamond Point Showroom' cl='CC55CC' l='500'\/>/);
+
+  const nodes = getCategoryNodes(result.body);
+  const oeCars = getCategoryNodeByName(nodes, "OE Cars", "0");
+  const premiumCars = getCategoryNodeByName(nodes, "Premium Cars", "0");
+  const trophyCars = getCategoryNodeByName(nodes, "Trophy Cars", "0");
+
+  assert.ok(oeCars, "dealership should expose the OE Cars root category");
+  assert.ok(premiumCars, "dealership should expose the Premium Cars root category");
+  assert.ok(trophyCars, "dealership should expose the Trophy Cars root category");
+
+  const fordMake = getCategoryNodeByName(nodes, "Ford", oeCars.i);
+  assert.ok(fordMake, "OE Cars should expose Ford as a make");
+});
+
+test("viewshowroom accepts dealership category and make node ids", async () => {
+  const categories = await handleGameAction({
+    action: "getcarcategories",
+    params: new Map(),
+    rawQuery: "",
+    decodedQuery: "",
+    logger: createLogger(),
+    supabase: null,
+    services: {},
+  });
+
+  const nodes = getCategoryNodes(categories.body);
+  const oeCars = getCategoryNodeByName(nodes, "OE Cars", "0");
+  const fordMake = getCategoryNodeByName(nodes, "Ford", oeCars.i);
+
+  const rootResult = await handleGameAction({
+    action: "viewshowroom",
+    params: new Map([["cid", oeCars.i]]),
+    rawQuery: "",
+    decodedQuery: "",
+    logger: createLogger(),
+    supabase: null,
+    services: {},
+  });
+
+  const rootNames = [...rootResult.body.matchAll(/<c\b[^>]*\bn='([^']+)'/g)].map((match) => match[1]);
+  assert.ok(rootNames.length > 0, "showroom root selection should return at least one car");
+  assert.ok(rootNames.includes("Ford GT"), "OE Cars should include the Ford GT stock model");
+
+  const makeResult = await handleGameAction({
+    action: "viewshowroom",
+    params: new Map([["cid", fordMake.i]]),
+    rawQuery: "",
+    decodedQuery: "",
+    logger: createLogger(),
+    supabase: null,
+    services: {},
+  });
+
+  const makeNames = [...makeResult.body.matchAll(/<c\b[^>]*\bn='([^']+)'/g)].map((match) => match[1]);
+  assert.ok(makeNames.length > 0, "showroom make selection should return at least one car");
+  assert.ok(makeNames.includes("Ford GT"), "Ford make selection should include the Ford GT");
+  assert.ok(!makeNames.includes("Honda S2000"), "Ford make selection should not leak unrelated makes");
+});
+
+test("viewshowroom without a selected dealership node still returns the mixed catalog", async () => {
+  const result = await handleGameAction({
+    action: "viewshowroom",
+    params: new Map(),
+    rawQuery: "",
+    decodedQuery: "",
+    logger: createLogger(),
+    supabase: null,
+    services: {},
+  });
+
+  assert.equal(result.source, "generated:viewshowroom:lid=100");
+
+  const carNames = [...result.body.matchAll(/<c\b[^>]*\bn='([^']+)'/g)].map((match) => match[1]);
+  assert.ok(carNames.includes("Acura Integra GS-R"), "mixed showroom should include entry-level stock");
+  assert.ok(carNames.includes("Ford GT"), "mixed showroom should include higher-tier stock");
 });

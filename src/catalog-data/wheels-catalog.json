@@ -223,65 +223,29 @@
       "bn": "OEM",
       "mn": "OEM Corvette Rims"
     },
-    "1060": {
-      "n": "BBS sport LM 15&quot;",
-      "b": "bbs",
-      "bn": "BBS",
-      "mn": "sport LM"
-    },
-    "1061": {
-      "n": "BBS sport LM 16&quot;",
-      "b": "bbs",
-      "bn": "BBS",
-      "mn": "sport LM"
-    },
-    "1062": {
-      "n": "BBS sport LM 17&quot;",
-      "b": "bbs",
-      "bn": "BBS",
-      "mn": "sport LM"
-    },
-    "1063": {
-      "n": "BBS sport LM 18&quot;",
-      "b": "bbs",
-      "bn": "BBS",
-      "mn": "sport LM"
-    },
-    "1064": {
-      "n": "BBS sport LM 19&quot;",
-      "b": "bbs",
-      "bn": "BBS",
-      "mn": "sport LM"
-    },
-    "1065": {
-      "n": "BBS sport LM 20&quot;",
-      "b": "bbs",
-      "bn": "BBS",
-      "mn": "sport LM"
-    },
     "1168": {
-      "n": "OEM Optional 5-spoke Alloy Wheels 15&quot;",
+      "n": "Stock OEM 15&quot;",
       "b": "oem",
       "bn": "OEM",
-      "mn": "OEM Optional 5-spoke Alloy Wheels"
+      "mn": "Stock OEM"
     },
     "1169": {
-      "n": "OEM Optional 5-spoke Alloy Wheels 16&quot;",
+      "n": "Stock OEM 16&quot;",
       "b": "oem",
       "bn": "OEM",
-      "mn": "OEM Optional 5-spoke Alloy Wheels"
+      "mn": "Stock OEM"
     },
     "1170": {
-      "n": "OEM Optional 5-spoke Alloy Wheels 17&quot;",
+      "n": "Stock OEM 17&quot;",
       "b": "oem",
       "bn": "OEM",
-      "mn": "OEM Optional 5-spoke Alloy Wheels"
+      "mn": "Stock OEM"
     },
     "1171": {
-      "n": "OEM Optional 5-spoke Alloy Wheels 18&quot;",
+      "n": "Stock OEM 18&quot;",
       "b": "oem",
       "bn": "OEM",
-      "mn": "OEM Optional 5-spoke Alloy Wheels"
+      "mn": "Stock OEM"
     },
     "1172": {
       "n": "Stock OEM 19&quot;",
@@ -330,114 +294,6 @@
       "b": "hre",
       "bn": "HRE",
       "mn": "895R Carbon Fiber"
-    },
-    "1180": {
-      "n": "HRE 441R 15&quot;",
-      "b": "hre",
-      "bn": "HRE",
-      "mn": "441R"
-    },
-    "1181": {
-      "n": "HRE 441R 16&quot;",
-      "b": "hre",
-      "bn": "HRE",
-      "mn": "441R"
-    },
-    "1182": {
-      "n": "HRE 441R 17&quot;",
-      "b": "hre",
-      "bn": "HRE",
-      "mn": "441R"
-    },
-    "1183": {
-      "n": "HRE 441R 18&quot;",
-      "b": "hre",
-      "bn": "HRE",
-      "mn": "441R"
-    },
-    "1184": {
-      "n": "HRE 441R 19&quot;",
-      "b": "hre",
-      "bn": "HRE",
-      "mn": "441R"
-    },
-    "1185": {
-      "n": "HRE 441R 20&quot;",
-      "b": "hre",
-      "bn": "HRE",
-      "mn": "441R"
-    },
-    "1186": {
-      "n": "HRE C22 15&quot;",
-      "b": "hre",
-      "bn": "HRE",
-      "mn": "C22"
-    },
-    "1187": {
-      "n": "HRE C22 16&quot;",
-      "b": "hre",
-      "bn": "HRE",
-      "mn": "C22"
-    },
-    "1188": {
-      "n": "HRE C22 17&quot;",
-      "b": "hre",
-      "bn": "HRE",
-      "mn": "C22"
-    },
-    "1189": {
-      "n": "HRE C22 18&quot;",
-      "b": "hre",
-      "bn": "HRE",
-      "mn": "C22"
-    },
-    "1190": {
-      "n": "HRE C22 19&quot;",
-      "b": "hre",
-      "bn": "HRE",
-      "mn": "C22"
-    },
-    "1191": {
-      "n": "HRE C22 20&quot;",
-      "b": "hre",
-      "bn": "HRE",
-      "mn": "C22"
-    },
-    "1192": {
-      "n": "HRE 547R 15&quot;",
-      "b": "hre",
-      "bn": "HRE",
-      "mn": "547R"
-    },
-    "1193": {
-      "n": "HRE 547R 16&quot;",
-      "b": "hre",
-      "bn": "HRE",
-      "mn": "547R"
-    },
-    "1194": {
-      "n": "HRE 547R 17&quot;",
-      "b": "hre",
-      "bn": "HRE",
-      "mn": "547R"
-    },
-    "1195": {
-      "n": "HRE 547R 18&quot;",
-      "b": "hre",
-      "bn": "HRE",
-      "mn": "547R"
-    },
-    "1196": {
-      "n": "HRE 547R 19&quot;",
-      "b": "hre",
-      "bn": "HRE",
-      "mn": "547R"
-    },
-    "1197": {
-      "n": "HRE 547R 20&quot;",
-      "b": "hre",
-      "bn": "HRE",
-      "mn": "547R"
     }
   }
 }

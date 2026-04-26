@@ -235,8 +235,31 @@ function collectInstalledEngineEntries(partsXml) {
   });
 }
 
-function buildInstalledEnginePartsXml(car) {
-  const partsXml = collectInstalledEngineEntries(car?.parts_xml || "")
+function collectEffectiveInstalledEngineEntries({ car = null, engine = null } = {}) {
+  const entriesBySlot = new Map();
+
+  const mergeEntries = (partsXml) => {
+    for (const entry of collectInstalledEngineEntries(partsXml)) {
+      const attrs = entry?.attrs || {};
+      const partId = Number(attrs.i || 0);
+      const catalogPart = partId ? getPartsCatalogById().get(partId) : null;
+      const slotId = String(attrs.pi || attrs.ci || catalogPart?.pi || "");
+      if (!slotId) {
+        continue;
+      }
+      entriesBySlot.set(slotId, entry);
+    }
+  };
+
+  mergeEntries(car?.parts_xml || "");
+  mergeEntries(car?.engine_parts_xml || "");
+  mergeEntries(car?.owned_engine?.parts_xml || "");
+  mergeEntries(engine?.parts_xml || "");
+  return [...entriesBySlot.values()];
+}
+
+function buildInstalledEnginePartsXml({ car = null, engine = null } = {}) {
+  const partsXml = collectEffectiveInstalledEngineEntries({ car, engine })
     .map((entry) => {
       const attrs = entry.attrs || {};
       const partId = Number(attrs.i || 0);
@@ -337,13 +360,13 @@ async function handleGetInstalledEnginePartByAccountCar(context) {
     return { body: `"s", 1, "d", "<n2></n2>"`, source: "generated:getinstalledenginepartbyaccountcar:no-supabase" };
   }
 
-  const { caller, engine } = await resolveOwnedEngineCar(context, params.get("aeid") || params.get("acid") || 0);
+  const { caller, car, engine } = await resolveOwnedEngineCar(context, params.get("aeid") || params.get("acid") || 0);
   if (!caller?.ok) {
     return { body: caller?.body || failureBody(), source: caller?.source || "supabase:getinstalledenginepartbyaccountcar:bad-session" };
   }
 
   return {
-    body: `"s", 1, "d", "${buildInstalledEnginePartsXml(engine)}"`,
+    body: `"s", 1, "d", "${buildInstalledEnginePartsXml({ car, engine })}"`,
     source: engine ? "supabase:getinstalledenginepartbyaccountcar" : "supabase:getinstalledenginepartbyaccountcar:no-car",
   };
 }
@@ -4370,6 +4393,12 @@ function getCatalogCarName(catalogCarId) {
   return FULL_CAR_CATALOG.find(([cid]) => Number(cid) === Number(catalogCarId))?.[1] || "Unknown";
 }
 
+function getCatalogCarLocation(catalogCarId) {
+  return Number(
+    FULL_CAR_CATALOG.find(([cid]) => Number(cid) === Number(catalogCarId))?.[3] || 0,
+  ) || 0;
+}
+
 function getCatalogCarPointPrice(catalogCarId) {
   const moneyPrice = getCatalogCarPrice(catalogCarId);
   if (moneyPrice <= 0) return -1;
@@ -4385,18 +4414,67 @@ const LOCATION_MAX_PRICE = {
   500: 999999,  // Diamond Point – all cars
 };
 
-// Dealer categories ported from scripts/data/dealers.py
-const DEALER_CATEGORIES = [
-  { i: "1001", pi: "0", n: "Toreno Showroom", cl: "55AACC", l: "100" },
-  { i: "1002", pi: "0", n: "Newburge Showroom", cl: "55CC55", l: "200" },
-  { i: "1003", pi: "0", n: "Creek Side Showroom", cl: "CCAA55", l: "300" },
-  { i: "1004", pi: "0", n: "Vista Heights Showroom", cl: "CC5555", l: "400" },
-  { i: "1005", pi: "0", n: "Diamond Point Showroom", cl: "CC55CC", l: "500" },
+const DEALERSHIP_ROOT_CATEGORIES = [
+  { key: "oe", i: "2001", pi: "0", n: "OE Cars", cl: "55AACC", l: "0" },
+  { key: "premium", i: "2002", pi: "0", n: "Premium Cars", cl: "CCAA55", l: "0" },
+  { key: "trophy", i: "2003", pi: "0", n: "Trophy Cars", cl: "CC55CC", l: "0" },
 ];
 
-const DEALER_CATEGORY_TO_LOCATION = new Map(
-  DEALER_CATEGORIES.map((category) => [Number(category.i), Number(category.l)]),
-);
+const DEALERSHIP_TROPHY_NAME_PATTERNS = [
+  /royal purple/i,
+  /race edition/i,
+  /\bsema\b/i,
+  /\ble i\b/i,
+  /\ble ii\b/i,
+  /year of the dragon/i,
+  /\brwb\b/i,
+  /widebody/i,
+  /champion/i,
+  /\bgold\b/i,
+  /ivsd2/i,
+];
+
+const DEALERSHIP_PREMIUM_PRICE_FLOOR = 200000;
+const DEALERSHIP_KNOWN_MAKES = [
+  "SLR McLaren",
+  "Mazdaspeed",
+  "Infiniti",
+  "Mitsubishi",
+  "Plymouth",
+  "Pontiac",
+  "McLaren",
+  "Hyundai",
+  "Porsche",
+  "Subaru",
+  "Toyota",
+  "Nissan",
+  "Chevy",
+  "Dodge",
+  "Honda",
+  "Ford",
+  "Scion",
+  "Mazda",
+  "Acura",
+  "Buick",
+  "VW",
+  "AMC",
+].sort((left, right) => right.length - left.length);
+
+const DEALERSHIP_MAKE_HINTS = [
+  { make: "Subaru", pattern: /\bSTI\b/i },
+  { make: "Chevy", pattern: /Camaro|Corvette|ZR1|Impala|Cobalt|S-10|C-10/i },
+  { make: "Ford", pattern: /Mustang|Shelby|Deuce Coupe|Fiesta|Taurus|RS200/i },
+  { make: "Dodge", pattern: /Challenger|Charger|Viper|Neon|Ram\b/i },
+  { make: "Nissan", pattern: /240SX|300ZX|350Z|370Z|Skyline|Sentra|Cube|GT-R/i },
+  { make: "McLaren", pattern: /\bSLR\b|722 GT/i },
+  { make: "Porsche", pattern: /\bRWB\b|993R?|911/i },
+  { make: "Scion", pattern: /FR-S|\bxB\b|\btC\b/i },
+  { make: "Mazda", pattern: /RX-7|RX-8|Furai/i },
+];
+
+const DEALERSHIP_MULTIWORD_MAKES = [
+  "SLR McLaren",
+];
 
 function getShowroomLocationForCarPrice(price) {
   const locationTiers = Object.entries(LOCATION_MAX_PRICE).sort((a, b) => Number(a[0]) - Number(b[0]));
@@ -4421,6 +4499,142 @@ function listAllShowroomCatalogCars() {
     Number(price) > 0 &&
     hasShowroomCarSpec(catalogCarId)
   ));
+}
+
+function getDealershipStockClass(name, price) {
+  const normalizedName = String(name || "").trim();
+  if (DEALERSHIP_TROPHY_NAME_PATTERNS.some((pattern) => pattern.test(normalizedName))) {
+    return "trophy";
+  }
+  if (Number(price) >= DEALERSHIP_PREMIUM_PRICE_FLOOR) {
+    return "premium";
+  }
+  return "oe";
+}
+
+function splitDealershipMakeAndModel(name) {
+  const normalizedName = String(name || "").trim();
+  if (!normalizedName) {
+    return { make: "Unknown", model: "Unknown" };
+  }
+
+  for (const multiwordMake of DEALERSHIP_MULTIWORD_MAKES) {
+    if (normalizedName.startsWith(`${multiwordMake} `)) {
+      return {
+        make: multiwordMake,
+        model: normalizedName.slice(multiwordMake.length + 1).trim() || multiwordMake,
+      };
+    }
+  }
+
+  for (const knownMake of DEALERSHIP_KNOWN_MAKES) {
+    const makePattern = new RegExp(`(?:^|\\s)${knownMake.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:\\s|$)`, "i");
+    const match = normalizedName.match(makePattern);
+    if (!match) {
+      continue;
+    }
+
+    const makeIndex = match.index ?? normalizedName.indexOf(match[0]);
+    const prefix = normalizedName.slice(0, makeIndex).trim();
+    const suffix = normalizedName.slice(makeIndex + match[0].trim().length).trim();
+    return {
+      make: knownMake,
+      model: suffix || prefix || knownMake,
+    };
+  }
+
+  for (const hint of DEALERSHIP_MAKE_HINTS) {
+    if (hint.pattern.test(normalizedName)) {
+      return {
+        make: hint.make,
+        model: normalizedName,
+      };
+    }
+  }
+
+  const [make, ...rest] = normalizedName.split(/\s+/);
+  return {
+    make,
+    model: rest.join(" ").trim() || make,
+  };
+}
+
+function compareDealershipLabels(left, right) {
+  return String(left).localeCompare(String(right), undefined, { sensitivity: "base" });
+}
+
+function buildDealershipCategoryTree() {
+  const grouped = new Map(
+    DEALERSHIP_ROOT_CATEGORIES.map((root) => [root.key, new Map()]),
+  );
+
+  for (const [catalogCarId, name, price] of listAllShowroomCatalogCars()) {
+    const stockClass = getDealershipStockClass(name, price);
+    const makeMap = grouped.get(stockClass);
+    const { make } = splitDealershipMakeAndModel(name);
+
+    if (!makeMap.has(make)) {
+      makeMap.set(make, []);
+    }
+
+    makeMap.get(make).push(Number(catalogCarId));
+  }
+
+  const categoryNodes = [];
+  const filtersById = new Map();
+  const makeCategoryIdByCarId = new Map();
+  let nextId = 2100;
+
+  for (const root of DEALERSHIP_ROOT_CATEGORIES) {
+    categoryNodes.push(root);
+    filtersById.set(String(root.i), { stockClass: root.key });
+
+    const makeEntries = [...grouped.get(root.key).entries()].sort(([left], [right]) => (
+      compareDealershipLabels(left, right)
+    ));
+
+    for (const [make, catalogCarIds] of makeEntries) {
+      const makeId = String(nextId++);
+      categoryNodes.push({
+        i: makeId,
+        pi: String(root.i),
+        n: make,
+        cl: "",
+        l: "0",
+      });
+      filtersById.set(makeId, { stockClass: root.key, make });
+
+      for (const catalogCarId of catalogCarIds) {
+        makeCategoryIdByCarId.set(String(catalogCarId), makeId);
+      }
+    }
+  }
+
+  return {
+    categoryNodes,
+    filtersById,
+    makeCategoryIdByCarId,
+  };
+}
+
+const DEALERSHIP_CATEGORY_TREE = buildDealershipCategoryTree();
+
+function listShowroomCatalogCarsForDealershipCategory(categoryId) {
+  const filter = DEALERSHIP_CATEGORY_TREE.filtersById.get(String(categoryId || ""));
+  if (!filter) {
+    return [];
+  }
+
+  return listAllShowroomCatalogCars().filter(([catalogCarId, name, price]) => {
+    const stockClass = getDealershipStockClass(name, price);
+    if (filter.stockClass && stockClass !== filter.stockClass) {
+      return false;
+    }
+    if (filter.make) {
+      return splitDealershipMakeAndModel(name).make === filter.make;
+    }
+    return true;
+  });
 }
 
 function buildGuestTestDriveOffer(locationId = 100) {
@@ -5045,11 +5259,14 @@ function buildDriveableEngineXml({
   );
 }
 
-function buildShowroomXml(locationId, starterOnly = false, includeAllDealers = false) {
+function buildShowroomXml(locationId, starterOnly = false, includeAllDealers = false, selectedCategoryId = "") {
   const targetLocationId = Number(locationId) || 100;
+  const normalizedCategoryId = String(selectedCategoryId || "").trim();
   const eligible = starterOnly
     ? listShowroomCatalogCarsForLocation(100)
-    : includeAllDealers
+    : normalizedCategoryId
+      ? listShowroomCatalogCarsForDealershipCategory(normalizedCategoryId)
+      : includeAllDealers
       ? listAllShowroomCatalogCars()
       : listShowroomCatalogCarsForLocation(targetLocationId);
 
@@ -5072,12 +5289,19 @@ function buildShowroomXml(locationId, starterOnly = false, includeAllDealers = f
       const escapedName = escapeXml(name);
       const spec = getShowroomCarSpec(cid);
       const wheelFitment = getDefaultWheelFitmentForCar(cid);
+      const catalogLocationId = getCatalogCarLocation(cid) || getShowroomLocationForCarPrice(price);
       const carLocationId = starterOnly
         ? 100
+        : normalizedCategoryId
+          ? catalogLocationId
         : includeAllDealers
-          ? getShowroomLocationForCarPrice(price)
+          ? catalogLocationId
           : targetLocationId;
-      const catId = locationToCatId[carLocationId] || 1001;
+      const catId = (
+        DEALERSHIP_CATEGORY_TREE.makeCategoryIdByCarId.get(String(cid)) ||
+        locationToCatId[carLocationId] ||
+        "1001"
+      );
       const primarySwatch = showroomColors[index % showroomColors.length];
       const purchasePrice = Number(price) || 0;
       const pointPrice = getCatalogCarPointPrice(cid);
@@ -5145,19 +5369,26 @@ async function handleListClassified(context) {
 async function handleViewShowroom(context) {
   const { params } = context;
   let locationId = Number(params.get("lid") || params.get("l") || 0);
+  let selectedCategoryId = "";
   let hasExplicitSelection = Boolean(locationId);
 
   if (!locationId) {
-    const selectedCategoryId = Number(
+    selectedCategoryId = String(
       params.get("cid")
       || params.get("catid")
       || params.get("categoryid")
       || params.get("category")
       || params.get("i")
-      || 0,
-    );
-    locationId = DEALER_CATEGORY_TO_LOCATION.get(selectedCategoryId) || 0;
-    hasExplicitSelection = Boolean(locationId);
+      || "",
+    ).trim();
+
+    if (selectedCategoryId && DEALERSHIP_CATEGORY_TREE.filtersById.has(selectedCategoryId)) {
+      hasExplicitSelection = true;
+    } else if (selectedCategoryId) {
+      locationId = Number(selectedCategoryId) || 0;
+      hasExplicitSelection = Boolean(locationId);
+      selectedCategoryId = "";
+    }
   }
 
   // Opening the showroom should not depend on the player's current city.
@@ -5165,7 +5396,7 @@ async function handleViewShowroom(context) {
   // without moving locations first.
   if (!locationId) locationId = 100;
 
-  const xml = buildShowroomXml(locationId, false, !hasExplicitSelection);
+  const xml = buildShowroomXml(locationId, false, !hasExplicitSelection, selectedCategoryId);
   return {
     body: wrapSuccessData(xml),
     source: `generated:viewshowroom:lid=${locationId}`,
@@ -5220,7 +5451,7 @@ async function handleSellCar(context) {
 }
 
 async function handleGetCarCategories(context) {
-  const catNodes = DEALER_CATEGORIES
+  const catNodes = DEALERSHIP_CATEGORY_TREE.categoryNodes
     .map((c) => `<c i='${c.i}' pi='${c.pi}' c='0' p='0' n='${escapeXml(c.n)}' cl='${c.cl}' l='${c.l}'/>`)
     .join("");
   return {
