@@ -309,7 +309,12 @@ function normalizeUserGraphicExt(value) {
 }
 
 function getContentTypeForUserDecal(filename) {
-  const normalizedExt = normalizeUserGraphicExt(extname(String(filename || "")));
+  const resolvedExt = extname(String(filename || "")).trim().toLowerCase().replace(/^\./, "");
+  if (resolvedExt === "swf") {
+    return "application/x-shockwave-flash";
+  }
+
+  const normalizedExt = normalizeUserGraphicExt(resolvedExt);
   switch (normalizedExt) {
     case "jpg":
     case "jpeg":
@@ -320,6 +325,52 @@ function getContentTypeForUserDecal(filename) {
     default:
       return "image/png";
   }
+}
+
+export function resolveUserDecalAsset(filename, options = {}) {
+  const resolvePath = options.pathResolver || userDecalPath;
+  const fileExists = options.exists || existsSync;
+  const requestedName = String(filename || "");
+  const exactPath = resolvePath(requestedName);
+
+  if (fileExists(exactPath)) {
+    return {
+      filePath: exactPath,
+      contentType: getContentTypeForUserDecal(exactPath),
+    };
+  }
+
+  const swfRequestMatch = requestedName.match(/^([0-9]+_[0-9]+)\.swf$/i);
+  if (!swfRequestMatch) {
+    return null;
+  }
+
+  const baseName = swfRequestMatch[1];
+  const legacyDecalIdMatch = baseName.match(/^[0-9]+_([0-9]+)$/);
+  for (const extension of ["png", "jpg", "jpeg", "gif"]) {
+    const aliasedPath = resolvePath(`${baseName}.${extension}`);
+    if (fileExists(aliasedPath)) {
+      return {
+        filePath: aliasedPath,
+        contentType: getContentTypeForUserDecal(aliasedPath),
+      };
+    }
+  }
+
+  if (legacyDecalIdMatch) {
+    const legacyDecalId = legacyDecalIdMatch[1];
+    for (const extension of ["png", "jpg", "jpeg", "gif"]) {
+      const legacyPath = resolvePath(`${legacyDecalId}.${extension}`);
+      if (fileExists(legacyPath)) {
+        return {
+          filePath: legacyPath,
+          contentType: getContentTypeForUserDecal(legacyPath),
+        };
+      }
+    }
+  }
+
+  return null;
 }
 
 export function getUserGraphicUploadResponseAttrs(slotKey, decalId, extension, fieldName = "") {
@@ -367,8 +418,9 @@ function serveCompatAsset(res, pathname) {
 
   const userDecalMatch = pathname.match(/^\/cache\/car\/userDecals\/([^/]+)$/i);
   if (!filePath && userDecalMatch) {
-    filePath = userDecalPath(userDecalMatch[1]);
-    contentType = getContentTypeForUserDecal(userDecalMatch[1]);
+    const resolvedUserDecal = resolveUserDecalAsset(userDecalMatch[1]);
+    filePath = resolvedUserDecal?.filePath || null;
+    contentType = resolvedUserDecal?.contentType || contentType;
   }
 
   if (!filePath && /^\/newuserform\.swf$/i.test(pathname)) {
