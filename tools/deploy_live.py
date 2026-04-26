@@ -27,6 +27,21 @@ MANIFEST_NAME = ".codex-deploy-manifest.txt"
 BACKUP_DIR_NAME = ".deploy-backups"
 
 
+def is_deployable_backend_path(relative_path: str) -> bool:
+    path = Path(relative_path).as_posix()
+    name = Path(path).name
+
+    if path in {"package.json", "package-lock.json", "ecosystem.config.cjs"}:
+        return True
+    if path.startswith("src/"):
+        return not name.endswith(".test.js")
+    if path.startswith("data/"):
+        return True
+    if path.startswith("cache/"):
+        return True
+    return False
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Sync backend changes to the live VPS and restart PM2."
@@ -127,7 +142,9 @@ def tracked_backend_files() -> list[str]:
         path = line.strip()
         if not path:
             continue
-        tracked.append(Path(path).relative_to("backend").as_posix())
+        relative_path = Path(path).relative_to("backend").as_posix()
+        if is_deployable_backend_path(relative_path):
+            tracked.append(relative_path)
     return sorted(tracked)
 
 
@@ -168,6 +185,10 @@ def explicit_backend_delta(paths: list[str]) -> tuple[set[str], set[str]]:
 
     for raw_path in paths:
         relative_path = normalize_backend_relative_path(raw_path)
+        if not is_deployable_backend_path(relative_path):
+            raise ValueError(
+                f"Refusing to deploy non-runtime backend path: {raw_path}"
+            )
         local_path = BACKEND_DIR / relative_path
         if local_path.exists():
             uploads.add(relative_path)

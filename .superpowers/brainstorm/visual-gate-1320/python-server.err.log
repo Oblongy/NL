@@ -1,0 +1,14 @@
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\Dilldo\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\http\server.py", line 1329, in <module>
+    test(
+  File "C:\Users\Dilldo\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\http\server.py", line 1276, in test
+    with ServerClass(addr, HandlerClass) as httpd:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dilldo\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\socketserver.py", line 453, in __init__
+    self.socket = socket.socket(self.address_family,
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dilldo\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\socket.py", line 233, in __init__
+    _socket.socket.__init__(self, family, type, proto, fileno)
+OSError: [WinError 10106] The requested service provider could not be loaded or initialized

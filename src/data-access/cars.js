@@ -100,7 +100,14 @@ async function repairLegacyCars(supabase, cars) {
     repairedCars.push(parseOwnedCarRecord(car));
   }
 
-  return attachOwnedEnginesToCars(supabase, repairedCars);
+  return repairedCars;
+}
+
+async function maybeAttachOwnedEngines(supabase, cars, includeOwnedEngines = true) {
+  if (!includeOwnedEngines) {
+    return cars;
+  }
+  return attachOwnedEnginesToCars(supabase, cars);
 }
 
 export async function createStarterCar(
@@ -199,11 +206,12 @@ export async function createOwnedCar(
   return normalizeOwnedCarRecord(car);
 }
 
-export async function listCarsForPlayer(supabase, playerId, requestedCarIds = []) {
+export async function listCarsForPlayer(supabase, playerId, requestedCarIds = [], options = {}) {
   if (!supabase || !playerId) {
     return [];
   }
 
+  const includeOwnedEngines = options?.includeOwnedEngines !== false;
   const ids = toNumericIds(requestedCarIds);
   let query = supabase
     .from("game_cars")
@@ -216,7 +224,8 @@ export async function listCarsForPlayer(supabase, playerId, requestedCarIds = []
 
   const cars = await manyResult(query, parseOwnedCarRecord);
   const sortedCars = ids.length > 0 ? sortByRequestedOrder(cars, ids, (car) => car.game_car_id) : cars;
-  return repairLegacyCars(supabase, sortedCars);
+  const repairedCars = await repairLegacyCars(supabase, sortedCars);
+  return maybeAttachOwnedEngines(supabase, repairedCars, includeOwnedEngines);
 }
 
 export async function ensurePlayerHasGarageCar(supabase, playerId, options = {}) {
@@ -224,12 +233,13 @@ export async function ensurePlayerHasGarageCar(supabase, playerId, options = {})
     return [];
   }
 
-  const existingCars = await listCarsForPlayer(supabase, playerId);
+  const includeOwnedEngines = options?.includeOwnedEngines !== false;
+  const existingCars = await listCarsForPlayer(supabase, playerId, [], { includeOwnedEngines });
   if (existingCars.length > 0) {
     const hasSelected = existingCars.some((car) => car.selected);
     if (!hasSelected) {
       await updatePlayerDefaultCar(supabase, playerId, existingCars[0].game_car_id);
-      return listCarsForPlayer(supabase, playerId);
+      return listCarsForPlayer(supabase, playerId, [], { includeOwnedEngines });
     }
     return existingCars;
   }
@@ -245,7 +255,7 @@ export async function ensurePlayerHasGarageCar(supabase, playerId, options = {})
     wheelXml: String(options.wheelXml || getDefaultWheelXmlForCar(catalogCarId) || DEFAULT_OWNED_STOCK_WHEEL_XML),
   });
 
-  return listCarsForPlayer(supabase, playerId);
+  return listCarsForPlayer(supabase, playerId, [], { includeOwnedEngines });
 }
 
 export async function getCarById(supabase, gameCarId) {
@@ -312,7 +322,8 @@ export async function listCarsByIds(supabase, gameCarIds = []) {
     const accountCarId = Number(car?.account_car_id || 0);
     return ids.includes(gameCarId) ? gameCarId : accountCarId;
   });
-  return repairLegacyCars(supabase, sortedCars);
+  const repairedCars = await repairLegacyCars(supabase, sortedCars);
+  return maybeAttachOwnedEngines(supabase, repairedCars, true);
 }
 
 export async function deleteCar(supabase, gameCarId) {

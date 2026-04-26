@@ -1,0 +1,894 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Nitto Legends Parts Tuning Workbench</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0d10;
+        --surface: #11151a;
+        --surface-2: #171c22;
+        --surface-3: #1d232b;
+        --field: #0d1115;
+        --line: #2a323b;
+        --line-soft: #202830;
+        --text: #edf1f4;
+        --muted: #9ba6af;
+        --faint: #6f7a84;
+        --green: #2dd17f;
+        --green-soft: rgba(45, 209, 127, 0.12);
+        --blue: #4196e8;
+        --red: #e85c5c;
+        --amber: #d7a64c;
+        --radius: 8px;
+        --shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+          linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+          var(--bg);
+        background-size: 40px 40px;
+        color: var(--text);
+        font-family: "Segoe UI", Inter, Arial, sans-serif;
+      }
+
+      main {
+        min-height: 100vh;
+        display: grid;
+        grid-template-rows: auto 1fr;
+      }
+
+      .app-header {
+        height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        padding: 0 18px;
+        border-bottom: 1px solid var(--line);
+        background: #12161b;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+      }
+
+      .brand-mark {
+        width: 17px;
+        height: 17px;
+        border-radius: 999px;
+        border: 2px solid var(--green);
+        border-left-color: transparent;
+      }
+
+      .brand strong {
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        font-size: 15px;
+      }
+
+      .brand span {
+        color: var(--green);
+      }
+
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .chip,
+      .button {
+        min-height: 32px;
+        border-radius: 7px;
+        border: 1px solid var(--line);
+        padding: 0 10px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      .chip {
+        color: var(--muted);
+        background: var(--field);
+      }
+
+      .chip b {
+        color: var(--text);
+      }
+
+      .button {
+        color: var(--text);
+        background: var(--surface-2);
+        font-weight: 650;
+      }
+
+      .button.primary {
+        border-color: rgba(45, 209, 127, 0.5);
+        background: #143522;
+        color: #dfffee;
+      }
+
+      .button.warn {
+        border-color: rgba(232, 92, 92, 0.48);
+        background: rgba(232, 92, 92, 0.12);
+        color: #ffc4c4;
+      }
+
+      .workspace {
+        display: grid;
+        grid-template-columns: 318px minmax(760px, 1fr);
+        min-height: 0;
+      }
+
+      .sidebar {
+        border-right: 1px solid var(--line);
+        background: #12161b;
+        padding: 14px;
+        overflow: auto;
+      }
+
+      .content {
+        padding: 14px;
+        overflow: auto;
+      }
+
+      .stack {
+        display: grid;
+        gap: 12px;
+      }
+
+      .panel {
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: rgba(17, 21, 26, 0.94);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .panel-head {
+        min-height: 44px;
+        padding: 0 14px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        border-bottom: 1px solid var(--line-soft);
+        background: rgba(255, 255, 255, 0.025);
+      }
+
+      .panel-head h2,
+      .section-title {
+        margin: 0;
+        color: var(--green);
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .panel-body {
+        padding: 14px;
+      }
+
+      .field,
+      select,
+      input,
+      textarea {
+        width: 100%;
+        min-height: 36px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--field);
+        color: var(--text);
+        padding: 8px 10px;
+        font: inherit;
+        font-size: 13px;
+      }
+
+      textarea {
+        min-height: 86px;
+        resize: vertical;
+        font-family: Consolas, "Courier New", monospace;
+        line-height: 1.5;
+      }
+
+      label {
+        display: block;
+        margin: 0 0 6px;
+        color: var(--muted);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+      }
+
+      .kv {
+        display: grid;
+        gap: 7px;
+      }
+
+      .kv-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .kv-row b {
+        color: var(--text);
+        font-weight: 600;
+      }
+
+      .divider {
+        height: 1px;
+        background: var(--line);
+        margin: 2px 0;
+      }
+
+      .empty {
+        color: var(--muted);
+        font-size: 13px;
+        font-style: italic;
+      }
+
+      .category-list {
+        display: grid;
+        gap: 6px;
+      }
+
+      .category {
+        min-height: 31px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 0 9px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: #12171d;
+        color: var(--text);
+        font-size: 13px;
+      }
+
+      .category span {
+        color: var(--faint);
+      }
+
+      .layout-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 390px;
+        gap: 14px;
+        align-items: start;
+      }
+
+      .wide-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(440px, 0.82fr);
+        gap: 14px;
+        align-items: start;
+        margin-top: 14px;
+      }
+
+      .chart {
+        height: 292px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background:
+          linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px),
+          linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+          #10151b;
+        background-size: 64px 42px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .chart svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      .chart-legend {
+        position: absolute;
+        right: 12px;
+        top: 10px;
+        display: flex;
+        gap: 14px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .legend-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        display: inline-block;
+        margin-right: 6px;
+      }
+
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .metric {
+        min-height: 74px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: var(--surface-2);
+        padding: 12px;
+        text-align: center;
+      }
+
+      .metric small {
+        display: block;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 11px;
+      }
+
+      .metric b {
+        display: block;
+        margin-top: 8px;
+        color: var(--green);
+        font-size: 24px;
+      }
+
+      .stat-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 7px 24px;
+      }
+
+      .subheading {
+        color: var(--faint);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin: 10px 0 8px;
+      }
+
+      .xml {
+        min-height: 82px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #202630;
+        color: #cbd8e3;
+        padding: 10px;
+        font-family: Consolas, "Courier New", monospace;
+        font-size: 11px;
+        line-height: 1.5;
+        overflow: hidden;
+      }
+
+      .parts-workbench {
+        display: grid;
+        grid-template-columns: 360px minmax(0, 1fr);
+        gap: 14px;
+      }
+
+      .part-table {
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        overflow: hidden;
+        background: #0f1318;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+
+      th,
+      td {
+        border-bottom: 1px solid var(--line-soft);
+        padding: 9px 10px;
+        text-align: left;
+        white-space: nowrap;
+      }
+
+      th {
+        color: var(--muted);
+        background: #151a20;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-size: 10px;
+      }
+
+      tr.active td {
+        background: var(--green-soft);
+      }
+
+      td.positive {
+        color: var(--green);
+      }
+
+      td.negative {
+        color: var(--red);
+      }
+
+      .editor-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .editor-grid .wide {
+        grid-column: span 2;
+      }
+
+      .editor-grid .full {
+        grid-column: 1 / -1;
+      }
+
+      .part-summary {
+        display: grid;
+        grid-template-columns: 1.1fr repeat(4, minmax(0, 112px));
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+
+      .summary-card {
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: var(--surface-2);
+        padding: 10px;
+      }
+
+      .summary-card small {
+        display: block;
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .summary-card b {
+        display: block;
+        margin-top: 5px;
+        font-size: 18px;
+      }
+
+      .tools {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .status-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .status-item {
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: var(--surface-2);
+        padding: 10px;
+      }
+
+      .status-item strong {
+        display: block;
+        font-size: 13px;
+      }
+
+      .status-item p {
+        margin: 5px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .ok strong {
+        color: var(--green);
+      }
+
+      .warn strong {
+        color: var(--amber);
+      }
+
+      .danger strong {
+        color: var(--red);
+      }
+
+      @media (max-width: 1320px) {
+        .workspace,
+        .layout-grid,
+        .wide-grid,
+        .parts-workbench {
+          grid-template-columns: 1fr;
+        }
+
+        .sidebar {
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+      }
+
+      @media (max-width: 760px) {
+        .app-header,
+        .header-actions {
+          height: auto;
+          align-items: stretch;
+          flex-direction: column;
+          padding: 10px;
+        }
+
+        .metrics,
+        .editor-grid,
+        .part-summary {
+          grid-template-columns: 1fr;
+        }
+
+        .editor-grid .wide {
+          grid-column: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header class="app-header">
+        <div class="brand">
+          <div class="brand-mark"></div>
+          <strong>Nitto Legends <span>Parts Tuning Workbench</span></strong>
+        </div>
+        <div class="header-actions">
+          <div class="chip">Session <b>Auto-attached</b></div>
+          <div class="button">Import Build</div>
+          <div class="button">Export Tuned</div>
+          <div class="button primary">Apply To Game</div>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <aside class="sidebar stack">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Select Car</h2>
+            </div>
+            <div class="panel-body stack">
+              <select>
+                <option>2001 Acura Integra GSR</option>
+              </select>
+              <div class="kv">
+                <div class="subheading">Base Stats</div>
+                <div class="kv-row"><span>HP</span><b>170</b></div>
+                <div class="kv-row"><span>Torque</span><b>128 lb-ft</b></div>
+                <div class="kv-row"><span>Weight</span><b>2643 lbs</b></div>
+                <div class="kv-row"><span>Engine</span><b>I4</b></div>
+                <div class="kv-row"><span>Drivetrain</span><b>FWD</b></div>
+                <div class="kv-row"><span>Wheels</span><b>16"</b></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Installed Parts</h2>
+              <span class="chip">0</span>
+            </div>
+            <div class="panel-body">
+              <div class="empty">No parts installed</div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Part Shop</h2>
+            </div>
+            <div class="panel-body">
+              <div class="category-list">
+                <div class="category">Wheels & Tires <span>12</span></div>
+                <div class="category">Intake <span>18</span></div>
+                <div class="category">Exhaust <span>21</span></div>
+                <div class="category">Camshaft <span>9</span></div>
+                <div class="category">Forced Induction <span>16</span></div>
+                <div class="category">ECU / Tuning <span>14</span></div>
+                <div class="category">Fuel System <span>19</span></div>
+                <div class="category">Nitrous <span>8</span></div>
+                <div class="category">Drivetrain <span>17</span></div>
+                <div class="category">Suspension <span>11</span></div>
+              </div>
+            </div>
+          </section>
+        </aside>
+
+        <section class="content">
+          <div class="layout-grid">
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Dyno Chart</h2>
+                <div class="chip">Peak TQ <b style="color: var(--blue)">128 lb-ft</b> @ 5800 RPM</div>
+                <div class="chip">Peak HP <b style="color: var(--red)">149</b> @ 7100 RPM</div>
+              </div>
+              <div class="panel-body">
+                <div class="chart">
+                  <div class="chart-legend">
+                    <span><i class="legend-dot" style="background: var(--blue)"></i>Torque</span>
+                    <span><i class="legend-dot" style="background: var(--red)"></i>Horsepower</span>
+                  </div>
+                  <svg viewBox="0 0 900 292" preserveAspectRatio="none" aria-label="Dyno chart">
+                    <path d="M34 214 C110 214 116 206 124 178 C220 150 290 125 375 106 C490 88 595 82 690 88 C752 94 808 106 866 124" fill="none" stroke="#4196e8" stroke-width="3"/>
+                    <path d="M34 284 C132 276 214 242 304 204 C428 152 532 98 626 66 C695 42 756 30 866 27" fill="none" stroke="#e85c5c" stroke-width="3"/>
+                    <line x1="34" y1="250" x2="866" y2="250" stroke="rgba(255,255,255,.12)"/>
+                    <line x1="34" y1="188" x2="866" y2="188" stroke="rgba(255,255,255,.08)"/>
+                    <line x1="34" y1="126" x2="866" y2="126" stroke="rgba(255,255,255,.08)"/>
+                    <line x1="34" y1="64" x2="866" y2="64" stroke="rgba(255,255,255,.08)"/>
+                  </svg>
+                </div>
+              </div>
+            </section>
+
+            <section class="stack">
+              <section class="panel">
+                <div class="panel-head">
+                  <h2>Quarter-Mile Estimate</h2>
+                </div>
+                <div class="panel-body">
+                  <div class="metrics">
+                    <div class="metric"><small>ET</small><b>15.340s</b></div>
+                    <div class="metric"><small>Trap Speed</small><b style="color: var(--blue)">97.4 MPH</b></div>
+                    <div class="metric"><small>0-60</small><b style="color: var(--amber)">6.81s</b></div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="panel">
+                <div class="panel-head">
+                  <h2>Validation</h2>
+                </div>
+                <div class="panel-body status-list">
+                  <div class="status-item ok">
+                    <strong>Session resolved automatically</strong>
+                    <p>Latest active game session maps to the player and garage without manual key entry.</p>
+                  </div>
+                  <div class="status-item warn">
+                    <strong>No installed tuning carrier</strong>
+                    <p>Boost, AFR, and gear values preview now; apply requires the matching carrier part.</p>
+                  </div>
+                </div>
+              </section>
+            </section>
+          </div>
+
+          <div class="wide-grid">
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Engine Stats</h2>
+              </div>
+              <div class="panel-body">
+                <div class="stat-grid">
+                  <div class="kv-row"><span>Total Weight</span><b>2643 lbs</b></div>
+                  <div class="kv-row"><span>P/W Ratio</span><b>0.056 hp/lb</b></div>
+                  <div class="kv-row"><span>Red Line</span><b>7600 RPM</b></div>
+                  <div class="kv-row"><span>Rev Limiter</span><b>7800 RPM</b></div>
+                  <div class="kv-row"><span>Shift Light</span><b>7200 RPM</b></div>
+                  <div class="kv-row"><span>Tire Radius</span><b>1.083 ft (16")</b></div>
+                </div>
+                <div class="divider"></div>
+                <div class="subheading">Gear Ratios</div>
+                <div class="stat-grid">
+                  <div class="kv-row"><span>1st</span><b>3.587</b></div>
+                  <div class="kv-row"><span>2nd</span><b>2.022</b></div>
+                  <div class="kv-row"><span>3rd</span><b>1.384</b></div>
+                  <div class="kv-row"><span>4th</span><b>1.000</b></div>
+                  <div class="kv-row"><span>5th</span><b>0.861</b></div>
+                  <div class="kv-row"><span>Final Drive</span><b>4.058</b></div>
+                </div>
+                <div class="divider"></div>
+                <div class="subheading">Special Systems</div>
+                <div class="stat-grid">
+                  <div class="kv-row"><span>NOS</span><b>None</b></div>
+                  <div class="kv-row"><span>Turbo/SC</span><b>None</b></div>
+                  <div class="kv-row"><span>ECU Chip</span><b>Stock</b></div>
+                  <div class="kv-row"><span>Fuel Flow</span><b>1.0</b></div>
+                  <div class="kv-row"><span>Air Flow</span><b>1.0</b></div>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Export</h2>
+              </div>
+              <div class="panel-body stack">
+                <div class="button primary">Export This Car</div>
+                <div>
+                  <div class="subheading">Engine XML Preview</div>
+                  <div class="xml">
+&lt;n2 es='1' sl='7200' sg='0' rc='0' tmp='0' r='2643' v='0' a='6800'
+n='7600' o='7800' s='1.083' b='0' p='0.15' c='0' e='0' d='N'
+f='3.587' g='2.022' h='1.384' i='1' j='0.861' k='0' l='4.058'
+q='0' m='0' t='0' u='10' w='0' x='0' y='1' z='1' aa='4' /&gt;
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <section class="panel" style="margin-top: 14px;">
+            <div class="panel-head">
+              <h2>All Parts Database Editor</h2>
+              <div class="header-actions">
+                <div class="chip">Every catalog part</div>
+                <div class="button">Clone Part</div>
+                <div class="button">Reset Attrs</div>
+                <div class="button primary">Apply Part Edit</div>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="part-summary">
+                <div class="summary-card">
+                  <small>Selected Part</small>
+                  <b>Large Turbo Kit</b>
+                </div>
+                <div class="summary-card"><small>Slot</small><b>Forced Induction</b></div>
+                <div class="summary-card"><small>HP</small><b style="color: var(--green)">+85</b></div>
+                <div class="summary-card"><small>Torque</small><b style="color: var(--green)">+62</b></div>
+                <div class="summary-card"><small>Weight</small><b>+31</b></div>
+              </div>
+
+              <div class="parts-workbench">
+                <div class="stack">
+                  <div class="field">Search all parts by name, slot, brand, ID, HP, TQ, weight...</div>
+                  <div class="part-table">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>ID</th>
+                          <th>Name</th>
+                          <th>Slot</th>
+                          <th>HP</th>
+                          <th>TQ</th>
+                          <th>WT</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr class="active">
+                          <td>847</td>
+                          <td>Large Turbo Kit</td>
+                          <td>87</td>
+                          <td class="positive">+85</td>
+                          <td class="positive">+62</td>
+                          <td>31</td>
+                        </tr>
+                        <tr>
+                          <td>623</td>
+                          <td>ECU Tune Stage 3</td>
+                          <td>2006</td>
+                          <td class="positive">+24</td>
+                          <td class="positive">+18</td>
+                          <td>0</td>
+                        </tr>
+                        <tr>
+                          <td>512</td>
+                          <td>Nitrous 150 Shot</td>
+                          <td>174</td>
+                          <td class="positive">+150</td>
+                          <td class="positive">+90</td>
+                          <td>18</td>
+                        </tr>
+                        <tr>
+                          <td>339</td>
+                          <td>Pro Drag Suspension</td>
+                          <td>77</td>
+                          <td>0</td>
+                          <td>0</td>
+                          <td class="negative">-12</td>
+                        </tr>
+                        <tr>
+                          <td>221</td>
+                          <td>Performance Headers</td>
+                          <td>59</td>
+                          <td class="positive">+18</td>
+                          <td class="positive">+14</td>
+                          <td>7</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div class="stack">
+                  <div class="editor-grid">
+                    <div class="wide">
+                      <label>Part Name</label>
+                      <input value="Large Turbo Kit" />
+                    </div>
+                    <div>
+                      <label>Part ID</label>
+                      <input value="847" />
+                    </div>
+                    <div>
+                      <label>Slot / pi</label>
+                      <input value="87" />
+                    </div>
+                    <div>
+                      <label>Brand</label>
+                      <input value="Legend" />
+                    </div>
+                    <div>
+                      <label>Model</label>
+                      <input value="T76" />
+                    </div>
+                    <div>
+                      <label>Design Tier</label>
+                      <input value="5" />
+                    </div>
+                    <div>
+                      <label>Location</label>
+                      <input value="100" />
+                    </div>
+                    <div>
+                      <label>Horsepower</label>
+                      <input value="85" />
+                    </div>
+                    <div>
+                      <label>Torque</label>
+                      <input value="62" />
+                    </div>
+                    <div>
+                      <label>Weight</label>
+                      <input value="31" />
+                    </div>
+                    <div>
+                      <label>Cash Price</label>
+                      <input value="14500" />
+                    </div>
+                    <div>
+                      <label>Point Price</label>
+                      <input value="145" />
+                    </div>
+                    <div>
+                      <label>Wear / Life</label>
+                      <input value="100" />
+                    </div>
+                    <div class="full">
+                      <label>Raw Attribute Overrides</label>
+                      <textarea>n=Large Turbo Kit
+hp=85
+tq=62
+wt=31
+di=5
+bn=Legend
+mn=T76</textarea>
+                    </div>
+                  </div>
+
+                  <div class="tools">
+                    <div class="button">Preview Part XML</div>
+                    <div class="button">Install On Current Build</div>
+                    <div class="button">Save As Preset</div>
+                    <div class="button warn">Force Invalid Attrs</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

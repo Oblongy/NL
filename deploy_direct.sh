@@ -27,8 +27,28 @@ echo "Syncing files to VPS..."
 rsync -avz --delete \
     --exclude 'node_modules/' \
     --exclude '.git/' \
+    --exclude '.agents/' \
+    --exclude '.claude/' \
+    --exclude '.gitnexus/' \
+    --exclude '.superpowers/' \
     --exclude '.env' \
+    --exclude '.env.*' \
     --exclude '*.log' \
+    --exclude '*.err' \
+    --exclude '*.out' \
+    --exclude 'hs_err_pid*' \
+    --exclude '*.md' \
+    --exclude '*.csv' \
+    --exclude '*.txt' \
+    --exclude '.codex-deploy-manifest.txt' \
+    --exclude 'railway.json' \
+    --exclude 'oblong-rebuild-result.json' \
+    --exclude 'pass.bat' \
+    --exclude 'query_roles.js' \
+    --exclude 'test-*.js' \
+    --exclude 'tests/' \
+    --exclude 'tools/' \
+    --exclude 'supabase/' \
     --exclude '.deploy-backups/' \
     --exclude 'fixtures/' \
     "$LOCAL_BACKEND_DIR/" \

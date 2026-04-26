@@ -2852,6 +2852,7 @@ async function handleLogin(context) {
       catalogCarId: DEFAULT_STARTER_CATALOG_CAR_ID,
       wheelXml: getDefaultWheelXmlForCar(DEFAULT_STARTER_CATALOG_CAR_ID),
       partsXml: DEFAULT_STOCK_PARTS_XML,
+      includeOwnedEngines: false,
     });
     const garageCars = decorateCarsWithTestDriveState(player.id, cars);
     const sessionKey = await createLoginSession({ supabase, playerId: player.id });
@@ -3131,6 +3132,7 @@ async function handleGetAllOtherUserCars(context) {
         catalogCarId: DEFAULT_STARTER_CATALOG_CAR_ID,
         wheelXml: getDefaultWheelXmlForCar(DEFAULT_STARTER_CATALOG_CAR_ID),
         partsXml: DEFAULT_STOCK_PARTS_XML,
+        includeOwnedEngines: false,
       }), {
         ownerPublicId: getPublicIdForPlayer(targetPlayer),
       }),
@@ -3254,6 +3256,7 @@ async function handleGetAllCars(context) {
     catalogCarId: DEFAULT_STARTER_CATALOG_CAR_ID,
     wheelXml: getDefaultWheelXmlForCar(DEFAULT_STARTER_CATALOG_CAR_ID),
     partsXml: DEFAULT_STOCK_PARTS_XML,
+    includeOwnedEngines: false,
   });
   const garageCars = decorateCarsWithTestDriveState(caller.playerId, cars);
 
@@ -3301,6 +3304,7 @@ async function handleGetOneCar(context) {
     catalogCarId: DEFAULT_STARTER_CATALOG_CAR_ID,
     wheelXml: getDefaultWheelXmlForCar(DEFAULT_STARTER_CATALOG_CAR_ID),
     partsXml: DEFAULT_STOCK_PARTS_XML,
+    includeOwnedEngines: false,
   });
   const garageCars = decorateCarsWithTestDriveState(caller.playerId, cars);
   const resolvedCar = (
@@ -4400,6 +4404,10 @@ const DEALER_CATEGORIES = [
   { i: "1005", pi: "0", n: "Diamond Point Showroom", cl: "CC55CC", l: "500" },
 ];
 
+const DEALER_CATEGORY_TO_LOCATION = new Map(
+  DEALER_CATEGORIES.map((category) => [Number(category.i), Number(category.l)]),
+);
+
 function getShowroomLocationForCarPrice(price) {
   const locationTiers = Object.entries(LOCATION_MAX_PRICE).sort((a, b) => Number(a[0]) - Number(b[0]));
   for (const [locationId, maxPrice] of locationTiers) {
@@ -5001,24 +5009,9 @@ function buildDriveableEngineXml({ catalogCarId, gearRatios = null, engineTypeId
 
 function buildShowroomXml(locationId, starterOnly = false) {
   const targetLocationId = Number(locationId) || 100;
-
-  // Show all cars at every location — players can buy any car regardless of where they live.
-  // For starter showroom, restrict to the cheapest tier only.
-  const locationTiers = Object.entries(LOCATION_MAX_PRICE).sort((a, b) => Number(a[0]) - Number(b[0]));
-  const getCarLocation = (price) => {
-    for (const [lid, maxP] of locationTiers) {
-      if (Number(price) <= maxP) return Number(lid);
-    }
-    return 500;
-  };
-
-  const eligible = FULL_CAR_CATALOG.filter(([catalogCarId, , price]) => {
-    const numPrice = Number(price);
-    if (numPrice <= 0) return false;
-    if (!hasShowroomCarSpec(catalogCarId)) return false;
-    if (starterOnly) return getCarLocation(numPrice) === 100;
-    return true; // all priced cars available at every location
-  });
+  const eligible = starterOnly
+    ? listShowroomCatalogCarsForLocation(100)
+    : listShowroomCatalogCarsForLocation(targetLocationId);
 
   const locationToCatId = { 100: 1001, 200: 1002, 300: 1003, 400: 1004, 500: 1005 };
 
@@ -5039,7 +5032,7 @@ function buildShowroomXml(locationId, starterOnly = false) {
       const escapedName = escapeXml(name);
       const spec = getShowroomCarSpec(cid);
       const wheelFitment = getDefaultWheelFitmentForCar(cid);
-      const carLocationId = starterOnly ? 100 : getCarLocation(price);
+      const carLocationId = starterOnly ? 100 : targetLocationId;
       const catId = locationToCatId[carLocationId] || 1001;
       const primarySwatch = showroomColors[index % showroomColors.length];
       const purchasePrice = Number(price) || 0;
@@ -5109,6 +5102,18 @@ async function handleViewShowroom(context) {
   const { params } = context;
   let locationId = Number(params.get("lid") || params.get("l") || 0);
 
+  if (!locationId) {
+    const selectedCategoryId = Number(
+      params.get("cid")
+      || params.get("catid")
+      || params.get("categoryid")
+      || params.get("category")
+      || params.get("i")
+      || 0,
+    );
+    locationId = DEALER_CATEGORY_TO_LOCATION.get(selectedCategoryId) || 0;
+  }
+
   // Opening the showroom should not depend on the player's current city.
   // Default to the first category so players can browse the full catalog
   // without moving locations first.
@@ -5170,7 +5175,7 @@ async function handleSellCar(context) {
 
 async function handleGetCarCategories(context) {
   const catNodes = DEALER_CATEGORIES
-    .map((c) => `<c i='${c.i}' pi='${c.pi}' n='${escapeXml(c.n)}' cl='${c.cl}' l='${c.l}'/>`)
+    .map((c) => `<c i='${c.i}' pi='${c.pi}' c='0' p='0' n='${escapeXml(c.n)}' cl='${c.cl}' l='${c.l}'/>`)
     .join("");
   return {
     body: wrapSuccessData(`<cats>${catNodes}</cats>`),
@@ -6196,7 +6201,7 @@ async function handleGetInfo(context) {
 
   const [playerRecord, cars] = await Promise.all([
     getPlayerById(supabase, caller.playerId),
-    listCarsForPlayer(supabase, caller.playerId),
+    listCarsForPlayer(supabase, caller.playerId, [], { includeOwnedEngines: false }),
   ]);
 
   if (!playerRecord) {
