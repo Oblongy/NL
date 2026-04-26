@@ -171,6 +171,19 @@ test("catalog car 1 showroom spec exposes the B18C1 stock engine label", () => {
   assert.equal(getRedLine(spec.eo, spec.tt), 7600);
 });
 
+test("catalog car 102 uses its own showroom spec instead of borrowing spec 101", () => {
+  const spec = getShowroomCarSpec(102);
+
+  assert.ok(spec, "expected showroom spec for catalog car 102");
+  assert.equal(spec.y, "2006");
+  assert.equal(spec.eo, "5.4L V8 SC");
+  assert.equal(spec.dt, "RWD");
+  assert.equal(spec.tt, "5-speed automatic");
+  assert.equal(spec.sw, "3858");
+  assert.equal(spec.st, "11.2");
+  assert.equal(spec.hp, 617);
+});
+
 test("getonecarengine still returns driveable xml and timing for catalog car 1", async () => {
   const playerId = 77;
   const sessionKey = `showroom-b18c1-${Date.now()}`;

@@ -47,6 +47,7 @@
   "98": { "y": "1994", "eo": "2.6L I6 TT", "dt": "AWD", "np": "2", "ct": "Coupe", "et": "276 hp", "tt": "5-speed manual", "sw": "3150", "st": "12.6", "hp": 276, "tq": 260 },
   "99": { "y": "2003", "eo": "1.8L", "dt": "FWD", "np": "4", "ct": "Liftback", "et": "180 hp", "tt": "6-speed manual", "sw": "2500", "st": "15.0", "hp": 180 },
   "101": { "y": "2012", "eo": "3.8L V6 TT", "dt": "AWD", "np": "2", "ct": "Coupe", "et": "530 hp", "tt": "6-speed manual", "sw": "3840", "st": "11.6", "hp": 530, "tq": 425 },
+  "102": { "y": "2006", "eo": "5.4L V8 SC", "dt": "RWD", "np": "2", "ct": "Coupe", "et": "617 hp", "tt": "5-speed automatic", "sw": "3858", "st": "11.2", "hp": 617 },
   "109": { "y": "2010", "eo": "8.4L V10", "dt": "RWD", "np": "2", "ct": "Coupe", "et": "600 hp", "tt": "6-speed manual", "sw": "3350", "st": "11.1", "hp": 600, "tq": 560 },
   "124": { "y": "2008", "eo": "8.0L V10", "dt": "RWD", "np": "2", "ct": "Roadster", "et": "500 hp", "tt": "6-speed manual", "sw": "3380", "st": "11.0", "hp": 500, "tq": 490 }
 }

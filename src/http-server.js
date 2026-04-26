@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { deflateSync } from "node:zlib";
 import { decodeGameCodeQuery, encryptPayload } from "./nitto-cipher.js";
 import { handleGameAction } from "./game-actions.js";
-import { getSessionPlayerId } from "./session.js";
+import { getMostRecentActiveSession, getSessionPlayerId } from "./session.js";
 import {
   getCarById,
   getPlayerById,
@@ -456,6 +456,23 @@ async function resolveStudioSessionGarage(supabase, sessionKey) {
   };
 }
 
+async function resolveLatestStudioSessionGarage(supabase) {
+  const latestSession = await getMostRecentActiveSession({ supabase });
+  if (!latestSession?.session_key) {
+    return null;
+  }
+
+  const sessionGarage = await resolveStudioSessionGarage(supabase, latestSession.session_key);
+  if (!sessionGarage) {
+    return null;
+  }
+
+  return {
+    sessionKey: String(latestSession.session_key || ""),
+    ...sessionGarage,
+  };
+}
+
 async function applyTuningStudioBuild(supabase, payload = {}) {
   const sessionKey = String(payload.sessionKey || payload.sk || "").trim();
   if (!supabase || !sessionKey) {
@@ -882,6 +899,22 @@ export function createHttpServer({ config, logger, supabase, services = {}, fixt
           ...sessionGarage,
         }, {
           "X-Nitto-Source": "generated:tuning-studio:session",
+        });
+        return;
+      }
+
+      if (requestUrl.pathname === "/api/tuning-studio/session/current") {
+        const sessionGarage = await resolveLatestStudioSessionGarage(supabase);
+        if (!sessionGarage) {
+          sendJson(res, 404, { ok: false, error: "session-not-found" });
+          return;
+        }
+
+        sendJson(res, 200, {
+          ok: true,
+          ...sessionGarage,
+        }, {
+          "X-Nitto-Source": "generated:tuning-studio:session:current",
         });
         return;
       }

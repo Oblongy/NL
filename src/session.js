@@ -16,6 +16,22 @@ async function maybeSingle(query, parser = (value) => value) {
   return data ? parser(data) : null;
 }
 
+export async function getMostRecentActiveSession({ supabase } = {}) {
+  if (!supabase) {
+    return null;
+  }
+
+  return maybeSingle(
+    supabase
+      .from("game_sessions")
+      .select("session_key, player_id, created_at, last_seen_at")
+      .gte("last_seen_at", sessionTtlCutoff())
+      .order("last_seen_at", { ascending: false })
+      .limit(1),
+    parseSessionRecord,
+  );
+}
+
 export async function getSessionPlayerId({ supabase, sessionKey }) {
   if (!supabase || !sessionKey) {
     return 0;

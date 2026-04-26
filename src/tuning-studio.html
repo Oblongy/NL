@@ -2224,7 +2224,7 @@
 
         elements.sessionPlayer.innerHTML = `
           <strong>${escapeHtml(player.username || "Unknown Player")}</strong>
-          <span>Player ${escapeHtml(player.playerId)} / default car ${escapeHtml(player.defaultCarGameId || 0)}</span>
+          <span>Player ${escapeHtml(player.playerId)} / default car ${escapeHtml(player.defaultCarGameId || 0)} / session ${escapeHtml(state.session.sessionKey || "n/a")}</span>
         `;
 
         elements.garageCount.textContent = `${matchingCars.length} matching cars`;
@@ -2433,6 +2433,40 @@
         renderSession();
       }
 
+      async function autoConnectSessionFromLogin() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const sessionKey = String(urlParams.get("sk") || "").trim();
+        if (sessionKey) {
+          elements.sessionKey.value = sessionKey;
+          await loadSession();
+          return;
+        }
+
+        const response = await fetch("/api/tuning-studio/session/current");
+        if (!response.ok) {
+          if (response.status === 404) {
+            return;
+          }
+          const body = await response.text();
+          throw new Error(body || `session bootstrap failed (${response.status})`);
+        }
+
+        const payload = await response.json();
+        const latestSessionKey = String(payload.sessionKey || "").trim();
+        if (!latestSessionKey) {
+          return;
+        }
+
+        elements.sessionKey.value = latestSessionKey;
+        state.session.sessionKey = latestSessionKey;
+        state.session.player = payload.player || null;
+        state.session.cars = payload.cars || [];
+        state.session.targetGameCarId = "";
+        syncGarageTarget();
+        elements.sessionStatus.textContent = `Connected ${payload.player?.username || "session"}`;
+        renderSession();
+      }
+
       async function applyBuildToGame() {
         if (!state.preview || !state.session.sessionKey || !state.session.targetGameCarId) {
           return;
@@ -2520,7 +2554,10 @@
         });
       });
 
-      loadCatalog().catch((error) => {
+      Promise.all([
+        loadCatalog(),
+        autoConnectSessionFromLogin(),
+      ]).catch((error) => {
         elements.buildStatus.textContent = "Catalog failed";
         elements.previewStatus.textContent = "Catalog failed";
         elements.warnings.innerHTML = `<li><strong>Warning:</strong> ${escapeHtml(error.message)}</li>`;
