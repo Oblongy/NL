@@ -73,7 +73,7 @@ function bindRace(server, { sequenceStarted, lastStateUpdate, roomId = 5 } = {})
   return { race, senderConn, opponentConn };
 }
 
-test("handleRaceTelemetry does not relay prelaunch S frames before the race sequence starts", () => {
+test("handleRaceTelemetry treats quiet -13 prelaunch S frames as staged without relaying before the race sequence starts", () => {
   const server = createServer();
   const { opponentConn, senderConn, race } = bindRace(server, {
     sequenceStarted: false,
@@ -83,7 +83,7 @@ test("handleRaceTelemetry does not relay prelaunch S frames before the race sequ
 
   assert.deepEqual(opponentConn.messages, []);
   assert.equal(opponentConn.socket.rawWrites, 0);
-  assert.equal(race.players[0].isStaged, false);
+  assert.equal(race.players[0].isStaged, true);
 });
 
 test("handleRaceTelemetry uses the race track when open is inferred from telemetry", () => {
@@ -99,7 +99,7 @@ test("handleRaceTelemetry uses the race track when open is inferred from telemet
   assert.equal(senderConn.messages[0], '"ac", "RO", "t", 44');
 });
 
-test("handleRaceTelemetry does not relay prelaunch team rivals frames before the race starts", () => {
+test("handleRaceTelemetry treats quiet -13 prelaunch team rivals frames as staged without relaying before the race starts", () => {
   const server = createServer();
   const { opponentConn, senderConn, race } = bindRace(server, {
     sequenceStarted: false,
@@ -110,7 +110,7 @@ test("handleRaceTelemetry does not relay prelaunch team rivals frames before the
 
   assert.deepEqual(opponentConn.messages, []);
   assert.equal(opponentConn.socket.rawWrites, 0);
-  assert.equal(race.players[0].isStaged, false);
+  assert.equal(race.players[0].isStaged, true);
 });
 
 test("handleRaceTelemetry relays live I frames as IO with the tick preserved", () => {
@@ -144,7 +144,7 @@ test("handleRaceTelemetry relays live team rivals frames as IO once the race sta
   assert.equal(opponentConn.socket.rawWrites, 0);
 });
 
-test("handleRaceTelemetry does not relay prelaunch koth frames before the race starts", () => {
+test("handleRaceTelemetry treats quiet -13 prelaunch koth frames as staged without relaying before the race starts", () => {
   const server = createServer();
   const { opponentConn, senderConn, race } = bindRace(server, {
     sequenceStarted: false,
@@ -155,7 +155,7 @@ test("handleRaceTelemetry does not relay prelaunch koth frames before the race s
 
   assert.deepEqual(opponentConn.messages, []);
   assert.equal(opponentConn.socket.rawWrites, 0);
-  assert.equal(race.players[0].isStaged, false);
+  assert.equal(race.players[0].isStaged, true);
 });
 
 test("handleRaceMeta does not relay MO until the race sequence has started", () => {

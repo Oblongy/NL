@@ -2017,9 +2017,16 @@ export class TcpServer {
       Number(sender.playerId),
       Number(race.telemetryCountsByPlayer.get(Number(sender.playerId)) || 0) + 1,
     );
-    sender.isStaged = this.isStagedDistance(sender.lastDistance, {
-      includeIdleMarker: useAuthoritativeSync,
-    });
+    sender.isStaged =
+      this.isStagedDistance(sender.lastDistance, {
+        includeIdleMarker: useAuthoritativeSync,
+      }) ||
+      (useAuthoritativeSync &&
+        this.isStationaryPrelaunchState(
+          sender.lastDistance,
+          numericVelocity,
+          numericAcceleration,
+        ));
     if (!sender.isStaged) {
       sender.stagedSince = 0;
       race.allStagedSince = 0;
