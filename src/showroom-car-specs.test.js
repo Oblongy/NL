@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { getDefaultPartsXmlForCar } from "./car-defaults.js";
 import { handleGameAction } from "./game-actions.js";
 import { getRedLine } from "./engine-physics.js";
 import { failureBody } from "./game-xml.js";
-import { getShowroomCarSpec } from "./showroom-car-specs.js";
+import { getShowroomCarInduction, getShowroomCarSpec } from "./showroom-car-specs.js";
 
 function createLogger() {
   return {
@@ -50,6 +51,14 @@ function createSessionSupabaseStub({
     test_drive_expires_at: null,
     ...car,
   }));
+  const engines = cars.map((car, index) => ({
+    id: index + 1,
+    player_id: Number(car.player_id || playerId),
+    installed_on_car_id: Number(car.game_car_id || 0),
+    catalog_engine_part_id: 0,
+    engine_type_id: Number(car.engine_type_id || 1),
+    parts_xml: String(car.engine_parts_xml || ""),
+  }));
 
   function matchesFilters(row, filters) {
     return filters.every((filter) => {
@@ -65,6 +74,40 @@ function createSessionSupabaseStub({
       const filters = [];
       let mode = "select";
       let payload = null;
+      const runQuery = async () => {
+        if (table === "game_sessions" && mode === "update") {
+          if (matchesFilters(sessionRow, filters)) {
+            Object.assign(sessionRow, payload || {});
+          }
+          return { data: [sessionRow], error: null };
+        }
+        if (table === "game_cars") {
+          return {
+            data: cars.filter((car) => matchesFilters(car, filters)),
+            error: null,
+          };
+        }
+        if (table === "game_players") {
+          return {
+            data: matchesFilters(playerRow, filters) ? [playerRow] : [],
+            error: null,
+          };
+        }
+        if (table === "game_owned_engines") {
+          if (mode === "update") {
+            for (const engine of engines) {
+              if (matchesFilters(engine, filters)) {
+                Object.assign(engine, payload || {});
+              }
+            }
+          }
+          return {
+            data: engines.filter((engine) => matchesFilters(engine, filters)),
+            error: null,
+          };
+        }
+        return { data: [], error: null };
+      };
       const query = {
         select() {
           return query;
@@ -104,14 +147,6 @@ function createSessionSupabaseStub({
             };
           }
           if (table === "game_owned_engines") {
-            const engines = cars.map((car, index) => ({
-              id: index + 1,
-              player_id: Number(car.player_id || playerId),
-              installed_on_car_id: Number(car.game_car_id || 0),
-              catalog_engine_part_id: 0,
-              engine_type_id: Number(car.engine_type_id || 1),
-              parts_xml: "",
-            }));
             return {
               data: engines.find((engine) => matchesFilters(engine, filters)) || null,
               error: null,
@@ -119,43 +154,15 @@ function createSessionSupabaseStub({
           }
           return { data: null, error: null };
         },
-        then(resolve, reject) {
-          const runner = async () => {
-            if (table === "game_sessions" && mode === "update") {
-              if (matchesFilters(sessionRow, filters)) {
-                Object.assign(sessionRow, payload || {});
-              }
-              return { data: [sessionRow], error: null };
-            }
-            if (table === "game_cars") {
-              return {
-                data: cars.filter((car) => matchesFilters(car, filters)),
-                error: null,
-              };
-            }
-            if (table === "game_players") {
-              return {
-                data: matchesFilters(playerRow, filters) ? [playerRow] : [],
-                error: null,
-              };
-            }
-            if (table === "game_owned_engines") {
-              const engines = cars.map((car, index) => ({
-                id: index + 1,
-                player_id: Number(car.player_id || playerId),
-                installed_on_car_id: Number(car.game_car_id || 0),
-                catalog_engine_part_id: 0,
-                engine_type_id: Number(car.engine_type_id || 1),
-                parts_xml: "",
-              }));
-              return {
-                data: engines.filter((engine) => matchesFilters(engine, filters)),
-                error: null,
-              };
-            }
-            return { data: [], error: null };
+        single: async () => {
+          const { data, error } = await runQuery();
+          return {
+            data: Array.isArray(data) ? (data[0] || null) : data,
+            error,
           };
-          return Promise.resolve(runner()).then(resolve, reject);
+        },
+        then(resolve, reject) {
+          return Promise.resolve(runQuery()).then(resolve, reject);
         },
       };
       return query;
@@ -171,6 +178,12 @@ test("catalog car 1 showroom spec exposes the B18C1 stock engine label", () => {
   assert.equal(getRedLine(spec.eo, spec.tt), 7600);
 });
 
+test("catalog car 1 uses turbo factory induction defaults", () => {
+  assert.equal(getShowroomCarInduction(1), "T");
+  assert.match(getDefaultPartsXmlForCar(1), /pi='87'/);
+  assert.match(getDefaultPartsXmlForCar(1), /i='10005'/);
+});
+
 test("catalog car 102 uses its own showroom spec instead of borrowing spec 101", () => {
   const spec = getShowroomCarSpec(102);
 
@@ -184,7 +197,7 @@ test("catalog car 102 uses its own showroom spec instead of borrowing spec 101",
   assert.equal(spec.hp, 617);
 });
 
-test("getonecarengine still returns driveable xml and timing for catalog car 1", async () => {
+test("getonecarengine returns the stock turbo driveable xml and timing for catalog car 1", async () => {
   const playerId = 77;
   const sessionKey = `showroom-b18c1-${Date.now()}`;
   const supabase = createSessionSupabaseStub({
@@ -219,7 +232,8 @@ test("getonecarengine still returns driveable xml and timing for catalog car 1",
   assert.equal(result.source, "generated:getonecarengine");
   assert.match(result.body, /"d", "<n2 /);
   assert.match(result.body, /"t", \[/);
-  assert.match(result.body, /sl='7600'/);
+  assert.match(result.body, /sl='6800'/);
+  assert.match(result.body, /d='T'/);
 });
 
 test("getonecarengine marks turbo-equipped cars as turbo in driveable engine xml", async () => {

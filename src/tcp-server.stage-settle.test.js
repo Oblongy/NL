@@ -58,7 +58,7 @@ function createRace(id = "race-stage-test", roomId = 5) {
   };
 }
 
-test("broadcasts rivals-ready after staged settle window and waits for both ready acks before starting", async () => {
+test("broadcasts rivals-ready after staged settle window and starts without client ready echoes", async () => {
   const server = createServer();
   const race = createRace("race-stage-timer");
   server.races.set(race.id, race);
@@ -71,20 +71,12 @@ test("broadcasts rivals-ready after staged settle window and waits for both read
   await new Promise((resolve) => setTimeout(resolve, 900));
 
   assert.equal(race.rivalsReadyBroadcasted, true);
-  assert.equal(race.sequenceStarted, false);
-  assert.equal(race.phase, "TREE_ARMED");
+  assert.equal(race.sequenceStarted, true);
+  assert.equal(race.phase, "RACING");
   assert.deepEqual(race.players.map((player) => player.mockConn.messages), [
     ['"ac", "RIVRDY", "s", 1'],
     ['"ac", "RIVRDY", "s", 1'],
   ]);
-
-  const connA = { id: 101, playerId: 1 };
-  const connB = { id: 102, playerId: 2 };
-  server.handleRivalsReady(connA);
-  assert.equal(race.sequenceStarted, false);
-  server.handleRivalsReady(connB);
-  assert.equal(race.sequenceStarted, true);
-  assert.equal(race.phase, "RACING");
 });
 
 test("cancels staged settle timer when a racer leaves the staged state", async () => {
@@ -102,6 +94,16 @@ test("cancels staged settle timer when a racer leaves the staged state", async (
   assert.equal(race.sequenceStarted, false);
   assert.equal(race.stageSettleTimer, null);
   assert.deepEqual(race.players.map((player) => player.mockConn.messages), [[], []]);
+});
+
+test("already-armed rivals-ready path clears the settle timer without throwing", () => {
+  const server = createServer();
+  const race = createRace("race-stage-already-armed");
+  race.rivalsReadyBroadcasted = true;
+  race.stageSettleTimer = setTimeout(() => {}, 10_000);
+
+  assert.doesNotThrow(() => server.maybeBroadcastRivalsReady(race));
+  assert.equal(race.stageSettleTimer, null);
 });
 
 test("newbie rivals does not arm from RO fallback without actual staging", () => {

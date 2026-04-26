@@ -9,6 +9,9 @@ const SHOWROOM_SPEC_ALIASES = new Map(
     String(specId),
   ]),
 );
+const SHOWROOM_INDUCTION_OVERRIDES = new Map([
+  ["1", "T"],
+]);
 
 function normalizeEngineString(engine) {
   return String(engine || "").trim().toLowerCase();
@@ -91,7 +94,13 @@ export function hasShowroomCarSpec(carId) {
 }
 
 export function getShowroomCarInduction(carId) {
-  const engine = normalizeEngineString(getShowroomCarSpec(carId)?.eo);
+  const normalizedCarId = String(carId || "");
+  const overrideInduction = SHOWROOM_INDUCTION_OVERRIDES.get(normalizedCarId);
+  if (overrideInduction) {
+    return overrideInduction;
+  }
+
+  const engine = normalizeEngineString(getShowroomCarSpec(normalizedCarId)?.eo);
   if (!engine) {
     return "0";
   }

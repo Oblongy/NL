@@ -622,13 +622,18 @@ export class TcpServer {
     try {
       let decodedMessage = rawMessage;
       let seed = null;
+      const isRaceTelemetry = rawMessage.startsWith(`I${FIELD_DELIMITER}`);
+      const shouldAttemptDecode = !isRaceTelemetry && rawMessage.length > 2;
 
-      try {
-        const decodedPayload = decodePayload(rawMessage);
-        decodedMessage = decodedPayload.decoded;
-        seed = decodedPayload.seed;
-      } catch {
-        // Some bootstrap messages are already plain-text. Keep supporting them.
+      if (shouldAttemptDecode) {
+        try {
+          const decodedPayload = decodePayload(rawMessage);
+          decodedMessage = decodedPayload.decoded;
+          seed = decodedPayload.seed;
+        } catch {
+          // Some control/bootstrap messages are already plain-text. Keep
+          // supporting them when they do not decode cleanly.
+        }
       }
 
       const parts = decodedMessage.split(FIELD_DELIMITER);
@@ -946,6 +951,13 @@ export class TcpServer {
 
       // --- LO: Logout ---
       } else if (messageType === "LO") {
+        this.logger.info("TCP LO received", {
+          connId: conn.id,
+          roomId: conn.roomId || null,
+          raceId: conn.raceId || null,
+          playerId: conn.playerId || null,
+        });
+        this.leaveRoom(conn);
         conn.socket.end();
 
       // --- TE / CRC: Chat message in room / KOTH room creation ---
@@ -1784,9 +1796,11 @@ export class TcpServer {
     if (!race || race.sequenceStarted) return;
     if (!race.players.every((entry) => entry.opened)) return;
     if (!race.rivalsReadyBroadcasted) return;
-    if (this.usesAuthoritativeNewbieRivalsSync(race) && !this.hasAllRivalsReadyAcks(race)) {
-      return;
-    }
+
+    // The exported Director client has a RIVREADY handler name, but the
+    // available export does not prove a client-to-server echo before launch.
+    // Live race captures also show server-originated RIVRDY without a matching
+    // c2s RIVRDY packet. Do not deadlock race start on an optional echo.
 
     race.sequenceStarted = true;
     this.setRacePhase(race, "RACING", trigger || "both-opened");

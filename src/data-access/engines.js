@@ -184,11 +184,36 @@ export async function ensureOwnedEnginesForCars(supabase, cars = []) {
 
     for (const car of playerCars) {
       const carId = Number(car.game_car_id || 0);
-      if (!carId || byInstalledCarId.has(carId)) {
+      if (!carId) {
         continue;
       }
 
       const migrated = extractEngineStateFromCar(car);
+      const existingRow = byInstalledCarId.get(carId);
+      if (existingRow) {
+        const expectedEnginePartsXml = String(existingRow.parts_xml || "") || migrated.enginePartsXml;
+        const expectedEngineTypeId = getEngineTypeIdForCar({
+          catalog_car_id: car.catalog_car_id,
+          parts_xml: `${String(car.parts_xml || "")}${expectedEnginePartsXml}`,
+        });
+        const patch = {};
+        if (expectedEnginePartsXml && expectedEnginePartsXml !== String(existingRow.parts_xml || "")) {
+          patch.partsXml = expectedEnginePartsXml;
+        }
+        if (Number(existingRow.engine_type_id || 1) !== expectedEngineTypeId) {
+          patch.engineTypeId = expectedEngineTypeId;
+        }
+
+        if (Object.keys(patch).length > 0) {
+          const updated = await updateOwnedEngineRecord(supabase, existingRow.id, patch);
+          if (updated) {
+            byInstalledCarId.set(carId, updated);
+            ensuredRows.splice(ensuredRows.indexOf(existingRow), 1, updated);
+          }
+        }
+        continue;
+      }
+
       const created = await createOwnedEngine(supabase, {
         playerId,
         installedOnCarId: carId,

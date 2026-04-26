@@ -48,6 +48,8 @@ function createBuyDynoSupabaseStub({
     locked: 0,
     aero: 0,
   };
+  const ownedEngineRows = [];
+  let nextOwnedEngineId = 1;
 
   function matchesFilters(row, filters) {
     return filters.every((filter) => {
@@ -70,9 +72,15 @@ function createBuyDynoSupabaseStub({
         table === "game_sessions" ? [sessionRow]
           : table === "game_players" ? [playerRow]
             : table === "game_cars" ? [carRow]
-              : [];
+              : table === "game_owned_engines" ? ownedEngineRows
+                : [];
       const query = {
         select() {
+          return query;
+        },
+        insert(nextPayload) {
+          mode = "insert";
+          payload = nextPayload;
           return query;
         },
         update(nextPayload) {
@@ -95,13 +103,52 @@ function createBuyDynoSupabaseStub({
           data: rows.find((row) => matchesFilters(row, filters)) || null,
           error: null,
         }),
-        then(resolve, reject) {
+        single: async () => {
+          if (mode === "insert") {
+            const inserted = Array.isArray(payload) ? payload : [payload];
+            for (const entry of inserted) {
+              rows.push({
+                id: nextOwnedEngineId++,
+                ...entry,
+              });
+            }
+            mode = "select";
+            payload = null;
+          }
           if (mode === "update") {
             for (const row of rows) {
               if (matchesFilters(row, filters)) {
                 Object.assign(row, payload || {});
               }
             }
+            mode = "select";
+            payload = null;
+          }
+          return {
+            data: rows.find((row) => matchesFilters(row, filters)) || null,
+            error: null,
+          };
+        },
+        then(resolve, reject) {
+          if (mode === "insert") {
+            const inserted = Array.isArray(payload) ? payload : [payload];
+            for (const entry of inserted) {
+              rows.push({
+                id: nextOwnedEngineId++,
+                ...entry,
+              });
+            }
+            mode = "select";
+            payload = null;
+          }
+          if (mode === "update") {
+            for (const row of rows) {
+              if (matchesFilters(row, filters)) {
+                Object.assign(row, payload || {});
+              }
+            }
+            mode = "select";
+            payload = null;
           }
           return Promise.resolve({
             data: rows.filter((row) => matchesFilters(row, filters)),
@@ -114,13 +161,13 @@ function createBuyDynoSupabaseStub({
   };
 }
 
-test("buydyno returns quoted scalar fields for the Director callback contract", async () => {
+test("buydyno returns the seven garageDynoBuyCB callback args in order", async () => {
   const sessionKey = "buydyno-regression";
   const gameCarId = 9101;
   const result = await handleGameAction({
     action: "buydyno",
     params: new Map([
-      ["key", sessionKey],
+      ["sk", sessionKey],
       ["acid", String(gameCarId)],
     ]),
     rawQuery: "",
@@ -131,16 +178,16 @@ test("buydyno returns quoted scalar fields for the Director callback contract", 
   });
 
   assert.equal(result.source, "supabase:buydyno");
-  assert.match(result.body, /^"s", "1", "b", "4500", "bs", "5", "mp", "10", "cs", "0", "sl", "7200", "rl", "7800"$/);
+  assert.match(result.body, /^1, "4500", "5", "10", "0", "7200", "7600"$/);
 });
 
-test("buydyno already-owned path also returns quoted scalar fields", async () => {
+test("buydyno already-owned path also returns the seven garageDynoBuyCB callback args in order", async () => {
   const sessionKey = "buydyno-already-owned";
   const gameCarId = 9102;
   const result = await handleGameAction({
     action: "buydyno",
     params: new Map([
-      ["key", sessionKey],
+      ["sk", sessionKey],
       ["acid", String(gameCarId)],
     ]),
     rawQuery: "",
@@ -151,5 +198,5 @@ test("buydyno already-owned path also returns quoted scalar fields", async () =>
   });
 
   assert.equal(result.source, "supabase:buydyno:already-owned");
-  assert.match(result.body, /^"s", "1", "b", "4321", "bs", "5", "mp", "10", "cs", "0", "sl", "7200", "rl", "7800"$/);
+  assert.match(result.body, /^1, "4321", "5", "10", "0", "7200", "7600"$/);
 });

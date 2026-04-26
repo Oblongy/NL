@@ -265,6 +265,37 @@ test("buypart treats custom graphics as cash purchases even though they use pt=p
   assert.match(state.carRow.parts_xml, /fe='png'/);
 });
 
+test("buypartugg resolves through the same custom graphics purchase handler", async () => {
+  const { supabase, state, sessionKey } = createPartPurchaseSupabaseStub({ money: 50000, points: 25 });
+
+  const result = await handleGameAction({
+    action: "buypartugg",
+    params: new Map([
+      ["aid", String(state.playerRow.id)],
+      ["sk", sessionKey],
+      ["acid", String(state.carRow.game_car_id)],
+      ["pid", "6001"],
+      ["pt", "p"],
+      ["pr", "190"],
+      ["did", "65432"],
+      ["fx", "png"],
+    ]),
+    rawQuery: "",
+    decodedQuery: "",
+    logger: createLogger(),
+    supabase,
+    services: {},
+  });
+
+  assert.equal(result?.source, "supabase:buypart");
+  assert.equal(state.playerRow.money, 49810);
+  assert.equal(state.playerRow.points, 25);
+  assert.match(result.body, /<r s='2' b='49810' ai='/);
+  assert.match(state.carRow.parts_xml, /i='6001'/);
+  assert.match(state.carRow.parts_xml, /pi='161'/);
+  assert.match(state.carRow.parts_xml, /pdi='65432'/);
+});
+
 test("buypart keeps custom graphics installed across multiple panel slots", async () => {
   const { supabase, state, sessionKey } = createPartPurchaseSupabaseStub({ money: 50000, points: 25 });
 
@@ -316,6 +347,36 @@ test("buypart keeps custom graphics installed across multiple panel slots", asyn
   assert.match(state.carRow.parts_xml, /i='6001'/);
   assert.match(state.carRow.parts_xml, /pi='161'/);
   assert.match(state.carRow.parts_xml, /pdi='22222'/);
+});
+
+test("getallparts returns the second XML payload the shop screen expects", async () => {
+  const result = await handleGameAction({
+    action: "getallparts",
+    params: new Map(),
+    rawQuery: "",
+    decodedQuery: "",
+    logger: createLogger(),
+    services: {},
+  });
+
+  assert.equal(result?.source, "static:getallparts");
+  assert.match(result.body, /^"s", 1, "d", "/);
+  assert.match(result.body, /"d1", "<n2><\/n2>"$/);
+});
+
+test("getallwheelstires returns the second XML payload the shop screen expects", async () => {
+  const result = await handleGameAction({
+    action: "getallwheelstires",
+    params: new Map(),
+    rawQuery: "",
+    decodedQuery: "",
+    logger: createLogger(),
+    services: {},
+  });
+
+  assert.equal(result?.source, "generated:getallwheelstires");
+  assert.match(result.body, /^"s", 1, "d", "/);
+  assert.match(result.body, /"d1", "<n2><\/n2>"$/);
 });
 
 test("buyenginepart charges points instead of money when the engine part is bought with points", async () => {

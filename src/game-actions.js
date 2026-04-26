@@ -3339,7 +3339,7 @@ async function handleGetAllParts(context) {
   }
 
   return {
-    body: wrapSuccessData(PARTS_CATALOG_XML),
+    body: `"s", 1, "d", "${PARTS_CATALOG_XML}", "d1", "<n2></n2>"`,
     source: "static:getallparts",
   };
 }
@@ -3460,12 +3460,9 @@ async function handleBuyDyno(context) {
   if (player.has_dyno === 1 || player.has_dyno === true) {
     return {
       body:
-        `"s", "1", "b", "${toFiniteNumber(player.money, 0)}", ` +
-        `"bs", "${Number(dynoState.boostSetting)}", ` +
-        `"mp", "${Number(dynoState.maxPsi)}", ` +
-        `"cs", "${Number(dynoState.chipSetting)}", ` +
-        `"sl", "${Number(dynoState.shiftLightRpm)}", ` +
-        `"rl", "${Number(dynoState.redLine)}"`,
+        `1, "${toFiniteNumber(player.money, 0)}", "${Number(dynoState.boostSetting)}", ` +
+        `"${Number(dynoState.maxPsi)}", "${Number(dynoState.chipSetting)}", ` +
+        `"${Number(dynoState.shiftLightRpm)}", "${Number(dynoState.redLine)}"`,
       source: "supabase:buydyno:already-owned",
     };
   }
@@ -3484,16 +3481,13 @@ async function handleBuyDyno(context) {
     return { body: failureBody(), source: "supabase:buydyno:update-failed" };
   }
 
-  // 10.0.03 garageDynoBuyCB expects positional scalar args:
-  // (s, b, bs, mp, cs, sl, rl)
+  // FFDec export: tmp_ffdec_3_export/scripts/frame_12/DoAction.as garageDynoBuyCB(s, b, bs, mp, cs, sl, rl)
+  // Emit the seven callback arguments in order so the Director bridge does not need to remap key/value pairs.
   return {
     body:
-      `"s", "1", "b", "${newBalance}", ` +
-      `"bs", "${Number(dynoState.boostSetting)}", ` +
-      `"mp", "${Number(dynoState.maxPsi)}", ` +
-      `"cs", "${Number(dynoState.chipSetting)}", ` +
-      `"sl", "${Number(dynoState.shiftLightRpm)}", ` +
-      `"rl", "${Number(dynoState.redLine)}"`,
+      `1, "${newBalance}", "${Number(dynoState.boostSetting)}", ` +
+      `"${Number(dynoState.maxPsi)}", "${Number(dynoState.chipSetting)}", ` +
+      `"${Number(dynoState.shiftLightRpm)}", "${Number(dynoState.redLine)}"`,
     source: "supabase:buydyno",
   };
 }
@@ -6768,7 +6762,10 @@ const handlers = {
   // --- Parts & Engine ---
   getallparts: handleGetAllParts,
   getallwheelstires: async () => {
-    return { body: wrapSuccessData(buildWheelsTiresCatalogXml()), source: "generated:getallwheelstires" };
+    return {
+      body: `"s", 1, "d", "${buildWheelsTiresCatalogXml()}", "d1", "<n2></n2>"`,
+      source: "generated:getallwheelstires",
+    };
   },
   getonecarengine: handleGetOneCarEngine,
   getgearinfo: handleGetGearInfo,
@@ -6790,6 +6787,7 @@ const handlers = {
     };
   },
   buypart: handleBuyPart,
+  buypartugg: handleBuyPart,
   buyenginepart: handleBuyEnginePart,
   buyengine: handleBuyEngine,
   // --- Showroom / Dealership ---

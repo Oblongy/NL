@@ -31,6 +31,10 @@ function createTrackedSocket(onDestroy = null) {
   return {
     destroyed: false,
     destroyCalls: 0,
+    endCalls: 0,
+    end() {
+      this.endCalls += 1;
+    },
     destroy() {
       if (this.destroyed) {
         return;
@@ -284,6 +288,54 @@ test("LR closes sibling race sockets for the leaving player", async () => {
     { connId: otherConn.id, playerId: 13, username: otherConn.username, carId: otherConn.carId, teamId: 0, teamRole: "", clientRole: 5 },
   ]);
   assert.deepEqual(lobbyConn.messages, ['"ac", "LR", "s", 1']);
+});
+
+test("LO clears room membership immediately before socket close finishes", async () => {
+  const server = createServer();
+  const lobbyConn = {
+    id: 526,
+    playerId: 17,
+    roomId: 5,
+    username: "BackButtonUser",
+    carId: 1700,
+    messages: [],
+    socket: createTrackedSocket(),
+  };
+  const otherConn = {
+    id: 527,
+    playerId: 18,
+    roomId: 5,
+    username: "StillHere",
+    carId: 1800,
+    messages: [],
+    socket: createTrackedSocket(),
+  };
+  const raceConn = {
+    id: 528,
+    playerId: 17,
+    raceId: "race-logout-leave",
+    messages: [],
+  };
+  raceConn.socket = createTrackedSocket(() => server.cleanupConnection(raceConn));
+
+  server.connections.set(lobbyConn.id, lobbyConn);
+  server.connections.set(otherConn.id, otherConn);
+  server.connections.set(raceConn.id, raceConn);
+  server.rooms.set(5, [
+    { connId: lobbyConn.id, playerId: 17, username: lobbyConn.username, carId: lobbyConn.carId, teamId: 0, teamRole: "", clientRole: 5 },
+    { connId: otherConn.id, playerId: 18, username: otherConn.username, carId: otherConn.carId, teamId: 0, teamRole: "", clientRole: 5 },
+  ]);
+
+  await server.handleMessage(lobbyConn, "LO");
+
+  assert.equal(lobbyConn.roomId, null);
+  assert.equal(lobbyConn.socket.endCalls, 1);
+  assert.equal(raceConn.socket.destroyCalls, 1);
+  assert.equal(server.connections.has(raceConn.id), false);
+  assert.deepEqual(server.rooms.get(5), [
+    { connId: otherConn.id, playerId: 18, username: otherConn.username, carId: otherConn.carId, teamId: 0, teamRole: "", clientRole: 5 },
+  ]);
+  assert.deepEqual(lobbyConn.messages, []);
 });
 
 test("JRC only acks join and waits for GR before sending the room snapshot", async () => {
