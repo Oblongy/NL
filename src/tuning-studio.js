@@ -27,10 +27,19 @@ const DEFAULT_DYNO_PURCHASE_STATE = Object.freeze({
   shiftLightRpm: 7200,
 });
 
-const BOOST_CONTROLLER_SLOT_IDS = ["23", "2005"];
-const AFR_CONTROLLER_SLOT_IDS = ["2006", "174", "134"];
-const SHIFT_LIGHT_SLOT_IDS = ["26"];
-const GEAR_TUNE_SLOT_IDS = ["22", "2013"];
+export const BOOST_CONTROLLER_SLOT_IDS = Object.freeze(["23", "2005"]);
+export const AFR_CONTROLLER_SLOT_IDS = Object.freeze(["2006", "174", "134"]);
+export const SHIFT_LIGHT_SLOT_IDS = Object.freeze(["26"]);
+export const GEAR_TUNE_SLOT_IDS = Object.freeze(["22", "2013"]);
+export const ENGINE_STATE_SLOT_IDS = Object.freeze(["81", "87"]);
+export const TUNE_STATE_SLOT_IDS = Object.freeze([
+  ...new Set([
+    ...BOOST_CONTROLLER_SLOT_IDS,
+    ...AFR_CONTROLLER_SLOT_IDS,
+    ...SHIFT_LIGHT_SLOT_IDS,
+    ...GEAR_TUNE_SLOT_IDS,
+  ]),
+]);
 const RESERVED_PART_OVERRIDE_ATTRS = new Set(["ai", "i", "pi", "ci"]);
 const SUPPORTED_PART_OVERRIDE_ATTRS = Object.freeze([
   "n",
@@ -115,6 +124,24 @@ function saveTuneAttrsToPartsXml(partsXml, attrs, preferredSlotIds) {
     ...carrier.attrs,
     ...attrs,
   });
+}
+
+export function mergePartsXmlBySlotIds(basePartsXml, incomingPartsXml, slotIds = []) {
+  const scopedSlotIds = new Set((slotIds || []).map((slotId) => String(slotId)));
+  if (scopedSlotIds.size === 0) {
+    return normalizeOwnedPartsXmlValue(basePartsXml);
+  }
+
+  const nextEntries = [
+    ...listInstalledPartEntries(basePartsXml)
+      .filter(({ attrs }) => !scopedSlotIds.has(String(attrs.ci || attrs.pi || "")))
+      .map(({ raw }) => raw),
+    ...listInstalledPartEntries(incomingPartsXml)
+      .filter(({ attrs }) => scopedSlotIds.has(String(attrs.ci || attrs.pi || "")))
+      .map(({ raw }) => raw),
+  ];
+
+  return normalizeOwnedPartsXmlValue(nextEntries.join(""));
 }
 
 function buildInstalledCatalogPartXml(catalogPart, installId, overrides = {}) {
@@ -802,6 +829,19 @@ export function buildTuningStudioCatalog() {
     },
     cars: catalog.cars,
     slots: catalog.slots,
+  };
+}
+
+export function getTuningStudioApplySlotScopes() {
+  const catalog = getCatalogCache();
+  const partScopeIds = catalog.slots
+    .map((slot) => String(slot.id || ""))
+    .filter((slotId) => slotId && !ENGINE_STATE_SLOT_IDS.includes(slotId) && !TUNE_STATE_SLOT_IDS.includes(slotId));
+
+  return {
+    parts: partScopeIds,
+    tune: [...TUNE_STATE_SLOT_IDS],
+    engine: [...ENGINE_STATE_SLOT_IDS],
   };
 }
 

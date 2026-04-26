@@ -17,6 +17,8 @@ import { PARTS_CATALOG_XML } from "./parts-catalog.js";
 import { httpRequestsTotal } from "./metrics.js";
 import {
   buildTuningStudioCatalog,
+  getTuningStudioApplySlotScopes,
+  mergePartsXmlBySlotIds,
   buildTuningStudioPreview,
 } from "./tuning-studio.js";
 import {
@@ -499,7 +501,25 @@ async function applyTuningStudioBuild(supabase, payload = {}) {
     throw new Error("Selected studio car does not match the chosen garage car.");
   }
 
-  const savedCar = await saveCarPartsXml(supabase, targetGameCarId, preview.xml.partsXml);
+  const applyMode = String(payload.applyMode || payload.mode || "all").trim().toLowerCase();
+  const applyScopes = getTuningStudioApplySlotScopes();
+  const nextPartsXml = (() => {
+    if (applyMode === "parts") {
+      return mergePartsXmlBySlotIds(targetCar.parts_xml || "", preview.xml.partsXml, applyScopes.parts);
+    }
+    if (applyMode === "tune") {
+      return mergePartsXmlBySlotIds(targetCar.parts_xml || "", preview.xml.partsXml, applyScopes.tune);
+    }
+    if (applyMode === "engine") {
+      return mergePartsXmlBySlotIds(targetCar.parts_xml || "", preview.xml.partsXml, applyScopes.engine);
+    }
+    if (applyMode === "all") {
+      return preview.xml.partsXml;
+    }
+    throw new Error(`Unsupported apply mode: ${applyMode}`);
+  })();
+
+  const savedCar = await saveCarPartsXml(supabase, targetGameCarId, nextPartsXml);
   if (!savedCar) {
     throw new Error("Failed to save parts XML.");
   }
@@ -510,6 +530,7 @@ async function applyTuningStudioBuild(supabase, payload = {}) {
 
   return {
     ok: true,
+    applyMode,
     appliedAt: new Date().toISOString(),
     player: sessionGarage.player,
     targetCar: {

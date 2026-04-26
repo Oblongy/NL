@@ -48,6 +48,7 @@ import { createLoginSession, getSessionPlayerId, validateOrCreateSession } from 
 import { consumeRecentDecalUpload } from "./upload-state.js";
 import {
   getBoostTypeForCar,
+  getBoostTypeFromEngineTypeId,
   getCarEngineIdentity,
   getEffectiveEngineString,
   getEngineTypeIdForCatalogCar,
@@ -4997,10 +4998,12 @@ function buildDriveableEngineXml({ catalogCarId, gearRatios = null, engineTypeId
 
   const n2 = buildN2Fields(catalogCarId, gearRatios, engineTypeId, performanceStats);
   const valveCount = n2.aa * 4;
+  const boostType = getBoostTypeFromEngineTypeId(engineTypeId);
+  const driveableInduction = boostType === "T" || boostType === "S" ? boostType : "N";
 
   return (
     `<n2 es='1' sl='${n2.sl}' sg='0' rc='0' tmp='0' r='${n2.r}' v='0' ` +
-    `a='${n2.a}' n='${n2.n}' o='${n2.o}' s='0.854' b='0' p='1.8' c='0' e='0' d='N' ` +
+    `a='${n2.a}' n='${n2.n}' o='${n2.o}' s='0.854' b='0' p='1.8' c='0' e='0' d='${driveableInduction}' ` +
     `f='${n2.f}' g='${n2.g}' h='${n2.h}' i='${n2.i}' j='${n2.j}' k='0' l='${n2.l}' ` +
     `q='0' m='0' t='0' u='10' w='0' x='${n2.x}' y='${n2.y}' z='${n2.z}' ` +
     `aa='${n2.aa}' ab='${valveCount}' ac='0' ad='0' ae='100' af='100' ag='100' ah='100' ai='100' ` +

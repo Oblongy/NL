@@ -1231,6 +1231,12 @@
         gap: 10px;
       }
 
+      .xml-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
       .xml-block h4 {
         margin: 0;
         font-size: 14px;
@@ -1497,7 +1503,10 @@
             <div class="xml-block">
               <header>
                 <h4>Parts XML</h4>
-                <button data-copy-target="partsXml" type="button">Copy</button>
+                <div class="xml-actions">
+                  <button class="secondary" id="applyPartsXml" type="button">Apply</button>
+                  <button data-copy-target="partsXml" type="button">Copy</button>
+                </div>
               </header>
               <div class="xml-caption">Installed performance parts plus persisted tune attributes.</div>
               <textarea id="partsXml" readonly></textarea>
@@ -1506,7 +1515,10 @@
             <div class="xml-block">
               <header>
                 <h4>Engine XML</h4>
-                <button data-copy-target="engineXml" type="button">Copy</button>
+                <div class="xml-actions">
+                  <button class="secondary" id="applyEngineXml" type="button">Apply</button>
+                  <button data-copy-target="engineXml" type="button">Copy</button>
+                </div>
               </header>
               <div class="xml-caption">Driveable `<n2 />` payload generated from showroom spec plus your gear tune.</div>
               <textarea id="engineXml" readonly></textarea>
@@ -1533,7 +1545,10 @@
             <div class="xml-block">
               <header>
                 <h4>Timing Array</h4>
-                <button data-copy-target="timingText" type="button">Copy</button>
+                <div class="xml-actions">
+                  <button class="secondary" id="applyTimingArray" type="button">Apply</button>
+                  <button data-copy-target="timingText" type="button">Copy</button>
+                </div>
               </header>
               <div class="timing-preview" id="timingText"></div>
             </div>
@@ -1627,6 +1642,9 @@
         fg: document.getElementById("fg"),
         resetBuild: document.getElementById("resetBuild"),
         applyBuild: document.getElementById("applyBuild"),
+        applyPartsXml: document.getElementById("applyPartsXml"),
+        applyEngineXml: document.getElementById("applyEngineXml"),
+        applyTimingArray: document.getElementById("applyTimingArray"),
         sessionKey: document.getElementById("sessionKey"),
         loadSession: document.getElementById("loadSession"),
         sessionStatus: document.getElementById("sessionStatus"),
@@ -2219,6 +2237,9 @@
           elements.garageList.innerHTML = "";
           elements.applyBuild.disabled = true;
           elements.applyBuild.textContent = "Apply All To Game";
+          elements.applyPartsXml.disabled = true;
+          elements.applyEngineXml.disabled = true;
+          elements.applyTimingArray.disabled = true;
           return;
         }
 
@@ -2248,6 +2269,9 @@
         const canApply = Boolean(state.preview && state.session.sessionKey && state.session.targetGameCarId);
         elements.applyBuild.disabled = !canApply;
         elements.applyBuild.textContent = canApply ? `Apply All To Game Car ${state.session.targetGameCarId}` : "Apply All To Game";
+        elements.applyPartsXml.disabled = !canApply;
+        elements.applyEngineXml.disabled = !canApply;
+        elements.applyTimingArray.disabled = !canApply;
       }
 
       function selectCar(carId) {
@@ -2467,12 +2491,12 @@
         renderSession();
       }
 
-      async function applyBuildToGame() {
+      async function applyBuildToGame(applyMode = "all", statusLabel = "Applied all") {
         if (!state.preview || !state.session.sessionKey || !state.session.targetGameCarId) {
           return;
         }
 
-        elements.sessionStatus.textContent = "Applying build...";
+        elements.sessionStatus.textContent = `Applying ${statusLabel.toLowerCase()}...`;
         const response = await fetch("/api/tuning-studio/apply", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -2480,6 +2504,7 @@
             ...currentPayload(),
             sessionKey: state.session.sessionKey,
             targetGameCarId: state.session.targetGameCarId,
+            applyMode,
             selectCar: true,
           }),
         });
@@ -2490,7 +2515,7 @@
         }
 
         state.session.lastAppliedAt = payload.appliedAt || "";
-        elements.sessionStatus.textContent = `Applied ${new Date(payload.appliedAt || Date.now()).toLocaleTimeString()}`;
+        elements.sessionStatus.textContent = `${statusLabel} ${new Date(payload.appliedAt || Date.now()).toLocaleTimeString()}`;
         await loadSession();
       }
 
@@ -2527,7 +2552,25 @@
         });
       });
       elements.applyBuild.addEventListener("click", () => {
-        applyBuildToGame().catch((error) => {
+        applyBuildToGame("all", "Applied all").catch((error) => {
+          elements.sessionStatus.textContent = "Apply failed";
+          elements.warnings.innerHTML = `<li><strong>Warning:</strong> ${escapeHtml(error.message)}</li>`;
+        });
+      });
+      elements.applyPartsXml.addEventListener("click", () => {
+        applyBuildToGame("parts", "Applied parts").catch((error) => {
+          elements.sessionStatus.textContent = "Apply failed";
+          elements.warnings.innerHTML = `<li><strong>Warning:</strong> ${escapeHtml(error.message)}</li>`;
+        });
+      });
+      elements.applyEngineXml.addEventListener("click", () => {
+        applyBuildToGame("engine", "Applied engine").catch((error) => {
+          elements.sessionStatus.textContent = "Apply failed";
+          elements.warnings.innerHTML = `<li><strong>Warning:</strong> ${escapeHtml(error.message)}</li>`;
+        });
+      });
+      elements.applyTimingArray.addEventListener("click", () => {
+        applyBuildToGame("tune", "Applied tune").catch((error) => {
           elements.sessionStatus.textContent = "Apply failed";
           elements.warnings.innerHTML = `<li><strong>Warning:</strong> ${escapeHtml(error.message)}</li>`;
         });
