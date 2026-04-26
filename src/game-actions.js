@@ -32,7 +32,6 @@ import {
   escapeXml,
   failureBody,
   renderOwnedGarageCar,
-  renderOwnedGarageCarsWithTournamentLanePlaceholder,
   renderOwnedGarageCarsWrapper,
   renderRacerCars,
   renderShowroomCarBody,
@@ -3267,11 +3266,7 @@ async function handleGetAllCars(context) {
   });
 
   return {
-    body: wrapSuccessData(
-      `<cars i='${escapeXml(caller.publicId)}' dc='${escapeXml(
-        garageCars.find((car) => car.selected)?.game_car_id ?? garageCars[0]?.game_car_id ?? "",
-      )}'>${renderOwnedGarageCarsWithTournamentLanePlaceholder(garageCars)}</cars>`,
-    ),
+    body: wrapSuccessData(renderOwnedGarageCarsWrapper(garageCars, { ownerPublicId: caller.publicId })),
     source: "supabase:getallcars",
   };
 }
@@ -4426,6 +4421,13 @@ function listShowroomCatalogCarsForLocation(locationId) {
   ));
 }
 
+function listAllShowroomCatalogCars() {
+  return FULL_CAR_CATALOG.filter(([catalogCarId, , price]) => (
+    Number(price) > 0 &&
+    hasShowroomCarSpec(catalogCarId)
+  ));
+}
+
 function buildGuestTestDriveOffer(locationId = 100) {
   const [catalogCarId] = listShowroomCatalogCarsForLocation(locationId)[0] || [];
   if (!catalogCarId) {
@@ -5007,11 +5009,13 @@ function buildDriveableEngineXml({ catalogCarId, gearRatios = null, engineTypeId
   );
 }
 
-function buildShowroomXml(locationId, starterOnly = false) {
+function buildShowroomXml(locationId, starterOnly = false, includeAllDealers = false) {
   const targetLocationId = Number(locationId) || 100;
   const eligible = starterOnly
     ? listShowroomCatalogCarsForLocation(100)
-    : listShowroomCatalogCarsForLocation(targetLocationId);
+    : includeAllDealers
+      ? listAllShowroomCatalogCars()
+      : listShowroomCatalogCarsForLocation(targetLocationId);
 
   const locationToCatId = { 100: 1001, 200: 1002, 300: 1003, 400: 1004, 500: 1005 };
 
@@ -5032,7 +5036,11 @@ function buildShowroomXml(locationId, starterOnly = false) {
       const escapedName = escapeXml(name);
       const spec = getShowroomCarSpec(cid);
       const wheelFitment = getDefaultWheelFitmentForCar(cid);
-      const carLocationId = starterOnly ? 100 : targetLocationId;
+      const carLocationId = starterOnly
+        ? 100
+        : includeAllDealers
+          ? getShowroomLocationForCarPrice(price)
+          : targetLocationId;
       const catId = locationToCatId[carLocationId] || 1001;
       const primarySwatch = showroomColors[index % showroomColors.length];
       const purchasePrice = Number(price) || 0;
@@ -5101,6 +5109,7 @@ async function handleListClassified(context) {
 async function handleViewShowroom(context) {
   const { params } = context;
   let locationId = Number(params.get("lid") || params.get("l") || 0);
+  let hasExplicitSelection = Boolean(locationId);
 
   if (!locationId) {
     const selectedCategoryId = Number(
@@ -5112,6 +5121,7 @@ async function handleViewShowroom(context) {
       || 0,
     );
     locationId = DEALER_CATEGORY_TO_LOCATION.get(selectedCategoryId) || 0;
+    hasExplicitSelection = Boolean(locationId);
   }
 
   // Opening the showroom should not depend on the player's current city.
@@ -5119,7 +5129,7 @@ async function handleViewShowroom(context) {
   // without moving locations first.
   if (!locationId) locationId = 100;
 
-  const xml = buildShowroomXml(locationId);
+  const xml = buildShowroomXml(locationId, false, !hasExplicitSelection);
   return {
     body: wrapSuccessData(xml),
     source: `generated:viewshowroom:lid=${locationId}`,

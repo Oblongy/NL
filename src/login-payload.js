@@ -1,4 +1,4 @@
-import { escapeXml, renderOwnedGarageCarsWithTournamentLanePlaceholder, wrapSuccessData } from "./game-xml.js";
+import { escapeXml, renderOwnedGarageCarsWrapper, wrapSuccessData } from "./game-xml.js";
 import { getPublicIdForPlayer } from "./public-id.js";
 import { buildStaticCarsXml } from "./car-catalog.js";
 import {
@@ -146,7 +146,7 @@ function renderLoginNode(player) {
 }
 
 function renderOwnedCarsNode(cars) {
-  return `<n id='getallcars'>${renderOwnedGarageCarsWithTournamentLanePlaceholder(cars)}</n>`;
+  return `<n id='getallcars'>${renderOwnedGarageCarsWrapper(cars)}</n>`;
 }
 
 // ---------------------------------------------------------------------------
