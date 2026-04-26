@@ -82,9 +82,13 @@ test("getcarcategories restores the dealership category tree expected by the cli
   assert.ok(oeCars, "dealership should expose the OE Cars root category");
   assert.ok(premiumCars, "dealership should expose the Premium Cars root category");
   assert.ok(trophyCars, "dealership should expose the Trophy Cars root category");
+  assert.equal(oeCars.c, "1", "OE Cars should behave as a parent category");
+  assert.equal(premiumCars.c, "1", "Premium Cars should behave as a parent category");
+  assert.equal(trophyCars.c, "1", "Trophy Cars should behave as a parent category");
 
   const fordMake = getCategoryNodeByName(nodes, "Ford", oeCars.i);
   assert.ok(fordMake, "OE Cars should expose Ford as a make");
+  assert.equal(fordMake.c, "0", "make nodes should open the model list, not another category tier");
 });
 
 test("viewshowroom accepts dealership category and make node ids", async () => {

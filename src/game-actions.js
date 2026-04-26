@@ -4586,18 +4586,23 @@ function buildDealershipCategoryTree() {
   let nextId = 2100;
 
   for (const root of DEALERSHIP_ROOT_CATEGORIES) {
-    categoryNodes.push(root);
-    filtersById.set(String(root.i), { stockClass: root.key });
-
     const makeEntries = [...grouped.get(root.key).entries()].sort(([left], [right]) => (
       compareDealershipLabels(left, right)
     ));
+    categoryNodes.push({
+      ...root,
+      c: String(makeEntries.length > 0 ? 1 : 0),
+      p: "0",
+    });
+    filtersById.set(String(root.i), { stockClass: root.key });
 
     for (const [make, catalogCarIds] of makeEntries) {
       const makeId = String(nextId++);
       categoryNodes.push({
         i: makeId,
         pi: String(root.i),
+        c: "0",
+        p: "0",
         n: make,
         cl: "",
         l: "0",
@@ -5452,7 +5457,9 @@ async function handleSellCar(context) {
 
 async function handleGetCarCategories(context) {
   const catNodes = DEALERSHIP_CATEGORY_TREE.categoryNodes
-    .map((c) => `<c i='${c.i}' pi='${c.pi}' c='0' p='0' n='${escapeXml(c.n)}' cl='${c.cl}' l='${c.l}'/>`)
+    .map((c) => (
+      `<c i='${c.i}' pi='${c.pi}' c='${c.c || "0"}' p='${c.p || "0"}' n='${escapeXml(c.n)}' cl='${c.cl}' l='${c.l}'/>`
+    ))
     .join("");
   return {
     body: wrapSuccessData(`<cats>${catNodes}</cats>`),
