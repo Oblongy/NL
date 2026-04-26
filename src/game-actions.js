@@ -27,6 +27,7 @@ import {
   handleGetPartsBin as handleGetPartsBinImpl,
   handleInstallPart as handleInstallPartImpl,
   handleUninstallPart as handleUninstallPartImpl,
+  findInstalledPartBySlotId,
 } from "./game-actions/parts.js";
 import {
   escapeXml,
@@ -1588,6 +1589,102 @@ async function updateTeamRecord(supabase, teamId, patch) {
   return updateTeamRecordInService(supabase, teamId, patch);
 }
 
+function isMissingSupabaseRpcError(error, functionName) {
+  const message = String(error?.message || error || "");
+  return message.includes(functionName) && /(does not exist|not available|could not find|schema cache)/i.test(message);
+}
+
+async function applyTeamBalanceMutation(supabase, {
+  playerId,
+  originalBalance,
+  newBalance,
+  teamId,
+  originalTeamFund,
+  newTeamFund,
+  contributionPlayerId,
+  originalContribution,
+  newContribution,
+}) {
+  const rpcName = "apply_team_balance_mutation";
+  if (typeof supabase?.rpc === "function") {
+    try {
+      const { error } = await supabase.rpc(rpcName, {
+        p_player_id: Number(playerId),
+        p_new_player_money: Number(newBalance),
+        p_team_id: Number(teamId),
+        p_new_team_fund: Number(newTeamFund),
+        p_contribution_player_id: Number(contributionPlayerId),
+        p_new_contribution_score: Number(newContribution),
+      });
+      if (!error) {
+        return true;
+      }
+      if (!isMissingSupabaseRpcError(error, rpcName)) {
+        throw error;
+      }
+    } catch (error) {
+      if (!isMissingSupabaseRpcError(error, rpcName)) {
+        throw error;
+      }
+    }
+  }
+
+  let playerApplied = false;
+  let teamApplied = false;
+  let contributionApplied = false;
+  try {
+    await updatePlayerMoney(supabase, playerId, newBalance);
+    playerApplied = true;
+
+    await updateTeamRecord(supabase, teamId, { team_fund: newTeamFund });
+    teamApplied = true;
+
+    contributionApplied = await updateTeamMemberContribution(
+      supabase,
+      contributionPlayerId,
+      newContribution,
+      { teamId },
+    ) === true;
+    return true;
+  } catch (error) {
+    const rollbackErrors = [];
+
+    if (contributionApplied) {
+      try {
+        await updateTeamMemberContribution(
+          supabase,
+          contributionPlayerId,
+          originalContribution,
+          { teamId },
+        );
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError);
+      }
+    }
+
+    if (teamApplied) {
+      try {
+        await updateTeamRecord(supabase, teamId, { team_fund: originalTeamFund });
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError);
+      }
+    }
+
+    if (playerApplied) {
+      try {
+        await updatePlayerMoney(supabase, playerId, originalBalance);
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError);
+      }
+    }
+
+    if (rollbackErrors.length > 0) {
+      error.rollbackErrors = rollbackErrors;
+    }
+    throw error;
+  }
+}
+
 function buildTeamApplicationsXml(applications = []) {
   const body = applications.map((application) => (
     `<a i='${Number(application.applicantPublicId || 0)}' u='${escapeXml(application.applicantName || "")}' ` +
@@ -2067,13 +2164,19 @@ async function handleTeamDeposit(context) {
   }
 
   const newBalance = callerMoney - amount;
-  const nextContribution = Number(teamContext.teamMeta.contributionByPlayerId?.[String(caller.playerId)] || 0) + amount;
-  await updatePlayerMoney(supabase, caller.playerId, newBalance);
-  await updateTeamRecord(supabase, teamContext.team.id, {
-    team_fund: Number(teamContext.team.team_fund || 0) + amount,
-  });
-  await updateTeamMemberContribution(supabase, caller.playerId, nextContribution, {
+  const currentContribution = Number(teamContext.teamMeta.contributionByPlayerId?.[String(caller.playerId)] || 0);
+  const nextContribution = currentContribution + amount;
+  const currentTeamFund = Number(teamContext.team.team_fund || 0);
+  await applyTeamBalanceMutation(supabase, {
+    playerId: caller.playerId,
+    originalBalance: callerMoney,
+    newBalance,
     teamId: teamContext.team.id,
+    originalTeamFund: currentTeamFund,
+    newTeamFund: currentTeamFund + amount,
+    contributionPlayerId: caller.playerId,
+    originalContribution: currentContribution,
+    newContribution: nextContribution,
   });
   recordTeamTransaction(services, teamContext.team.id, {
     ...teamContext.teamMeta,
@@ -2119,12 +2222,16 @@ async function handleTeamWithdraw(context) {
 
   const newBalance = toFiniteNumber(caller.player.money, 0) + amount;
   const nextContribution = contribution - amount;
-  await updatePlayerMoney(supabase, caller.playerId, newBalance);
-  await updateTeamRecord(supabase, teamContext.team.id, {
-    team_fund: teamFunds - amount,
-  });
-  await updateTeamMemberContribution(supabase, caller.playerId, nextContribution, {
+  await applyTeamBalanceMutation(supabase, {
+    playerId: caller.playerId,
+    originalBalance: toFiniteNumber(caller.player.money, 0),
+    newBalance,
     teamId: teamContext.team.id,
+    originalTeamFund: teamFunds,
+    newTeamFund: teamFunds - amount,
+    contributionPlayerId: caller.playerId,
+    originalContribution: contribution,
+    newContribution: nextContribution,
   });
   recordTeamTransaction(services, teamContext.team.id, {
     ...teamContext.teamMeta,
@@ -2175,12 +2282,16 @@ async function handleTeamDisperse(context) {
   }
 
   const nextContribution = contribution - amount;
-  await updatePlayerMoney(supabase, targetPlayer.id, toFiniteNumber(targetPlayer.money, 0) + amount);
-  await updateTeamRecord(supabase, teamContext.team.id, {
-    team_fund: teamFunds - amount,
-  });
-  await updateTeamMemberContribution(supabase, targetPlayer.id, nextContribution, {
+  await applyTeamBalanceMutation(supabase, {
+    playerId: targetPlayer.id,
+    originalBalance: toFiniteNumber(targetPlayer.money, 0),
+    newBalance: toFiniteNumber(targetPlayer.money, 0) + amount,
     teamId: teamContext.team.id,
+    originalTeamFund: teamFunds,
+    newTeamFund: teamFunds - amount,
+    contributionPlayerId: targetPlayer.id,
+    originalContribution: contribution,
+    newContribution: nextContribution,
   });
   recordTeamTransaction(services, teamContext.team.id, {
     ...teamContext.teamMeta,
@@ -3156,6 +3267,7 @@ async function handleGetAllOtherUserCars(context) {
         wheelXml: getDefaultWheelXmlForCar(DEFAULT_STARTER_CATALOG_CAR_ID),
         partsXml: DEFAULT_STOCK_PARTS_XML,
         includeOwnedEngines: false,
+        createIfMissing: false,
       }), {
         ownerPublicId: getPublicIdForPlayer(targetPlayer),
       }),
@@ -3372,7 +3484,7 @@ function buildDriveableEnginePayloadForCar(car) {
     return null;
   }
 
-  const { engineTypeId } = getCarBuildFlags(car);
+  const { compressionLevel, engineTypeId } = getCarBuildFlags(car);
   const catalogCarId = String(car?.catalog_car_id || "");
   if (!hasShowroomCarSpec(catalogCarId)) {
     return null;
@@ -3386,6 +3498,7 @@ function buildDriveableEnginePayloadForCar(car) {
     gearRatios,
     engineTypeId,
     performanceStats,
+    compressionLevel,
   });
 
   return { engineXml, timing };
@@ -3451,6 +3564,7 @@ async function handleGetOneCarEngine(context) {
     gearRatios,
     engineTypeId,
     performanceStats,
+    compressionLevel,
   });
 
   return {
@@ -5264,6 +5378,25 @@ function buildDriveableEngineXml({
   );
 }
 
+function isSameInstalledPartIdentity(leftAttrs, rightAttrs) {
+  const leftPartId = String(leftAttrs?.i || "");
+  const rightPartId = String(rightAttrs?.i || "");
+  if (leftPartId || rightPartId) {
+    return leftPartId === rightPartId;
+  }
+
+  const leftGraphicId = String(leftAttrs?.di || leftAttrs?.pdi || "");
+  const rightGraphicId = String(rightAttrs?.di || rightAttrs?.pdi || "");
+  if (leftGraphicId || rightGraphicId) {
+    return leftGraphicId === rightGraphicId;
+  }
+
+  return (
+    String(leftAttrs?.n || "") === String(rightAttrs?.n || "")
+    && String(leftAttrs?.pi || leftAttrs?.ci || "") === String(rightAttrs?.pi || rightAttrs?.ci || "")
+  );
+}
+
 function buildShowroomXml(locationId, starterOnly = false, includeAllDealers = false, selectedCategoryId = "") {
   const targetLocationId = Number(locationId) || 100;
   const normalizedCategoryId = String(selectedCategoryId || "").trim();
@@ -6701,7 +6834,10 @@ async function handleSellCarPart(context) {
     return { body: `"s", -1, "b", 0`, source: "supabase:sellcarpart:no-catalog-part" };
   }
 
-  if (slotId && findInstalledPartBySlotId(getDefaultPartsXmlForCar(targetCar.catalog_car_id), slotId)) {
+  const defaultInstalledPart = slotId
+    ? findInstalledPartBySlotId(getDefaultPartsXmlForCar(targetCar.catalog_car_id), slotId)
+    : null;
+  if (slotId && defaultInstalledPart && isSameInstalledPartIdentity(defaultInstalledPart, installedPart.attrs || {})) {
     const player = await getPlayerById(supabase, caller.playerId);
     return { body: `"s", -2, "b", ${toFiniteNumber(player?.money, 0)}`, source: "supabase:sellcarpart:stock-part" };
   }

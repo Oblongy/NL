@@ -234,14 +234,22 @@ export async function ensurePlayerHasGarageCar(supabase, playerId, options = {})
   }
 
   const includeOwnedEngines = options?.includeOwnedEngines !== false;
+  const createIfMissing = options?.createIfMissing !== false;
   const existingCars = await listCarsForPlayer(supabase, playerId, [], { includeOwnedEngines });
   if (existingCars.length > 0) {
     const hasSelected = existingCars.some((car) => car.selected);
     if (!hasSelected) {
+      if (!createIfMissing) {
+        return existingCars;
+      }
       await updatePlayerDefaultCar(supabase, playerId, existingCars[0].game_car_id);
       return listCarsForPlayer(supabase, playerId, [], { includeOwnedEngines });
     }
     return existingCars;
+  }
+
+  if (!createIfMissing) {
+    return [];
   }
 
   const catalogCarId = Number(options.catalogCarId) || DEFAULT_STARTER_CATALOG_CAR_ID;
