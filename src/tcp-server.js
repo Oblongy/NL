@@ -1207,7 +1207,7 @@ export class TcpServer {
       } else if (messageType === "GK") {
         this.handleKingOfHillQueue(conn);
       } else if (messageType === "JK") {
-        this.handleKingOfHillJoin(conn, parts);
+        await this.handleKingOfHillJoin(conn, parts);
 
       // --- RR: Race result ---
       } else if (messageType === "RR") {
@@ -2350,7 +2350,7 @@ export class TcpServer {
     this.sendMessage(conn, `"ac", "KU", "s", "<q>${queueXml}</q>"`);
   }
 
-  handleKingOfHillJoin(conn, parts) {
+  async handleKingOfHillJoin(conn, parts) {
     const carId = Number(parts[1] || 0);
     const lane = Number(parts[2] || -1);
     
@@ -2414,7 +2414,7 @@ export class TcpServer {
       delete opponent.conn.kingOfHillSelection;
       
       // Create the race session
-      this.createRaceSession(request1, request2);
+      await this.createRaceSession(request1, request2);
       
       // Broadcast updated queue to room
       this.broadcastKothQueueUpdate(roomId);
@@ -2442,12 +2442,14 @@ export class TcpServer {
       ? queuedPlayers.map(p => `<k i='${p.playerId}' ks='0' ci='${p.carId}'/>`).join("")
       : "<k i='0' ks='0' ci='0'/>";
     
-    const queueMessage = `"ac", "LR", "s", "<q>${queueXml}</q>"`;
+    const kuMessage = `"ac", "KU", "s", "<q>${queueXml}</q>"`;
+    const lrMessage = `"ac", "LR", "s", "<q>${queueXml}</q>"`;
     
     for (const player of roomPlayers) {
       const playerConn = this.connections.get(player.connId);
       if (playerConn) {
-        this.sendMessage(playerConn, queueMessage);
+        this.sendMessage(playerConn, kuMessage);
+        this.sendMessage(playerConn, lrMessage);
       }
     }
   }
@@ -3124,7 +3126,7 @@ export class TcpServer {
     this.sendMessage(conn, `"ac", "KU", "s", "<q>${queueXml}</q>"`);
   }
 
-  handleKingOfHillJoin(conn, parts) {
+  async handleKingOfHillJoin(conn, parts) {
     const carId = Number(parts[1] || 0);
     const lane = Number(parts[2] || -1);
 
@@ -3180,7 +3182,7 @@ export class TcpServer {
       delete conn.kingOfHillSelection;
       delete opponent.conn.kingOfHillSelection;
 
-      this.createRaceSession(request1, request2);
+      await this.createRaceSession(request1, request2);
       this.broadcastKothQueueUpdate(roomId);
       return;
     }
@@ -3205,12 +3207,14 @@ export class TcpServer {
     const queueXml = queuedPlayers.length > 0
       ? queuedPlayers.map((player) => `<k i='${player.playerId}' ks='0' ci='${player.carId}'/>`).join("")
       : "<k i='0' ks='0' ci='0'/>";
-    const queueMessage = `"ac", "LR", "s", "<q>${queueXml}</q>"`;
+    const kuMessage = `"ac", "KU", "s", "<q>${queueXml}</q>"`;
+    const lrMessage = `"ac", "LR", "s", "<q>${queueXml}</q>"`;
 
     for (const player of roomPlayers) {
       const playerConn = this.connections.get(player.connId);
       if (playerConn) {
-        this.sendMessage(playerConn, queueMessage);
+        this.sendMessage(playerConn, kuMessage);
+        this.sendMessage(playerConn, lrMessage);
       }
     }
   }

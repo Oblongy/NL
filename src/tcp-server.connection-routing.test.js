@@ -381,6 +381,53 @@ test("JRC only acks join and waits for GR before sending the room snapshot", asy
   assert.match(joiningConn.messages[1], /^"ac", "LRCU", "d", "/);
 });
 
+test("JRC enters the bracket KOTH room and GR returns the room snapshot", async () => {
+  const server = createServer();
+  const joiningConn = {
+    id: 525,
+    playerId: 21,
+    username: "BracketJoiner",
+    carId: 2100,
+    teamId: 0,
+    teamRole: "",
+    clientRole: 5,
+    messages: [],
+  };
+  const roomMate = {
+    id: 526,
+    playerId: 22,
+    roomId: 3,
+    username: "BracketMate",
+    carId: 2200,
+    teamId: 0,
+    teamRole: "",
+    clientRole: 5,
+    messages: [],
+  };
+
+  server.connections.set(joiningConn.id, joiningConn);
+  server.connections.set(roomMate.id, roomMate);
+  server.rooms.set(3, [
+    { connId: roomMate.id, playerId: roomMate.playerId, username: roomMate.username, carId: roomMate.carId, teamId: 0, teamRole: "", clientRole: 5 },
+  ]);
+
+  await server.handleMessage(joiningConn, "JRC\x1e3\x1e3");
+
+  assert.equal(joiningConn.roomId, 3);
+  assert.deepEqual(joiningConn.messages, ['"ac", "JR", "s", 1']);
+  assert.equal(server.rooms.get(3)?.some((player) => player.playerId === joiningConn.playerId), true);
+  assert.match(roomMate.messages.at(-1) || "", /^"ac", "LRCU", "d", "/);
+
+  joiningConn.messages.length = 0;
+  await server.handleMessage(joiningConn, "GR");
+
+  assert.equal(joiningConn.messages.length, 2);
+  assert.match(joiningConn.messages[0], /^"ac", "LR", "s", "/);
+  assert.match(joiningConn.messages[0], /p='21'/);
+  assert.match(joiningConn.messages[0], /p='22'/);
+  assert.match(joiningConn.messages[1], /^"ac", "LRCU", "d", "/);
+});
+
 test("live tournament join closes sibling race sockets from the previous room", () => {
   const server = createServer();
   const lobbyConn = {
@@ -412,6 +459,43 @@ test("live tournament join closes sibling race sockets from the previous room", 
   assert.equal(server.connections.has(raceConn.id), false);
   assert.equal(lobbyConn.roomId, 2);
   assert.match(lobbyConn.messages[0], /^"ac", "HTJOIN", "s", 1/);
+});
+
+test("JK makes a KOTH entrant appear in lineup packets for room members", async () => {
+  const server = createServer();
+  const joiningConn = {
+    id: 532,
+    playerId: 31,
+    roomId: 3,
+    username: "LineupJoiner",
+    messages: [],
+  };
+  const roomMate = {
+    id: 533,
+    playerId: 32,
+    roomId: 3,
+    username: "LineupMate",
+    messages: [],
+  };
+
+  server.connections.set(joiningConn.id, joiningConn);
+  server.connections.set(roomMate.id, roomMate);
+  server.rooms.set(3, [
+    { connId: joiningConn.id, playerId: joiningConn.playerId, username: joiningConn.username, carId: 3100, teamId: 0, teamRole: "", clientRole: 5 },
+    { connId: roomMate.id, playerId: roomMate.playerId, username: roomMate.username, carId: 3200, teamId: 0, teamRole: "", clientRole: 5 },
+  ]);
+
+  await server.handleMessage(joiningConn, "JK\x1e2200\x1e0");
+
+  assert.deepEqual(joiningConn.messages, [
+    '"ac", "UNU", "i", 1, "s", 1, "ul", ""',
+    `"ac", "KU", "s", "<q><k i='31' ks='0' ci='2200'/></q>"`,
+    `"ac", "LR", "s", "<q><k i='31' ks='0' ci='2200'/></q>"`,
+  ]);
+  assert.deepEqual(roomMate.messages, [
+    `"ac", "KU", "s", "<q><k i='31' ks='0' ci='2200'/></q>"`,
+    `"ac", "LR", "s", "<q><k i='31' ks='0' ci='2200'/></q>"`,
+  ]);
 });
 
 test("startPendingRace keeps newbie rivals lobby bootstrap on RN/RRA only", () => {
