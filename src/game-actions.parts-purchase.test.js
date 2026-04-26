@@ -11,6 +11,12 @@ function createLogger() {
   };
 }
 
+function parseAttrs(node) {
+  return Object.fromEntries(
+    [...node.matchAll(/([a-z0-9]+)='([^']*)'/gi)].map(([, key, value]) => [key, value]),
+  );
+}
+
 function isNumericLike(value) {
   return value !== null && value !== "" && Number.isFinite(Number(value));
 }
@@ -230,6 +236,60 @@ test("buypart keeps the existing points balance in the purchase response for cas
   assert.match(result.body, /<r s='1' b='25'>/);
 });
 
+test("buypart installs rims into the wheel slot and wheel xml", async () => {
+  const { supabase, state, sessionKey } = createPartPurchaseSupabaseStub({ money: 50000, points: 25 });
+
+  const result = await handleGameAction({
+    action: "buypart",
+    params: new Map([
+      ["aid", String(state.playerRow.id)],
+      ["sk", sessionKey],
+      ["acid", String(state.carRow.game_car_id)],
+      ["pid", "1004"],
+      ["pt", "m"],
+      ["pr", "720"],
+    ]),
+    rawQuery: "",
+    decodedQuery: "",
+    logger: createLogger(),
+    supabase,
+    services: {},
+  });
+
+  assert.equal(result?.source, "supabase:buypart");
+  assert.match(state.carRow.wheel_xml, /wid='2'/);
+  assert.match(state.carRow.wheel_xml, /id='1004'/);
+  assert.match(state.carRow.wheel_xml, /ws='16'/);
+  assert.match(state.carRow.parts_xml, /i='1004'/);
+  assert.match(state.carRow.parts_xml, /pi='14'/);
+});
+
+test("buypart installs tires into the tire slot without changing wheel xml", async () => {
+  const { supabase, state, sessionKey } = createPartPurchaseSupabaseStub({ money: 50000, points: 25 });
+
+  const result = await handleGameAction({
+    action: "buypart",
+    params: new Map([
+      ["aid", String(state.playerRow.id)],
+      ["sk", sessionKey],
+      ["acid", String(state.carRow.game_car_id)],
+      ["pid", "1302"],
+      ["pt", "m"],
+      ["pr", "1400"],
+    ]),
+    rawQuery: "",
+    decodedQuery: "",
+    logger: createLogger(),
+    supabase,
+    services: {},
+  });
+
+  assert.equal(result?.source, "supabase:buypart");
+  assert.equal(state.carRow.wheel_xml, "");
+  assert.match(state.carRow.parts_xml, /i='1302'/);
+  assert.match(state.carRow.parts_xml, /pi='13'/);
+});
+
 test("buypart treats custom graphics as cash purchases even though they use pt=p", async () => {
   const { supabase, state, sessionKey } = createPartPurchaseSupabaseStub({ money: 50000, points: 25 });
 
@@ -362,6 +422,41 @@ test("getallparts returns the second XML payload the shop screen expects", async
   assert.equal(result?.source, "static:getallparts");
   assert.match(result.body, /^"s", 1, "d", "/);
   assert.match(result.body, /"d1", "<n2><\/n2>"$/);
+});
+
+test("getallparts restores the wheels and tires category hierarchy", async () => {
+  const result = await handleGameAction({
+    action: "getallparts",
+    params: new Map(),
+    rawQuery: "",
+    decodedQuery: "",
+    logger: createLogger(),
+    services: {},
+  });
+
+  const attrsById = new Map(
+    [...result.body.matchAll(/<c\b[^>]*>/g)].map((match) => {
+      const attrs = parseAttrs(match[0]);
+      return [attrs.i, attrs];
+    }),
+  );
+
+  const wheelsAndTires = attrsById.get("12");
+  const rims = attrsById.get("14");
+  const tires = attrsById.get("13");
+
+  assert.ok(wheelsAndTires, "shop should expose the Wheels & Tires parent category");
+  assert.equal(wheelsAndTires.n, "Wheels &amp; Tires");
+  assert.equal(wheelsAndTires.c, "2");
+  assert.equal(wheelsAndTires.pi, "0");
+
+  assert.ok(rims, "shop should expose the Rims child category");
+  assert.equal(rims.n, "Rims");
+  assert.equal(rims.pi, "12");
+
+  assert.ok(tires, "shop should expose the Tires child category");
+  assert.equal(tires.n, "Tires");
+  assert.equal(tires.pi, "12");
 });
 
 test("getallwheelstires returns the second XML payload the shop screen expects", async () => {
