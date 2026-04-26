@@ -3460,12 +3460,12 @@ async function handleBuyDyno(context) {
   if (player.has_dyno === 1 || player.has_dyno === true) {
     return {
       body:
-        `"s", 1, "b", ${toFiniteNumber(player.money, 0)}, ` +
-        `"bs", ${Number(dynoState.boostSetting)}, ` +
-        `"mp", ${Number(dynoState.maxPsi)}, ` +
-        `"cs", ${Number(dynoState.chipSetting)}, ` +
-        `"sl", ${Number(dynoState.shiftLightRpm)}, ` +
-        `"rl", ${Number(dynoState.redLine)}`,
+        `"s", "1", "b", "${toFiniteNumber(player.money, 0)}", ` +
+        `"bs", "${Number(dynoState.boostSetting)}", ` +
+        `"mp", "${Number(dynoState.maxPsi)}", ` +
+        `"cs", "${Number(dynoState.chipSetting)}", ` +
+        `"sl", "${Number(dynoState.shiftLightRpm)}", ` +
+        `"rl", "${Number(dynoState.redLine)}"`,
       source: "supabase:buydyno:already-owned",
     };
   }
@@ -3488,12 +3488,12 @@ async function handleBuyDyno(context) {
   // (s, b, bs, mp, cs, sl, rl)
   return {
     body:
-      `"s", 1, "b", ${newBalance}, ` +
-      `"bs", ${Number(dynoState.boostSetting)}, ` +
-      `"mp", ${Number(dynoState.maxPsi)}, ` +
-      `"cs", ${Number(dynoState.chipSetting)}, ` +
-      `"sl", ${Number(dynoState.shiftLightRpm)}, ` +
-      `"rl", ${Number(dynoState.redLine)}`,
+      `"s", "1", "b", "${newBalance}", ` +
+      `"bs", "${Number(dynoState.boostSetting)}", ` +
+      `"mp", "${Number(dynoState.maxPsi)}", ` +
+      `"cs", "${Number(dynoState.chipSetting)}", ` +
+      `"sl", "${Number(dynoState.shiftLightRpm)}", ` +
+      `"rl", "${Number(dynoState.redLine)}"`,
     source: "supabase:buydyno",
   };
 }
@@ -4990,7 +4990,45 @@ function getDriveableBoostField(boostType) {
   return Number.isFinite(numericBoost) ? numericBoost : 0;
 }
 
-function buildDriveableEngineXml({ catalogCarId, gearRatios = null, engineTypeId = null, performanceStats = null }) {
+function getDriveableEngineRuntimeFields(boostType, compressionLevel = 0) {
+  if (boostType === "T" || boostType === "S") {
+    return {
+      v: "2.3136531365313653",
+      s: "1.208",
+      b: String(getDriveableBoostField(boostType)),
+      p: "0.15",
+      c: String(compressionLevel || 0),
+      q: "300",
+      m: "72.25",
+      t: "100",
+      u: "28",
+      w: "0.4711",
+      ac: "9",
+    };
+  }
+
+  return {
+    v: "0",
+    s: "0.854",
+    b: "0",
+    p: "1.8",
+    c: String(compressionLevel || 0),
+    q: "0",
+    m: "0",
+    t: "0",
+    u: "10",
+    w: "0",
+    ac: "0",
+  };
+}
+
+function buildDriveableEngineXml({
+  catalogCarId,
+  gearRatios = null,
+  engineTypeId = null,
+  performanceStats = null,
+  compressionLevel = 0,
+}) {
   const spec = getShowroomCarSpec(catalogCarId);
   if (!spec) {
     throw new Error(`Missing showroom spec for catalog car ${catalogCarId}`);
@@ -5000,13 +5038,14 @@ function buildDriveableEngineXml({ catalogCarId, gearRatios = null, engineTypeId
   const valveCount = n2.aa * 4;
   const boostType = getBoostTypeFromEngineTypeId(engineTypeId);
   const driveableInduction = boostType === "T" || boostType === "S" ? boostType : "N";
+  const runtimeFields = getDriveableEngineRuntimeFields(boostType, compressionLevel);
 
   return (
-    `<n2 es='1' sl='${n2.sl}' sg='0' rc='0' tmp='0' r='${n2.r}' v='0' ` +
-    `a='${n2.a}' n='${n2.n}' o='${n2.o}' s='0.854' b='0' p='1.8' c='0' e='0' d='${driveableInduction}' ` +
+    `<n2 es='1' sl='${n2.sl}' sg='0' rc='0' tmp='0' r='${n2.r}' v='${runtimeFields.v}' ` +
+    `a='${n2.a}' n='${n2.n}' o='${n2.o}' s='${runtimeFields.s}' b='${runtimeFields.b}' p='${runtimeFields.p}' c='${runtimeFields.c}' e='0' d='${driveableInduction}' ` +
     `f='${n2.f}' g='${n2.g}' h='${n2.h}' i='${n2.i}' j='${n2.j}' k='0' l='${n2.l}' ` +
-    `q='0' m='0' t='0' u='10' w='0' x='${n2.x}' y='${n2.y}' z='${n2.z}' ` +
-    `aa='${n2.aa}' ab='${valveCount}' ac='0' ad='0' ae='100' af='100' ag='100' ah='100' ai='100' ` +
+    `q='${runtimeFields.q}' m='${runtimeFields.m}' t='${runtimeFields.t}' u='${runtimeFields.u}' w='${runtimeFields.w}' x='${n2.x}' y='${n2.y}' z='${n2.z}' ` +
+    `aa='${n2.aa}' ab='${valveCount}' ac='${runtimeFields.ac}' ad='0' ae='100' af='100' ag='100' ah='100' ai='100' ` +
     `aj='0' ak='0' al='0' am='0' an='0' ao='100' ap='0' aq='0' ar='1' as='0' ` +
     `at='100' au='100' av='0' aw='100' ax='0'/>`
   );

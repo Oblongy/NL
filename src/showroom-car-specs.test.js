@@ -257,4 +257,9 @@ test("getonecarengine marks turbo-equipped cars as turbo in driveable engine xml
   assert.notEqual(result.body, failureBody());
   assert.equal(result.source, "generated:getonecarengine");
   assert.match(result.body, /<n2[^>]* d='T'/);
+  assert.match(result.body, /<n2[^>]* p='0\.15'/);
+  assert.match(result.body, /<n2[^>]* q='300'/);
+  assert.match(result.body, /<n2[^>]* t='100'/);
+  assert.match(result.body, /<n2[^>]* u='28'/);
+  assert.match(result.body, /<n2[^>]* ac='9'/);
 });

@@ -62,4 +62,9 @@ test("buildTuningStudioPreview marks turbo builds as turbo in driveable engine x
   });
 
   assert.match(preview.xml.engineXml, /<n2[^>]* d='T'/);
+  assert.match(preview.xml.engineXml, /<n2[^>]* p='0\.15'/);
+  assert.match(preview.xml.engineXml, /<n2[^>]* q='300'/);
+  assert.match(preview.xml.engineXml, /<n2[^>]* t='100'/);
+  assert.match(preview.xml.engineXml, /<n2[^>]* u='28'/);
+  assert.match(preview.xml.engineXml, /<n2[^>]* ac='9'/);
 });
