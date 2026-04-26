@@ -35,6 +35,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--user", default=os.getenv("NL_VPS_USER", "root"))
     parser.add_argument("--password", default=os.getenv("NL_VPS_PASSWORD"))
     parser.add_argument(
+        "--known-hosts-file",
+        default=os.getenv("NL_VPS_KNOWN_HOSTS_FILE"),
+        help="Optional path to a known_hosts file to load before connecting.",
+    )
+    parser.add_argument(
         "--remote-dir",
         default=os.getenv("NL_VPS_BACKEND_DIR", "/opt/NL/backend"),
         help="Remote backend directory on the VPS.",
@@ -304,10 +309,22 @@ def build_plan(args: argparse.Namespace) -> tuple[str, set[str], set[str], calla
     return "staged", uploads, deletes, read_index_bytes
 
 
+def configure_ssh_client(
+    client: paramiko.SSHClient,
+    known_hosts_file: str | None,
+) -> None:
+    client.load_system_host_keys()
+    if known_hosts_file:
+        client.load_host_keys(known_hosts_file)
+    client.set_missing_host_key_policy(paramiko.RejectPolicy())
+
+
 def main() -> int:
     args = parse_args()
     if not args.password:
         args.password = getpass.getpass(f"Password for {args.user}@{args.host}: ")
+    if args.known_hosts_file and not Path(args.known_hosts_file).exists():
+        raise SystemExit(f"Known hosts file not found: {args.known_hosts_file}")
 
     mode, upload_candidates, delete_candidates, read_local_bytes = build_plan(args)
     if not upload_candidates and not delete_candidates:
@@ -316,11 +333,13 @@ def main() -> int:
         )
 
     client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    configure_ssh_client(client, args.known_hosts_file)
     client.connect(
         hostname=args.host,
         username=args.user,
         password=args.password,
+        allow_agent=True,
+        look_for_keys=True,
         timeout=20,
         banner_timeout=20,
         auth_timeout=20,

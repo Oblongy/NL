@@ -1,6 +1,8 @@
 param(
   [string]$HostName = $(if ($env:NL_VPS_HOST) { $env:NL_VPS_HOST } else { "44.206.42.27" }),
   [string]$UserName = $(if ($env:NL_VPS_USER) { $env:NL_VPS_USER } else { "ubuntu" }),
+  [string]$KeyFile = $env:NL_VPS_KEY_FILE,
+  [string]$KnownHostsFile = $env:NL_VPS_KNOWN_HOSTS_FILE,
   [string]$RemoteDir = $(if ($env:NL_VPS_BACKEND_DIR) { $env:NL_VPS_BACKEND_DIR } else { "/opt/NL/backend" }),
   [string]$AppName = $(if ($env:NL_VPS_PM2_APP) { $env:NL_VPS_PM2_APP } else { "nl-backend" }),
   [string[]]$Files,
@@ -16,16 +18,6 @@ if (-not (Test-Path $deployScript)) {
   throw "Deploy script not found: $deployScript"
 }
 
-if (-not $env:NL_VPS_PASSWORD) {
-  $securePassword = Read-Host -Prompt "VPS password for $UserName@$HostName" -AsSecureString
-  $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword)
-  try {
-    $env:NL_VPS_PASSWORD = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
-  } finally {
-    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
-  }
-}
-
 $args = @(
   $deployScript,
   "--host", $HostName,
@@ -33,6 +25,16 @@ $args = @(
   "--remote-dir", $RemoteDir,
   "--app-name", $AppName
 )
+
+if ($KeyFile) {
+  $args += "--key-file"
+  $args += $KeyFile
+}
+
+if ($KnownHostsFile) {
+  $args += "--known-hosts-file"
+  $args += $KnownHostsFile
+}
 
 if ($SkipHealthcheck) {
   $args += "--skip-healthcheck"

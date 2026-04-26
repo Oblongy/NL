@@ -5,15 +5,12 @@ param(
     [string]$VpsIp = "44.206.42.27",
     [string]$VpsUser = "ubuntu",
     [string]$IdentityFile,
-    [string]$Password
+    [string]$KnownHostsFile = (Join-Path $HOME ".ssh\known_hosts")
 )
 
 $ErrorActionPreference = "Stop"
 $LocalBackendDir = $PSScriptRoot
 $VpsBackendDir = "/opt/NL/backend"
-$script:UsePasswordAuth = $false
-$script:SshAskPassDir = $null
-$script:SshAskPassScript = $null
 $script:SshPath = $null
 $script:ScpPath = $null
 
@@ -33,39 +30,6 @@ function Resolve-DefaultIdentityFile {
     return $null
 }
 
-function ConvertTo-PlainText {
-    param(
-        [Parameter(Mandatory = $true)]
-        [Security.SecureString]$SecureValue
-    )
-
-    $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecureValue)
-    try {
-        return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
-    } finally {
-        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
-    }
-}
-
-function Initialize-SshAskPass {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$PlainTextPassword
-    )
-
-    $script:SshAskPassDir = Join-Path $env:TEMP "nl-ssh-askpass-$PID"
-    New-Item -ItemType Directory -Path $script:SshAskPassDir -Force | Out-Null
-
-    $passwordFile = Join-Path $script:SshAskPassDir "password.txt"
-    $script:SshAskPassScript = Join-Path $script:SshAskPassDir "askpass.cmd"
-
-    [System.IO.File]::WriteAllText($passwordFile, $PlainTextPassword, [System.Text.Encoding]::ASCII)
-    @"
-@echo off
-<nul set /p= < "%~dp0password.txt"
-"@ | Set-Content -Path $script:SshAskPassScript -Encoding ascii
-}
-
 function Invoke-SshChecked {
     param(
         [Parameter(Mandatory = $true)]
@@ -74,27 +38,9 @@ function Invoke-SshChecked {
         [string[]]$ArgumentList
     )
 
-    $previousAskPass = $env:SSH_ASKPASS
-    $previousAskPassRequire = $env:SSH_ASKPASS_REQUIRE
-    $previousDisplay = $env:DISPLAY
-
-    try {
-        if ($script:UsePasswordAuth) {
-            $env:SSH_ASKPASS = $script:SshAskPassScript
-            $env:SSH_ASKPASS_REQUIRE = "force"
-            if (-not $env:DISPLAY) {
-                $env:DISPLAY = "codex"
-            }
-        }
-
-        & $FilePath @ArgumentList
-        if ($LASTEXITCODE -ne 0) {
-            throw "Command failed with exit code ${LASTEXITCODE}: $FilePath $($ArgumentList -join ' ')"
-        }
-    } finally {
-        $env:SSH_ASKPASS = $previousAskPass
-        $env:SSH_ASKPASS_REQUIRE = $previousAskPassRequire
-        $env:DISPLAY = $previousDisplay
+    & $FilePath @ArgumentList
+    if ($LASTEXITCODE -ne 0) {
+        throw "Command failed with exit code ${LASTEXITCODE}: $FilePath $($ArgumentList -join ' ')"
     }
 }
 
@@ -141,26 +87,26 @@ if (-not $IdentityFile) {
     }
 }
 
-if ($IdentityFile) {
-    if (-not (Test-Path $IdentityFile)) {
-        throw "Identity file not found: $IdentityFile"
-    }
-    $SshCommonArgs += @("-i", $IdentityFile)
-} else {
-    if (-not $Password) {
-        $securePassword = Read-Host "VPS password for ${VpsUser}@${VpsIp}" -AsSecureString
-        $Password = ConvertTo-PlainText -SecureValue $securePassword
-    }
-    $script:UsePasswordAuth = $true
-    Initialize-SshAskPass -PlainTextPassword $Password
-    $SshCommonArgs += @(
-        "-o", "PreferredAuthentications=keyboard-interactive,password",
-        "-o", "KbdInteractiveAuthentication=yes",
-        "-o", "PasswordAuthentication=yes",
-        "-o", "PubkeyAuthentication=no",
-        "-o", "StrictHostKeyChecking=accept-new"
-    )
+if (-not $IdentityFile) {
+    throw "No SSH identity file was provided or discovered. Pass -IdentityFile or place a deploy key in $HOME\.ssh."
 }
+
+if (-not (Test-Path $IdentityFile)) {
+    throw "Identity file not found: $IdentityFile"
+}
+
+if (-not (Test-Path $KnownHostsFile)) {
+    throw "Known hosts file not found: $KnownHostsFile. Add the VPS host key before deploying."
+}
+
+$SshCommonArgs += @(
+    "-i", $IdentityFile,
+    "-o", "PreferredAuthentications=publickey",
+    "-o", "PubkeyAuthentication=yes",
+    "-o", "IdentitiesOnly=yes",
+    "-o", "StrictHostKeyChecking=yes",
+    "-o", "UserKnownHostsFile=$KnownHostsFile"
+)
 
 Write-Host "=== Direct VPS Deployment ===" -ForegroundColor Cyan
 Write-Host "Local:  $LocalBackendDir"
@@ -272,9 +218,6 @@ Write-Host "Recent logs:" -ForegroundColor Yellow
 Invoke-SshChecked $script:SshPath @SshCommonArgs "${VpsUser}@${VpsIp}" "pm2 logs nl-backend --lines 20 --nostream"
 
 Remove-Item $TempArchive -Force
-if ($script:SshAskPassDir -and (Test-Path $script:SshAskPassDir)) {
-    Remove-Item $script:SshAskPassDir -Recurse -Force
-}
 
 Write-Host ""
 Write-Host "=== Deployment Complete ===" -ForegroundColor Green
